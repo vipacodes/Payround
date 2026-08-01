@@ -154,7 +154,7 @@ export default function HomePage() {
                       <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0" style={{backgroundColor: group.color || '#dcfce7'}}><span className="text-white font-bold">{group.name.charAt(0)}</span></div>
                       <div className="flex-1 min-w-0"><p className="text-sm font-medium text-gray-900">{group.name}</p><p className="text-xs text-gray-500 font-mono">ID: {group.id}</p></div>
                     </button>
-                  )) : <div className="p-6 text-center"><p className="text-sm text-gray-500">No groups found. Create one with 12 colors, selfie+ID, ₦5000 Palmpay 9151723199</p></div>}
+                  )) : <div className="p-6 text-center"><p className="text-sm text-gray-500">No groups found. Create one</p></div>}
                 </div>
               </div>
             )}
@@ -204,7 +204,7 @@ export default function HomePage() {
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {[
-              { icon: <HiUserGroup className="w-6 h-6" />, title: 'Create & Join Groups', desc: 'Start your own Ajo group or join existing ones with unique group IDs. 12 colors, admin can create multiple groups.' },
+              { icon: <HiUserGroup className="w-6 h-6" />, title: 'Create & Join Groups', desc: 'Start your own Ajo group or join existing ones with unique group IDs.' },
               { icon: <HiShieldCheck className="w-6 h-6" />, title: 'Face Verification', desc: 'Secure identity verification to build trust - selfie + NIN/Voter/Driver/Passport mandatory for group creation.' },
               { icon: <HiBellAlert className="w-6 h-6" />, title: 'Smart Reminders', desc: 'Get notified on website and via WhatsApp when payments due, expiry, renewal - to +2349151723199 and members.' },
               { icon: <HiChartBar className="w-6 h-6" />, title: 'Real-time Tracking', desc: 'Track contributions, payments, rotation progress, next payment due date, expected payout amount/date individual.' },
@@ -230,7 +230,7 @@ export default function HomePage() {
           <div className="grid grid-cols-1 md:grid-cols-4 gap-8">
             {[
               { num: 1, title: 'Sign Up', desc: 'Create account with face verification - selfie+ID. 1 account per email enforced.' },
-              { num: 2, title: 'Create or Join', desc: 'Start group (paid ₦5000 to Palmpay 9151723199 + receipt + 12 colors + selfie+ID) or join existing, trial once/email 7d active→7d frozen no edit→delete.' },
+              { num: 2, title: 'Create or Join', desc: 'Start group or join existing, trial once/email 7d active→7d frozen no edit→delete.' },
               { num: 3, title: 'Contribute', desc: 'Pay to group admin and upload receipt - pending until admin approves. Next payment due shows date.' },
               { num: 4, title: 'Track & Get Paid', desc: 'Monitor progress, expected payout amount editable by admin, expected payout date individual, payout when turn comes. 6 months +7d grace→frozen only owner unfreeze.' },
             ].map((step, index) => (
@@ -276,7 +276,7 @@ export default function HomePage() {
               <div className="col-span-3 bg-white rounded-2xl border border-dashed p-12 text-center">
                 <p className="font-semibold">No active groups yet</p>
                 <p className="text-sm text-gray-500 mt-1">Real groups will appear here when created and approved by owner in owner site. Top most active + good rated groups show first (health + rating + members). Except search shows exact match. Auto-updates when added. Members can leave but admin must approve, join multiple groups at once, admin can create/manage multiple groups (multiple ₦5000 payments), admin can join other groups as members.</p>
-                <button onClick={() => router.push('/groups/create')} className="mt-4 bg-primary-600 text-white px-6 py-2 rounded-xl text-sm">Create First Group - 12 colors, selfie+ID (NIN/Voter/Driver/Passport), ₦5000 Palmpay 9151723199 receipt, trial once/email</button>
+                <button onClick={() => router.push('/groups/create')} className="mt-4 bg-primary-600 text-white px-6 py-2 rounded-xl text-sm">Create First Group</button>
               </div>
             )}
           </div>
@@ -298,7 +298,7 @@ export default function HomePage() {
       <section className="py-20 bg-gray-50">
         <div className="max-w-3xl mx-auto px-4 text-center">
           <h2 className="text-3xl md:text-4xl font-bold text-gray-900 mb-4">Ready to Transform Your Ajo Experience?</h2>
-          <p className="text-lg text-gray-600 mb-8">Join thousands of Nigerians using Payround to save smarter and build trust together. 12 colors, KYC selfie+ID, Palmpay receipt, trial once, 6 months renewal, ratings/reviews, voice notes 7d, in-app chat, Pidgin/Yoruba/Igbo/Hausa, dark mode, group stories.</p>
+          <p className="text-lg text-gray-600 mb-8">Join thousands of Nigerians using Payround to save smarter and build trust together.</p>
           <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
             <button onClick={() => router.push('/signup')} className="w-full sm:w-auto bg-primary-600 text-white font-semibold px-10 py-3.5 rounded-xl hover:bg-primary-700 transition-all shadow-xl shadow-primary-200">Get Started Free - 1 per email</button>
             <button onClick={() => router.push('/groups/search')} className="w-full sm:w-auto border border-gray-300 text-gray-700 font-semibold px-10 py-3.5 rounded-xl hover:bg-gray-50 transition-all">Browse Groups - Top rated at top</button>
