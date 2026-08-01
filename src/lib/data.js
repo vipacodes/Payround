@@ -35,7 +35,7 @@ export const platformInfo = {
 
 export const storageConfig = {
   cloudinary: { note: '25GB free + 150KB WebP + Telegram unlimited backup' },
-  rules: { trialOncePerEmail: true, trialDays: 7, trialFreezeDays: 7, trialDeleteAfter: 14, sixMonthExpiry: true, graceDays: 7, frozenNoEdit: true, onlyOwnerUnfreeze: true, oneAccountPerEmail: true, receiptsPendingAdmin: true, nextPaymentDueDate: true, leaveApproval: true, multipleGroups: true, expectedPayoutEditable: true }
+  rules: { trialOncePerEmail: true, trialDays: 7, trialFreezeDays: 7, trialDeleteAfter: 14, fourMonthExpiry: true, graceDays: 7, frozenNoEdit: true, onlyOwnerUnfreeze: true, oneAccountPerEmail: true, receiptsPendingAdmin: true, nextPaymentDueDate: true, leaveApproval: true, multipleGroups: true, expectedPayoutEditable: true }
 };
 
 // No demo groups - real groups only when created and approved by owner, auto-updates, top rated + most active at top except search
