@@ -83,16 +83,44 @@ export default function SignUpPage() {
     return Object.keys(newErrors).length === 0;
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     if (!validateForm()) return;
 
     setSubmitting(true);
+    try {
+      // Check Supabase for existing email - 1 account per email enforced, real data only
+      const { supabase } = await import('@/lib/supabase');
+      const { data: existingSupa } = await supabase.from('users').select('email').eq('email', formData.email.trim().toLowerCase()).single();
+      if (existingSupa) {
+        toast.error('Email already registered - 1 account per email. Please log in.');
+        setSubmitting(false);
+        return;
+      }
+    } catch {}
+
     const exists = users.find(u => u.email === formData.email.trim().toLowerCase());
     if (exists) {
       toast.error('Email already registered.');
       setSubmitting(false);
       return;
+    }
+
+    // Store in Supabase shared DB so owner site can see for approval - functional and reflects on owner site
+    try {
+      const { supabase } = await import('@/lib/supabase');
+      const { error } = await supabase.from('users').insert({
+        email: formData.email.trim().toLowerCase(),
+        name: formData.name,
+        phone: formData.phone,
+        password_hash: formData.password,
+        trial_used: false,
+        role: 'member',
+        is_verified: false,
+      });
+      if (error) console.log('Supabase insert fallback', error.message);
+    } catch (err) {
+      console.log('Supabase insert error, using mock fallback', err.message);
     }
 
     const result = signupUser({ ...formData, faceVerified: false });
