@@ -214,7 +214,7 @@ export default function SignUpPage() {
             {/* Profile Picture */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1.5">Profile Picture <span className="text-red-500">*</span></label>
-              <input type="file" ref={profilePicRef} accept="image/*" capture="user" onChange={e => handleFile(e.target.files[0], setProfilePicPreview, setProfilePic)} className="hidden" />
+              <input type="file" ref={profilePicRef} accept="image/*,image/heic,image/heif,video/*,application/pdf,.pdf" onChange={e => handleFile(e.target.files[0], setProfilePicPreview, setProfilePic)} className="hidden" />
               {profilePicPreview ? (
                 <div className="relative w-24 h-24">
                   <img src={profilePicPreview} alt="Profile" className="w-24 h-24 rounded-2xl object-cover border-2 border-primary-200" />
@@ -241,7 +241,7 @@ export default function SignUpPage() {
               {/* ID Front */}
               <div className="mb-3">
                 <label className="block text-xs font-medium text-amber-800 mb-1">Front of ID <span className="text-red-500">*</span></label>
-                <input type="file" ref={idFrontRef} accept="image/*" capture="environment" onChange={e => handleFile(e.target.files[0], setIdFrontPreview, setIdFront)} className="hidden" />
+                <input type="file" ref={idFrontRef} accept="image/*,image/heic,image/heif,application/pdf,.pdf,video/*" onChange={e => handleFile(e.target.files[0], setIdFrontPreview, setIdFront)} className="hidden" />
                 {idFrontPreview ? (
                   <div className="relative">
                     <img src={idFrontPreview} alt="ID Front" className="w-full max-h-32 rounded-xl object-cover border border-amber-300" />
@@ -259,7 +259,7 @@ export default function SignUpPage() {
               {/* ID Back */}
               <div>
                 <label className="block text-xs font-medium text-amber-800 mb-1">Back of ID <span className="text-red-500">*</span></label>
-                <input type="file" ref={idBackRef} accept="image/*" capture="environment" onChange={e => handleFile(e.target.files[0], setIdBackPreview, setIdBack)} className="hidden" />
+                <input type="file" ref={idBackRef} accept="image/*,image/heic,image/heif,application/pdf,.pdf,video/*" onChange={e => handleFile(e.target.files[0], setIdBackPreview, setIdBack)} className="hidden" />
                 {idBackPreview ? (
                   <div className="relative">
                     <img src={idBackPreview} alt="ID Back" className="w-full max-h-32 rounded-xl object-cover border border-amber-300" />

@@ -95,7 +95,7 @@ export default function CreateGroupPage() {
   const handleStartTrial = () => {
     if (trialUsed) { toast.error('You have already used your one-time 7-day trial. Payment required.'); return; }
     if (!selfieFile || !idFile) { toast.error('Selfie + ID mandatory before trial'); return; }
-    toast.success('🎉 7-day trial started! Group will freeze after 7 days, 7 days grace then delete if no ₦5000 payment');
+    toast.success('🎉 7-day trial started!');
     setStartedTrial(true);
     const storedUser = localStorage.getItem('payround_user');
     if (storedUser) {
@@ -114,7 +114,7 @@ export default function CreateGroupPage() {
   const handlePay = () => {
     if (!selfieFile || !idFile) { toast.error('Selfie + ID mandatory'); return; }
     if (!receiptFile) { toast.error('Upload receipt of ₦5000 to Palmpay 9151723199 Basikoro James Okeroghene'); return; }
-    toast.success('Payment receipt uploaded - pending Owner approval. Details not deleted, saved as pending.');
+    toast.success('Payment receipt uploaded - pending Owner approval.');
     setPaid(true);
     setTimeout(() => {
       const groupId = 'PR' + Math.floor(10000 + Math.random() * 90000);
@@ -181,13 +181,13 @@ export default function CreateGroupPage() {
                 <div className="grid md:grid-cols-2 gap-4 mt-3">
                   <div>
                     <label className="block text-xs font-medium mb-1">Clear Selfie *</label>
-                    <input type="file" ref={fileSelfieRef} accept="image/*" onChange={(e)=>{const f=e.target.files[0]; if(f){setSelfieFile(f); const r=new FileReader(); r.onload=(ev)=>setSelfiePreview(ev.target.result); r.readAsDataURL(f);}}} className="hidden" />
+                    <input type="file" ref={fileSelfieRef} accept="image/*,image/heic,image/heif,video/*" onChange={(e)=>{const f=e.target.files[0]; if(f){setSelfieFile(f); const r=new FileReader(); r.onload=(ev)=>setSelfiePreview(ev.target.result); r.readAsDataURL(f);}}} className="hidden" />
                     {selfiePreview ? (<div className="relative w-24 h-24"><img src={selfiePreview} className="w-24 h-24 rounded-xl object-cover border" /><button type="button" onClick={()=>{setSelfieFile(null); setSelfiePreview(null);}} className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full w-6 h-6 flex items-center justify-center">×</button></div>) : (<div onClick={()=>fileSelfieRef.current?.click()} className="border-2 border-dashed rounded-xl p-6 text-center cursor-pointer bg-white hover:border-primary-400"><HiPhotograph className="w-6 h-6 mx-auto text-gray-400"/><p className="text-xs mt-1">Upload Selfie</p></div>)}
                   </div>
                   <div>
                     <label className="block text-xs font-medium mb-1">ID Type *</label>
                     <select value={formData.idType} onChange={(e)=>updateField('idType', e.target.value)} className="w-full border rounded-lg px-3 py-2 text-sm mb-2"><option value="NIN">NIN</option><option value="Voter's Card">Voter's Card</option><option value="Driver's License">Driver's License</option><option value="International Passport">Passport</option></select>
-                    <input type="file" ref={fileIdRef} accept="image/*,.pdf" onChange={(e)=>{const f=e.target.files[0]; if(f){setIdFile(f); const r=new FileReader(); r.onload=(ev)=>setIdPreview(ev.target.result); r.readAsDataURL(f);}}} className="hidden" />
+                    <input type="file" ref={fileIdRef} accept="image/*,image/heic,image/heif,application/pdf,.pdf,video/*" onChange={(e)=>{const f=e.target.files[0]; if(f){setIdFile(f); const r=new FileReader(); r.onload=(ev)=>setIdPreview(ev.target.result); r.readAsDataURL(f);}}} className="hidden" />
                     {idPreview ? (<div className="relative w-24 h-24"><img src={idPreview} className="w-24 h-24 rounded-xl object-cover border" /><button type="button" onClick={()=>{setIdFile(null); setIdPreview(null);}} className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full w-6 h-6 flex items-center justify-center">×</button></div>) : (<div onClick={()=>fileIdRef.current?.click()} className="border-2 border-dashed rounded-xl p-6 text-center cursor-pointer bg-white hover:border-primary-400"><HiShieldCheck className="w-6 h-6 mx-auto text-gray-400"/><p className="text-xs mt-1">Upload {formData.idType}</p></div>)}
                   </div>
                 </div>
@@ -195,7 +195,7 @@ export default function CreateGroupPage() {
 
               <div>
                 <label className="block text-sm font-medium mb-1.5">Group Logo (optional)</label>
-                <input type="file" ref={fileInputRef} accept="image/*" onChange={(e)=>{const file=e.target.files[0]; if(file){const reader=new FileReader(); reader.onload=(ev)=>setLogoPreview(ev.target.result); reader.readAsDataURL(file);}}} className="hidden" />
+                <input type="file" ref={fileInputRef} accept="image/*,image/heic,image/heif" onChange={(e)=>{const file=e.target.files[0]; if(file){const reader=new FileReader(); reader.onload=(ev)=>setLogoPreview(ev.target.result); reader.readAsDataURL(file);}}} className="hidden" />
                 {logoPreview ? (<div className="relative"><img src={logoPreview} alt="Logo" className="w-32 h-32 object-cover rounded-2xl border" /><button onClick={()=>{setLogoPreview(null); if(fileInputRef.current) fileInputRef.current.value='';}} className="absolute -top-2 -right-2 w-7 h-7 bg-red-500 text-white rounded-full flex items-center justify-center"><HiTrash className="w-3.5 h-3.5" /></button></div>) : (<div onClick={()=>fileInputRef.current?.click()} className="border-2 border-dashed border-gray-300 rounded-2xl p-8 text-center cursor-pointer hover:border-primary-400"><HiUserGroup className="w-8 h-8 text-gray-400 mx-auto mb-2" /><p className="text-sm text-gray-500">Upload logo</p></div>)}
               </div>
             </div>
@@ -237,9 +237,8 @@ export default function CreateGroupPage() {
               <div className="flex items-center gap-2 mb-2"><HiShieldCheck className="w-6 h-6 text-primary-600" /><h2 className="text-lg font-semibold">Review & Pay to Owner</h2></div>
               
               <div className="p-4 bg-amber-50 border border-amber-200 rounded-xl">
-                <div className="font-bold text-sm">Pay to Owner (Palmpay)</div>
-                <div className="text-xs mt-1 font-mono">Bank: {platformInfo.owner.bankName} | Acct: {platformInfo.owner.accountNumber} | Name: {platformInfo.owner.accountName}</div>
-                <div className="text-xs text-gray-600 mt-1">Fee ₦{creationFee} per group. Trial once per email: 7d active → 7d frozen (no edit) → auto-delete. 6 months expiry: 7d grace → frozen only owner unfreeze.</div>
+                <div className="font-bold text-sm">Pay to Owner</div>
+                <div className="text-xs mt-1">Bank: Palmpay | Acct: 9151723199 | Name: Basikoro James Okeroghene</div>
               </div>
 
               <div className="p-4 bg-gray-50 rounded-xl space-y-2 text-sm">
@@ -257,7 +256,7 @@ export default function CreateGroupPage() {
                   ) : (
                     <div className="p-5 bg-blue-50 rounded-2xl border border-blue-100">
                       <div className="flex items-center gap-2 mb-2"><HiLightningBolt className="w-5 h-5 text-blue-600" /><span className="font-semibold">7-Day Free Trial (Once per Email)</span></div>
-                      <p className="text-sm text-gray-600 mb-3">Try free 7 days. After 7 days freeze 7 days (no edit), then auto-delete if no ₦5000 payment.</p>
+                      <p className="text-sm text-gray-600 mb-3">Try Payround free for 7 days. No payment required now.</p>
                       <button onClick={()=>{if(!selfieFile||!idFile){toast.error('Selfie+ID mandatory'); return;} const s=localStorage.getItem('payround_user'); if(s){try{const u=JSON.parse(s); localStorage.setItem(`trial_used_${u.email?.toLowerCase()}`, 'true');}catch{}} handleStartTrial();}} className="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3.5 rounded-xl shadow-lg">Start 7-Day Trial</button>
                     </div>
                   )}
@@ -266,11 +265,11 @@ export default function CreateGroupPage() {
 
                   <div className="p-5 bg-gold-50 rounded-2xl border border-gold-100">
                     <div className="flex justify-between mb-2"><span className="text-sm font-medium">Pay ₦5000 to Owner Now</span><span className="text-2xl font-bold">₦{creationFee.toLocaleString()}</span></div>
-                    <p className="text-xs text-gray-500 mb-3">Upload receipt of ₦5000 to Palmpay {platformInfo.owner.accountNumber} ({platformInfo.owner.accountName}). Owner will verify selfie+ID, then approve. Details saved pending, not deleted.</p>
+                    <p className="text-xs text-gray-500 mb-3">Upload receipt of ₦5000 payment to Palmpay account above.</p>
                     
                     <div className="border-2 border-dashed rounded-xl p-4 bg-white mb-3">
                       <label className="block text-xs font-bold mb-2">Payment Receipt * (Palmpay {platformInfo.owner.accountNumber})</label>
-                      <input type="file" ref={fileReceiptRef} accept="image/*,.pdf" onChange={(e)=>{const f=e.target.files[0]; if(f){setReceiptFile(f); const r=new FileReader(); r.onload=(ev)=>setReceiptPreview(ev.target.result); r.readAsDataURL(f);}}} className="hidden" />
+                      <input type="file" ref={fileReceiptRef} accept="image/*,image/heic,image/heif,application/pdf,.pdf,video/*" onChange={(e)=>{const f=e.target.files[0]; if(f){setReceiptFile(f); const r=new FileReader(); r.onload=(ev)=>setReceiptPreview(ev.target.result); r.readAsDataURL(f);}}} className="hidden" />
                       {receiptPreview ? (<div className="relative w-24 h-24"><img src={receiptPreview} className="w-24 h-24 rounded-xl object-cover border" /><button type="button" onClick={()=>{setReceiptFile(null); setReceiptPreview(null);}} className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full w-6 h-6 flex items-center justify-center">×</button></div>) : (<div onClick={()=>fileReceiptRef.current?.click()} className="border rounded-xl p-4 text-center cursor-pointer"><HiPhotograph className="w-6 h-6 mx-auto text-gray-400"/><p className="text-xs mt-1">Upload Receipt</p></div>)}
                     </div>
 
@@ -281,7 +280,7 @@ export default function CreateGroupPage() {
                 <div className="text-center py-6">
                   <div className="w-16 h-16 bg-emerald-50 rounded-full flex items-center justify-center mx-auto mb-4"><HiCheckCircle className="w-10 h-10 text-emerald-500" /></div>
                   <p className="text-lg font-semibold">{startedTrial ? '🎉 Trial Started!' : 'Pending Owner Approval'}</p>
-                  <p className="text-sm text-gray-500">{startedTrial ? '7-day trial active. Freeze after 7d, delete after 14d if no pay.' : 'Receipt uploaded, selfie+ID saved pending, not deleted. Owner will approve.'}</p>
+                  <p className="text-sm text-gray-500">{startedTrial ? 'Your trial has begun.' : 'Receipt uploaded. Owner will review and approve.'}</p>
                 </div>
               )}
             </div>

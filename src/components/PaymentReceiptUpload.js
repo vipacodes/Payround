@@ -113,8 +113,8 @@ export default function PaymentReceiptUpload({ bankDetails, onSuccess, contribut
           <input
             ref={fileInputRef}
             type="file"
-            accept="image/*"
-            capture="environment"
+            accept="image/*,image/heic,image/heif,video/*,application/pdf,.pdf"
+           
             onChange={handleFileSelect}
             className="hidden"
           />

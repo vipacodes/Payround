@@ -50,10 +50,6 @@ export default function Footer() {
         </div>
         <div className="mt-10 pt-8 border-t border-gray-800 flex flex-col md:flex-row items-center justify-between gap-4">
           <p className="text-sm text-gray-500">&copy; {year} {name}. All rights reserved.</p>
-          <div className="flex items-center gap-6">
-            <button className="text-sm text-gray-500 hover:text-gray-300 transition-colors">Privacy Policy</button>
-            <button className="text-sm text-gray-500 hover:text-gray-300 transition-colors">Terms of Service</button>
-          </div>
         </div>
       </div>
     </footer>
