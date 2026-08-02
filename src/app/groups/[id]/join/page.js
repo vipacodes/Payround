@@ -10,6 +10,7 @@ import {
   HiClock, HiLogin, HiUserAdd, HiCurrencyDollar, HiCalendar
 } from 'react-icons/hi';
 import toast from 'react-hot-toast';
+import { parseSpots, formatSpots } from '@/lib/payments';
 
 export default function JoinGroupPage() {
   const router = useRouter();
@@ -25,6 +26,8 @@ export default function JoinGroupPage() {
   const [formData, setFormData] = useState({ name: '', phone: '', email: '', spots: 1 });
   const [errors, setErrors] = useState({});
   const [submitting, setSubmitting] = useState(false);
+  const [takenSpots, setTakenSpots] = useState([]); // spots already held by approved members
+  const [desired, setDesired] = useState([]);       // the joiner's spot wishlist (admin confirms or offers an alternative)
 
   useEffect(() => {
     let mounted = true;
@@ -45,6 +48,9 @@ export default function JoinGroupPage() {
           const { data: adm } = await supabase.from('users').select('id, name, phone, profile_pic, is_verified').eq('email', g.admin_email.toLowerCase()).single();
           if (mounted && adm) setAdminProfile(adm);
         }
+        // taken spots — so the wishlist chips only show what's actually open
+        const { data: am } = await supabase.from('members').select('spots').eq('group_id', params.id).eq('status', 'approved');
+        if (mounted) setTakenSpots((am || []).flatMap(m => parseSpots(m.spots)));
 
         if (user?.email) {
           const email = user.email.toLowerCase();
@@ -120,21 +126,31 @@ export default function JoinGroupPage() {
     try {
       const { supabase } = await import('@/lib/supabase');
       // Record the join request — the group admin reviews your profile and approves
-      const { error } = await supabase.from('members').insert({
-        id: `m-${Date.now()}`,
+      const payload = {
         group_id: params.id,
         member_email: formData.email.trim().toLowerCase(),
         member_name: formData.name.trim(),
         member_phone: formData.phone.trim(),
         spots_requested: Math.max(1, parseInt(formData.spots, 10) || 1),
+        desired_spots: formatSpots(desired) || null,
+        spots: '',
+        offered_spots: '',
         status: 'pending',
-      });
-      if (error) throw error;
+      };
+      // Declined before (or an old offer)? Revive the same row instead of stacking duplicates.
+      const { data: stale } = await supabase.from('members').select('id').eq('group_id', params.id).eq('member_email', payload.member_email).in('status', ['declined', 'spot_offered']);
+      if (stale && stale.length) {
+        const { error } = await supabase.from('members').update(payload).eq('id', stale[0].id);
+        if (error) throw error;
+      } else {
+        const { error } = await supabase.from('members').insert({ id: `m-${Date.now()}`, ...payload });
+        if (error) throw error;
+      }
       // Notify ONLY the group admin
       await supabase.from('notifications').insert({
         id: `join-${Date.now()}`, type: 'join_request', group_id: params.id, is_read: false,
         user_email: (group.admin_email || '').toLowerCase() || null,
-        message: `🔔 ${formData.name.trim()} requested to join "${group.name}" — review their profile and approve in your admin members tab.`,
+        message: `🔔 ${formData.name.trim()} requested to join "${group.name}"${desired.length ? ` — wishes spot(s) #${desired.join(', #')}` : ' (no spot preference)'} — review their profile in Members; approve or offer an alternative spot.`,
       });
       setStep('success');
       toast.success('Join request submitted!');
@@ -150,6 +166,16 @@ export default function JoinGroupPage() {
   };
 
   const isLive = ['active', 'approved'].includes(group.status);
+  const maxSpots = Math.max(1, parseInt(group.max_members, 10) || 1);
+  const openSpotNums = Array.from({ length: maxSpots }, (_, i) => i + 1).filter(n => !takenSpots.includes(n));
+  const toggleDesired = (sp) => {
+    setDesired(prev => {
+      if (prev.includes(sp)) return prev.filter(x => x !== sp);
+      const cap = Math.max(1, parseInt(formData.spots, 10) || 1);
+      if (prev.length >= cap) { toast.error(`You chose ${cap} spot${cap > 1 ? 's' : ''} — wishlist allows that many.`); return prev; }
+      return [...prev, sp].sort((a, b) => a - b);
+    });
+  };
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -357,7 +383,7 @@ export default function JoinGroupPage() {
                   <label className="block text-sm font-medium text-gray-700 mb-1.5">How many spots? *</label>
                   <select
                     value={formData.spots}
-                    onChange={(e) => updateField('spots', parseInt(e.target.value, 10) || 1)}
+                    onChange={(e) => { const n = parseInt(e.target.value, 10) || 1; updateField('spots', n); setDesired(prev => prev.slice(0, n)); }}
                     className="w-full px-4 py-3 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 bg-white"
                   >
                     {[1, 2, 3, 4, 5].map(n => (
@@ -370,6 +396,28 @@ export default function JoinGroupPage() {
                     The admin assigns your exact spot numbers when approving you.
                   </p>
                 </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1.5">Your preferred spot number(s) <span className="text-gray-400 font-normal">(optional wishlist)</span></label>
+                {openSpotNums.length === 0 ? (
+                  <p className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-xl p-3">No open spots left in this group right now.</p>
+                ) : (
+                  <div className="flex flex-wrap gap-1.5">
+                    {openSpotNums.map(sp => {
+                      const on = desired.includes(sp);
+                      return (
+                        <button key={sp} type="button" onClick={() => toggleDesired(sp)}
+                          className={`w-10 h-9 rounded-lg text-sm font-bold border transition-colors ${on ? 'bg-primary-600 text-white border-primary-600' : 'bg-white text-gray-600 border-gray-200 hover:border-primary-300'}`}>
+                          #{sp}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+                <p className="text-[11px] text-gray-400 mt-1.5 leading-relaxed">
+                  Wishlist only — the admin grants these exact numbers if they&apos;re still free when approving; otherwise they offer you an alternative spot, and <b>you</b> then accept or decline. You get a notification either way.
+                </p>
               </div>
 
               <button

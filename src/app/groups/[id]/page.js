@@ -36,6 +36,9 @@ export default function GroupDetailsPage() {
   const [uploading, setUploading] = useState(false);
   const [zoomImg, setZoomImg] = useState(null);
   const [me, setMe] = useState(null);
+  const [myOffer, setMyOffer] = useState(null);         // member row while a spot offer waits for my answer
+  const [offerBusy, setOfferBusy] = useState(false);
+  const [declinedOffer, setDeclinedOffer] = useState(null); // my declined membership row (kept as a record)
   const [editingRules, setEditingRules] = useState(false);
   const [rulesText, setRulesText] = useState('');
   const [savingRules, setSavingRules] = useState(false);
@@ -75,12 +78,24 @@ export default function GroupDetailsPage() {
             .from('members').select('status')
             .eq('group_id', params.id).eq('member_email', email)
             .eq('status', 'pending');
+          const { data: offeredMine } = await supabase
+            .from('members').select('*')
+            .eq('group_id', params.id).eq('member_email', email)
+            .eq('status', 'spot_offered');
+          const { data: declinedMine } = await supabase
+            .from('members').select('*')
+            .eq('group_id', params.id).eq('member_email', email)
+            .eq('status', 'declined');
           if (mounted) {
             if (mine) {
               setMyStatus('approved');
               setMyMember(mine);
               setPaySpots(parseSpots(mine.spots)); // pre-select all my spots
+            } else if (offeredMine && offeredMine.length > 0) {
+              setMyOffer(offeredMine[0]);
+              setMyStatus('offered');
             } else if (pendingMine && pendingMine.length > 0) setMyStatus('pending');
+            if (declinedMine && declinedMine.length > 0 && !mine) setDeclinedOffer(declinedMine[0]);
           }
         }
       } catch (e) {
@@ -121,6 +136,69 @@ export default function GroupDetailsPage() {
 
   const isLive = ['active', 'approved'].includes(group.status);
   const joinPath = `/groups/${group.id}/join`;
+
+  // Spot offer answers: accept joins the group with the offered spots; decline keeps you out
+  const acceptOffer = async () => {
+    if (!myOffer || offerBusy) return;
+    setOfferBusy(true);
+    try {
+      const { supabase } = await import('@/lib/supabase');
+      const wanted = parseSpots(myOffer.offered_spots);
+      // spots may have been taken since the offer — re-check live
+      const { data: amems } = await supabase.from('members').select('spots').eq('group_id', params.id).eq('status', 'approved');
+      const taken = (amems || []).flatMap(m => parseSpots(m.spots));
+      const conflict = wanted.filter(x => taken.includes(x));
+      if (conflict.length) {
+        await supabase.from('notifications').insert({
+          id: `offerlap-${Date.now()}`, type: 'offer_lapsed', group_id: params.id, is_read: false,
+          user_email: (group.admin_email || '').toLowerCase(),
+          message: `⚠️ The spot offer for ${myOffer.member_name || myOffer.member_email} (#${conflict.join(', #')}) was taken before they accepted — offer them another spot in your Members tab.`,
+        });
+        toast.error('Sorry — that spot was just taken. The admin has been notified to offer another one.');
+        setOfferBusy(false);
+        return;
+      }
+      const { error } = await supabase.from('members').update({
+        status: 'approved', spots: formatSpots(wanted), approved_at: new Date().toISOString(),
+      }).eq('id', myOffer.id);
+      if (error) throw error;
+      await supabase.from('notifications').insert({
+        id: `offerok-${Date.now()}`, type: 'offer_accepted', group_id: params.id, is_read: false,
+        user_email: (group.admin_email || '').toLowerCase(),
+        message: `✅ ${myOffer.member_name || myOffer.member_email} accepted the spot offer (#${wanted.join(', #')}) and joined "${group.name}"!`,
+      });
+      const newMember = { ...myOffer, status: 'approved', spots: formatSpots(wanted) };
+      setMyMember(newMember);
+      setMembers(prev => [...prev, newMember]);
+      setMemberCount(c => c + 1);
+      setPaySpots(wanted);
+      setMyOffer(null);
+      setMyStatus('approved');
+      toast.success(`You're in! You hold spot${wanted.length > 1 ? 's' : ''} #${wanted.join(', #')}. 🎉`);
+    } catch (e) { toast.error(`Could not accept: ${e.message || 'try again'}`); }
+    setOfferBusy(false);
+  };
+
+  const declineOffer = async () => {
+    if (!myOffer || offerBusy) return;
+    if (!window.confirm('Decline this spot offer and stay out of the group? You can send a fresh join request anytime.')) return;
+    setOfferBusy(true);
+    try {
+      const { supabase } = await import('@/lib/supabase');
+      const { error } = await supabase.from('members').update({ status: 'declined', spots: '' }).eq('id', myOffer.id);
+      if (error) throw error;
+      await supabase.from('notifications').insert({
+        id: `offerno-${Date.now()}`, type: 'offer_declined', group_id: params.id, is_read: false,
+        user_email: (group.admin_email || '').toLowerCase(),
+        message: `⚠️ ${myOffer.member_name || myOffer.member_email} declined the offered spot(s) #${parseSpots(myOffer.offered_spots).join(', #')} — they will not join "${group.name}".`,
+      });
+      setDeclinedOffer(myOffer);
+      setMyOffer(null);
+      setMyStatus('declined');
+      toast.success('Offer declined — you did not join the group.');
+    } catch (e) { toast.error(`Could not decline: ${e.message || 'try again'}`); }
+    setOfferBusy(false);
+  };
 
   // Admin writes the group's own rules — every user reads them BEFORE joining
   const saveRules = async () => {
@@ -163,12 +241,7 @@ export default function GroupDetailsPage() {
   // Open spots with estimated payout dates — shown to visitors BEFORE they join
   const openSpots = Array.from({ length: N }, (_, i) => i + 1).filter(sp => !(sp in spotMap));
   const filledCount = Object.keys(spotMap).length;
-  const saveStartMs = new Date(group.start_date || group.created_at || Date.now()).getTime();
   const daysPerPeriod = periodDays(group.frequency);
-  const spotDateText = (spot) => {
-    const d = new Date(saveStartMs + spot * daysPerPeriod * 86400000);
-    return d.toLocaleDateString('en-NG', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' });
-  };
   const myPayments = me?.email ? payments.filter(p => (p.user_email || '').toLowerCase() === me.email.toLowerCase()) : [];
   const receiptAmount = (group.amount || 0) * Math.max(1, paySpots.length) * payWeeks;
 
@@ -358,10 +431,11 @@ export default function GroupDetailsPage() {
         {/* ✨ Available spots with payout dates — visitors see these BEFORE joining */}
         {!isMember && (
           <div className="bg-white rounded-2xl border border-gray-100 p-6 mb-6">
-            <h2 className="font-bold text-gray-900 mb-1 flex items-center gap-2"><HiCalendar className="w-5 h-5 text-primary-600" /> Available Spots & Payout Dates</h2>
+            <h2 className="font-bold text-gray-900 mb-1 flex items-center gap-2"><HiCalendar className="w-5 h-5 text-primary-600" /> Available Spots & Payout Order</h2>
             <p className="text-xs text-gray-500 mb-4">
               {openSpots.length} of {N} spot{N === 1 ? '' : 's'} still open. Each spot collects the whole pot when its turn comes —
-              the earlier your spot number, the sooner you&apos;re paid. The admin assigns your number(s) when approving you, so ask for an early one!
+              the earlier your spot number, the sooner you&apos;re paid. <b>Exact payout dates can&apos;t be shown yet: savings start once every spot is filled</b>,
+              and you can pick your wishlist spots when you join — the admin confirms or offers you an alternative!
             </p>
             {openSpots.length === 0 ? (
               <p className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-xl p-3">All {N} spots are currently taken — this group is full for this round.</p>
@@ -371,14 +445,32 @@ export default function GroupDetailsPage() {
                   <div key={spot} className="flex items-center gap-3 bg-gray-50 rounded-xl px-3 py-2.5">
                     <span className="w-10 h-8 bg-primary-600 text-white text-sm font-bold rounded-lg flex items-center justify-center shrink-0">#{spot}</span>
                     <span className="text-xs text-gray-700 flex-1 min-w-0">
-                      receives payment <b>{spotDateText(spot)}</b>
-                      <span className="text-gray-400 block text-[11px]">#{spot} receives payment {spot * daysPerPeriod} days after saving starts</span>
+                      receives payment <b>{spot * daysPerPeriod} days after savings start</b>
+                      <span className="text-gray-400 block text-[11px]">savings begin when the group is full — that&apos;s when the {group.frequency || 'weekly'} payout clock starts</span>
                     </span>
                   </div>
                 ))}
                 <p className="text-[11px] text-gray-400 pt-1">Pot per payout right now: ≈ ₦{((group.amount || 0) * Math.max(1, filledCount)).toLocaleString()} — it grows as more members join the group.</p>
               </div>
             )}
+          </div>
+        )}
+
+        {/* 🪑 Spot offer waiting for MY answer — shown prominently before anything else */}
+        {myStatus === 'offered' && myOffer && (
+          <div className="bg-white rounded-2xl border-2 border-amber-300 p-6 mb-6">
+            <h2 className="font-bold text-gray-900 mb-1">🪑 The admin offered you a spot</h2>
+            <p className="text-sm text-gray-700 mb-1">
+              You asked for spot{parseSpots(myOffer.desired_spots).length > 1 ? 's' : ''} <b>#{parseSpots(myOffer.desired_spots).join(', #') || '—'}</b>.
+            </p>
+            <p className="text-sm text-gray-900 mb-4">
+              The admin offers you spot{parseSpots(myOffer.offered_spots).length > 1 ? 's' : ''} <b className="text-emerald-700">#{parseSpots(myOffer.offered_spots).join(', #')}</b> instead.
+            </p>
+            <div className="flex flex-col sm:flex-row gap-2.5">
+              <button onClick={acceptOffer} disabled={offerBusy} className="flex-1 bg-emerald-600 text-white font-semibold py-3 rounded-xl hover:bg-emerald-700 transition-all disabled:opacity-50">✔ Accept & Join</button>
+              <button onClick={declineOffer} disabled={offerBusy} className="flex-1 bg-white text-red-600 border border-red-200 font-semibold py-3 rounded-xl hover:bg-red-50 transition-all disabled:opacity-50">✖ Decline — Don&apos;t Join</button>
+            </div>
+            <p className="text-[11px] text-gray-400 mt-3">Accepting puts you straight into the group with those spots. Declining means you don&apos;t join — the admin is notified either way.</p>
           </div>
         )}
 
@@ -391,6 +483,13 @@ export default function GroupDetailsPage() {
             </div>
           ) : myStatus === 'pending' ? (
             <p className="text-sm font-medium text-amber-700 flex items-center gap-2"><HiClock className="w-5 h-5" /> Your join request is awaiting the admin&apos;s approval — you&apos;ll get a notification.</p>
+          ) : myStatus === 'declined' ? (
+            <div>
+              <p className="text-sm font-medium text-gray-700 mb-3 flex items-center gap-2"><HiExclamation className="w-5 h-5 text-red-400 shrink-0" /> You declined the last spot offer, so you&apos;re not in this group.</p>
+              <button onClick={handleJoin} disabled={!isLive} className="w-full bg-primary-600 text-white font-semibold py-3.5 rounded-xl hover:bg-primary-700 transition-all shadow-lg shadow-primary-200 disabled:opacity-50 disabled:cursor-not-allowed">Send a New Join Request</button>
+            </div>
+          ) : myStatus === 'offered' ? (
+            <p className="text-sm font-medium text-amber-700 flex items-center gap-2"><HiClock className="w-5 h-5" /> Answer the spot offer above to finish joining.</p>
           ) : (
             <div>
               <button

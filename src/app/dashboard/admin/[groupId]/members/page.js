@@ -25,6 +25,9 @@ export default function AdminMembersPage() {
   const [groupPayouts, setGroupPayouts] = useState([]);
   const [memberReviews, setMemberReviews] = useState([]);
   const [reviewForm, setReviewForm] = useState({ rating: 5, review: '' });
+  const [spotOffers, setSpotOffers] = useState([]); // sent spot offers waiting for the user's accept/decline
+  const [offerFor, setOfferFor] = useState(null);   // join-request card with the offer panel open
+  const [offerSpots, setOfferSpots] = useState([]);
 
   // Load the REAL group from the database (bundled demo data only as fallback for legacy demo links)
   useEffect(() => {
@@ -47,6 +50,8 @@ export default function AdminMembersPage() {
       const { data: reqs } = await supabase.from('members').select('*').eq('group_id', params.groupId).eq('status', 'pending').order('requested_at', { ascending: false });
       if (reqs) setJoinRequests(reqs);
       const { data: approved } = await supabase.from('members').select('*').eq('group_id', params.groupId).eq('status', 'approved');
+      const { data: offers } = await supabase.from('members').select('*').eq('group_id', params.groupId).eq('status', 'spot_offered');
+      if (offers) setSpotOffers(offers);
       if (approved) setApprovedMembers(approved.map(m => ({ ...m, name: m.member_name || '—', email: m.member_email, phone: m.member_phone || '—' })));
       const { data: pays } = await supabase.from('payments').select('user_email, spots, weeks, status').eq('group_id', params.groupId);
       if (pays) setGroupPayments(pays);
@@ -68,7 +73,20 @@ export default function AdminMembersPage() {
         const { data: existing } = await supabase.from('members').select('spots').eq('group_id', params.groupId).eq('status', 'approved');
         const takenFlat = (existing || []).flatMap(m => parseSpots(m.spots));
         const wanted = Math.max(1, parseInt(req.spots_requested, 10) || 1);
-        assigned = nextFreeSpots(takenFlat, Math.max(1, parseInt(group?.max_members, 10) || 1), wanted);
+        const desired = parseSpots(req.desired_spots || '');
+        if (desired.length) {
+          const blocked = desired.filter(sp => takenFlat.includes(sp));
+          if (!blocked.length) {
+            assigned = desired.slice(0, wanted); // grant their wishlist spots
+          } else {
+            setOfferFor(req.id);
+            setOfferSpots(nextFreeSpots(takenFlat, Math.max(1, parseInt(group?.max_members, 10) || 1), wanted));
+            toast.error(`Spot(s) ${blocked.map(b => '#' + b).join(', ')} are already taken — offer an alternative below instead.`);
+            return; // approval paused until the admin offers alternative spots
+          }
+        } else {
+          assigned = nextFreeSpots(takenFlat, Math.max(1, parseInt(group?.max_members, 10) || 1), wanted);
+        }
       }
       await supabase.from('members').update({
         status: approve ? 'approved' : 'declined',
@@ -87,6 +105,32 @@ export default function AdminMembersPage() {
         ? (assigned.length ? `Member approved — assigned spot${assigned.length > 1 ? 's' : ''} #${assigned.join(', #')}.` : 'Member approved (no free spots left to assign).')
         : 'Request declined.');
     } catch (e) { toast.error('Could not update request.'); }
+    loadSupa();
+  };
+
+  // Send an alternative spot offer — the user must ACCEPT to join or DECLINE to stay out (both sides get notified)
+  const sendSpotOffer = async (req) => {
+    if (!offerSpots.length) { toast.error('Pick the spot(s) to offer first.'); return; }
+    try {
+      const { supabase } = await import('@/lib/supabase');
+      const { parseSpots, formatSpots } = await import('@/lib/payments');
+      // fresh availability check so two offers can't collide
+      const { data: existing } = await supabase.from('members').select('spots').eq('group_id', params.groupId).eq('status', 'approved');
+      const takenFlat = (existing || []).flatMap(m => parseSpots(m.spots));
+      const clash = offerSpots.filter(sp => takenFlat.includes(sp));
+      if (clash.length) { toast.error(`Spot(s) ${clash.map(b => '#' + b).join(', ')} just got taken — pick again.`); loadSupa(); return; }
+      const { error } = await supabase.from('members').update({
+        status: 'spot_offered', offered_spots: formatSpots(offerSpots), spots: '',
+      }).eq('id', req.id);
+      if (error) throw error;
+      await supabase.from('notifications').insert({
+        id: `offer-${Date.now()}`, type: 'spot_offer', group_id: params.groupId, is_read: false,
+        user_email: req.member_email,
+        message: `🪑 In "${group?.name || params.groupId}": ${req.desired_spots ? `the spot(s) you wanted (#${req.desired_spots}) are taken — but ` : ''}the admin offers you spot${offerSpots.length > 1 ? 's' : ''} #${offerSpots.join(', #')}. Open the group page to ACCEPT or DECLINE.`,
+      });
+      toast.success('Spot offer sent — they get a notification and must accept or decline.');
+      setOfferFor(null); setOfferSpots([]);
+    } catch (e) { toast.error('Could not send the offer.'); }
     loadSupa();
   };
 
@@ -127,6 +171,10 @@ export default function AdminMembersPage() {
       </div>
     );
   }
+
+  const parseSpotsLite = (str) => String(str || '').split(',').map(x => parseInt(x.trim(), 10)).filter(n => Number.isFinite(n) && n > 0);
+  const takenNow = approvedMembers.flatMap(m => parseSpotsLite(m.spots));
+  const freeSpotNums = Array.from({ length: Math.max(1, parseInt(group?.max_members, 10) || 1) }, (_, i) => i + 1).filter(n => !takenNow.includes(n));
 
   const q = searchQuery.toLowerCase();
   const filteredMembers = approvedMembers.filter(m =>
@@ -193,9 +241,22 @@ export default function AdminMembersPage() {
                   <div>
                     <div className="font-medium text-sm">{req.member_name || '—'}</div>
                     <div className="text-xs text-gray-500">{req.member_email} • Requested {req.requested_at ? new Date(req.requested_at).toLocaleDateString() : '—'}</div>
+                    {parseSpotsLite(req.desired_spots).length > 0 && (() => {
+                      const wants = parseSpotsLite(req.desired_spots);
+                      const blocked = wants.filter(w => takenNow.includes(w));
+                      return (
+                        <p className="text-[11px] mt-1">
+                          Wants spot{wants.length > 1 ? 's' : ''}: <b className="text-gray-900">#{wants.join(', #')}</b>
+                          {blocked.length
+                            ? <span className="text-red-600 font-semibold"> — #{blocked.join(', #')} already taken (suggest another)</span>
+                            : <span className="text-emerald-600 font-semibold"> — all still free ✓ approve to grant them</span>}
+                        </p>
+                      );
+                    })()}
                   </div>
-                  <div className="flex gap-2">
+                  <div className="flex gap-2 flex-wrap">
                     <button onClick={() => handleJoinRequest(req, true)} className="bg-primary-600 hover:bg-primary-700 text-white px-3 py-1.5 rounded-lg text-xs font-medium">Approve → Add Member</button>
+                    <button onClick={() => { setOfferFor(offerFor === req.id ? null : req.id); setOfferSpots(freeSpotNums.slice(0, Math.max(1, parseInt(req.spots_requested, 10) || 1))); }} className="bg-amber-50 text-amber-700 border border-amber-200 hover:bg-amber-100 px-3 py-1.5 rounded-lg text-xs font-medium">🪑 Suggest spot(s)</button>
                     <button onClick={() => handleJoinRequest(req, false)} className="bg-red-50 text-red-600 border border-red-200 hover:bg-red-100 px-3 py-1.5 rounded-lg text-xs font-medium">Decline</button>
                   </div>
                 </div>
@@ -208,6 +269,38 @@ export default function AdminMembersPage() {
                     </div>
                   )) : <div className="text-xs text-gray-400">No reviews yet — this member is new to the platform or has none recorded.</div>}
                 </div>
+
+                {/* Alternative-spot offer panel */}
+                {offerFor === req.id && (
+                  <div className="mt-3 bg-amber-50 border border-amber-200 rounded-xl p-3">
+                    <p className="text-xs font-bold text-amber-800 mb-1">🪑 Offer alternative spot(s)</p>
+                    <p className="text-[11px] text-gray-600 mb-2">Pick the spot(s) you offer {req.member_name || 'them'} — they must <b>ACCEPT</b> to join or <b>DECLINE</b> to stay out. You both get a notification.</p>
+                    <div className="flex flex-wrap gap-1.5 mb-3">
+                      {freeSpotNums.length === 0 && <span className="text-[11px] text-red-600 font-semibold">No free spots left in this group right now.</span>}
+                      {freeSpotNums.map(sp => {
+                        const on = offerSpots.includes(sp);
+                        return <button key={sp} onClick={() => setOfferSpots(on ? offerSpots.filter(x => x !== sp) : [...offerSpots, sp].sort((a, b) => a - b))} className={`w-9 h-8 rounded-lg text-xs font-bold border transition-colors ${on ? 'bg-amber-500 text-white border-amber-500' : 'bg-white text-gray-600 border-gray-200'}`}>#{sp}</button>;
+                      })}
+                    </div>
+                    <div className="flex gap-2">
+                      <button onClick={() => sendSpotOffer(req)} className="bg-emerald-600 text-white text-xs font-semibold px-4 py-2 rounded-lg hover:bg-emerald-700">✉️ Send Offer {offerSpots.length ? `(#${offerSpots.join(', #')})` : ''}</button>
+                      <button onClick={() => { setOfferFor(null); setOfferSpots([]); }} className="text-xs text-gray-600 border border-gray-200 px-3 py-2 rounded-lg bg-white hover:bg-gray-50">Cancel</button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Spot offers already sent — waiting for the user's answer (visible to the admin) */}
+        {spotOffers.length > 0 && (
+          <div className="bg-white rounded-2xl border border-gray-100 p-5 mb-6">
+            <h2 className="font-bold text-gray-900 mb-2">🪑 Spot Offers Sent — Waiting ({spotOffers.length})</h2>
+            {spotOffers.map(o => (
+              <div key={o.id} className="text-xs text-gray-600 py-2 border-b last:border-0 flex flex-wrap justify-between gap-2">
+                <span><b className="text-gray-900">{o.member_name || o.member_email}</b> — offered spot{parseSpotsLite(o.offered_spots).length > 1 ? 's' : ''} <b>#{parseSpotsLite(o.offered_spots).join(', #')}</b>{o.desired_spots ? ` (they wanted #${o.desired_spots})` : ''}</span>
+                <span className="text-amber-600 font-semibold">⏳ waiting for accept / decline</span>
               </div>
             ))}
           </div>
