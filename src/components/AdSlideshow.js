@@ -96,11 +96,17 @@ export default function AdSlideshow({ ads, className = '' }) {
         <Link href={`/business/${raw.id}${itemParam}`} className="absolute inset-0 block" title={`Open ${businessName}`}>
           {current ? (
             isVideoSrc(current) ? (
-              <video key={`${a}-${m}`} src={current} muted loop playsInline autoPlay
-                className="ad-slide-media w-full h-full object-cover" />
+              <div key={`${a}-${m}`} className="ad-slide-media absolute inset-0 flex items-center justify-center bg-black">
+                {/* object-contain: the FULL video is visible, never cropped */}
+                <video src={current} muted loop playsInline autoPlay className="w-full h-full object-contain" />
+              </div>
             ) : (
-              <img key={`${a}-${m}`} src={current} alt={businessName}
-                className="ad-slide-media w-full h-full object-cover" />
+              <div key={`${a}-${m}`} className="ad-slide-media absolute inset-0">
+                {/* blurred backdrop fills the frame so the edges always look designed */}
+                <div aria-hidden="true" className="absolute inset-0 scale-125 blur-2xl opacity-60 bg-center bg-cover" style={{ backgroundImage: `url("${current}")` }} />
+                {/* object-contain: the FULL image is visible at full resolution, never cropped */}
+                <img src={current} alt={businessName} className="relative w-full h-full object-contain" />
+              </div>
             )
           ) : (
             <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-primary-700 to-primary-900">
