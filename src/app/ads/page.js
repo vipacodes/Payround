@@ -199,6 +199,7 @@ export default function AdsPage() {
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1.5">Business Photos / Videos (slideshow — up to 6)</label>
+                    <p className="text-[11px] text-gray-500 mb-1.5">💡 The Sponsored area has <b>2 portrait slots</b> and <b>1 landscape slot</b> — upload both tall and wide shots to show everywhere. Photos display up to 5s, videos up to 10s.</p>
                     <label className="w-full border-2 border-dashed border-gray-200 rounded-xl p-4 flex flex-col items-center gap-1 cursor-pointer hover:border-primary-300 hover:bg-primary-50/40 transition-all">
                       <input type="file" accept="image/*,video/*" multiple className="hidden" onChange={e => pickMedia(e.target.files)} />
                       <HiPhotograph className="w-6 h-6 text-gray-400" />

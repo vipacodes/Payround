@@ -5,66 +5,106 @@ import Link from 'next/link';
 import { HiChevronLeft, HiChevronRight } from 'react-icons/hi';
 import { parseAdMedia, isVideoSrc } from './AdBanner';
 
-// Remembers the last shown ad across visits, so a returning visitor starts on a NEW ad
-const CURSOR_KEY = 'payround_ad_cursor';
-const SLIDE_MS = 2000; // auto-slide every 2 seconds
+const IMAGE_MS = 5000;  // image ads show max 5 seconds
+const VIDEO_MS = 10000; // video ads play max 10 seconds
+const KEY = 'payround_slot_'; // per-slot cursor, remembered across visits
 
-export default function AdSlideshow({ ads, className = '' }) {
-  const [pos, setPos] = useState(null);    // { a: adIndex, m: mediaIndex }
-  const [stopped, setStopped] = useState(false);
-  const adsRef = useRef(ads || []);
-  adsRef.current = ads || [];
-  const touchX = useRef(null);
-  const active = adsRef.current.length;
-  const ready = pos !== null;
-
-  // On mount: resume at the ad AFTER the one last shown — every visit shows a fresh business
+// Measure every media item's real shape: portrait goes to the 2 portrait slots, landscape to the landscape slot
+function useMediaFeed(ads) {
+  const [feed, setFeed] = useState(null); // null = still measuring
   useEffect(() => {
-    if (!active || pos !== null) return;
-    let start = 0;
-    try {
-      const saved = parseInt(localStorage.getItem(CURSOR_KEY) || '-1', 10);
-      start = Number.isFinite(saved) && saved >= 0 ? (saved + 1) % active : 0;
-    } catch {}
-    setPos({ a: start, m: 0 });
-  }, [active, pos]);
-
-  // Remember the last shown ad across visits
-  useEffect(() => {
-    if (!pos) return;
-    try { localStorage.setItem(CURSOR_KEY, String(pos.a)); } catch {}
-  }, [pos]);
-
-  // Auto slideshow — 2s per slide, walking through EVERY photo/video of EVERY live ad.
-  // An ad is never repeated until every ad has been shown, then it starts from the first again.
-  useEffect(() => {
-    if (!active || !ready || stopped) return;
-    const t = setInterval(() => {
-      setPos(p => {
-        if (!p) return p;
-        const list = adsRef.current || [];
-        const len = list.length;
-        if (!len) return p;
-        const a = ((p.a % len) + len) % len;
-        const media = parseAdMedia(list[a]?.media_urls);
-        if (media.length > 0 && p.m + 1 < media.length) return { a, m: p.m + 1 };
-        return { a: (a + 1) % len, m: 0 };
+    let alive = true;
+    const items = [];
+    (ads || []).forEach((ad) => {
+      parseAdMedia(ad?.media_urls).forEach((src, idx) => {
+        items.push({ ad, idx, src, video: isVideoSrc(src), portrait: false });
       });
-    }, SLIDE_MS);
-    return () => clearInterval(t);
-  }, [active, ready, stopped]);
-
-  // Manual slide (arrows or swipe) — stops the auto slideshow
-  const step = (dir) => {
-    setStopped(true);
-    setPos(p => {
-      if (!p) return p;
-      const len = (adsRef.current || []).length;
-      if (!len) return p;
-      return { a: ((p.a + dir) % len + len) % len, m: 0 };
     });
-  };
+    if (!items.length) { setFeed([]); return; }
+    Promise.all(items.map((it) => new Promise((res) => {
+      if (it.video) {
+        const v = document.createElement('video');
+        v.muted = true; v.preload = 'metadata';
+        v.onloadedmetadata = () => { it.portrait = (v.videoHeight || 0) > (v.videoWidth || 0); res(); };
+        v.onerror = () => res();
+        it._t = setTimeout(res, 6000);
+        v.src = it.src;
+      } else {
+        const img = new Image();
+        img.onload = () => { it.portrait = img.naturalHeight > img.naturalWidth; res(); };
+        img.onerror = () => res();
+        img.src = it.src;
+      }
+    }))).then(() => { if (alive) setFeed(items); });
+    return () => { alive = false; };
+  }, [ads]);
+  return feed;
+}
 
+// Round-robin across businesses so every advertiser shows before any repeats
+function interleave(items) {
+  const byAd = new Map();
+  items.forEach((it) => {
+    const k = it.ad.id;
+    if (!byAd.has(k)) byAd.set(k, []);
+    byAd.get(k).push(it);
+  });
+  const queues = [...byAd.values()];
+  const out = [];
+  let more = true;
+  while (more) {
+    more = false;
+    for (const q of queues) if (q.length) { out.push(q.shift()); more = true; }
+  }
+  return out;
+}
+
+function Placeholder({ ratio }) {
+  return (
+    <Link href="/ads" className={`relative ${ratio} rounded-2xl border border-dashed border-gray-300 bg-gray-50 flex flex-col items-center justify-center text-center p-4 hover:border-primary-300 transition-colors`}>
+      <span className="text-lg">📣</span>
+      <span className="text-xs font-semibold text-gray-500 mt-1">Your business could be here</span>
+      <span className="text-[10px] text-gray-400 mt-0.5">Tap to advertise</span>
+    </Link>
+  );
+}
+
+function AdSlot({ items, slotKey, startOffset = 0, ratio }) {
+  const len = items.length;
+  const [pos, setPos] = useState(null);
+  const [stopped, setStopped] = useState(false);
+  const itemsRef = useRef(items);
+  itemsRef.current = items;
+  const touchX = useRef(null);
+
+  // Resume AFTER the last shown item (per slot) so return visits show fresh ads; offset staggers the two portrait slots
+  useEffect(() => {
+    if (!len || pos !== null) return;
+    let start = startOffset % len;
+    try {
+      const s = parseInt(localStorage.getItem(KEY + slotKey) || '-1', 10);
+      if (Number.isFinite(s) && s >= 0) start = (s + 1 + startOffset) % len;
+    } catch {}
+    setPos(start);
+  }, [len, pos, slotKey, startOffset]);
+
+  useEffect(() => {
+    if (pos === null) return;
+    try { localStorage.setItem(KEY + slotKey, String(pos)); } catch {}
+  }, [pos, slotKey]);
+
+  // Auto slide — images 5s max, videos 10s max
+  useEffect(() => {
+    if (!len || pos === null || stopped) return;
+    const it = itemsRef.current[((pos % len) + len) % len];
+    const t = setTimeout(() => setPos((p) => (((p % len) + len) % len + 1) % len), it?.video ? VIDEO_MS : IMAGE_MS);
+    return () => clearTimeout(t);
+  }, [len, pos, stopped]);
+
+  const step = (d) => {
+    setStopped(true);
+    setPos((p) => (((p + d) % len) + len) % len);
+  };
   const onTouchStart = (e) => { touchX.current = e.touches[0].clientX; };
   const onTouchEnd = (e) => {
     if (touchX.current === null) return;
@@ -73,99 +113,95 @@ export default function AdSlideshow({ ads, className = '' }) {
     if (Math.abs(dx) > 45) step(dx < 0 ? 1 : -1);
   };
 
-  if (!active || !pos) return null;
+  if (!len) return <Placeholder ratio={ratio} />;
+  if (pos === null) return <div className={`${ratio} rounded-2xl bg-gray-100 animate-pulse`} />;
 
-  const list = adsRef.current;
-  const a = ((pos.a % active) + active) % active;
-  const raw = list[a];
-  const media = parseAdMedia(raw?.media_urls);
-  const m = media.length ? Math.min(pos.m, media.length - 1) : 0;
-  const current = media[m] || null;
-  const itemParam = current ? `?item=${m}` : '';
-  const businessName = raw.businessName || raw.business_name || 'Business';
-  const description = raw.description || '';
+  const cur = itemsRef.current[((pos % len) + len) % len];
+  const name = cur.ad.businessName || cur.ad.business_name || 'Business';
+  const href = `/business/${cur.ad.id}?item=${cur.idx}`;
+
+  return (
+    <div className={`relative ${ratio} rounded-2xl overflow-hidden bg-gray-900 shadow-lg shadow-gray-200 select-none`}
+      onTouchStart={onTouchStart} onTouchEnd={onTouchEnd}>
+      {/* ===== media — always shown in FULL (never cropped) ===== */}
+      <Link href={href} className="absolute inset-0 block" title={`Open ${name}`}>
+        {cur.video ? (
+          <div key={`${cur.ad.id}-${cur.idx}`} className="ad-slide-media absolute inset-0 flex items-center justify-center bg-black">
+            <video src={cur.src} muted autoPlay playsInline loop className="w-full h-full object-contain" />
+          </div>
+        ) : (
+          <div key={`${cur.ad.id}-${cur.idx}`} className="ad-slide-media absolute inset-0">
+            <div aria-hidden="true" className="absolute inset-0 scale-125 blur-2xl opacity-60 bg-center bg-cover" style={{ backgroundImage: `url("${cur.src}")` }} />
+            <img src={cur.src} alt={name} className="relative w-full h-full object-contain" />
+          </div>
+        )}
+      </Link>
+
+      {/* ===== counter chip ===== */}
+      <span className="absolute top-2 right-2 bg-black/60 text-white text-[10px] font-semibold px-2 py-0.5 rounded-full">
+        Ad {((pos % len) + len) % len + 1}/{len}
+      </span>
+
+      {/* ===== manual slide — stops this slot's auto play ===== */}
+      {len > 1 && (
+        <>
+          <button type="button" aria-label="Previous ad" onClick={(e) => { e.preventDefault(); e.stopPropagation(); step(-1); }}
+            className="absolute left-1.5 top-1/2 -translate-y-1/2 bg-black/50 hover:bg-black/70 text-white rounded-full p-1.5 shadow transition-all">
+            <HiChevronLeft className="w-4 h-4" /></button>
+          <button type="button" aria-label="Next ad" onClick={(e) => { e.preventDefault(); e.stopPropagation(); step(1); }}
+            className="absolute right-1.5 top-1/2 -translate-y-1/2 bg-black/50 hover:bg-black/70 text-white rounded-full p-1.5 shadow transition-all">
+            <HiChevronRight className="w-4 h-4" /></button>
+        </>
+      )}
+
+      {/* ===== bottom info bar ===== */}
+      <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/85 via-black/40 to-transparent pt-10 pb-2 px-3 pointer-events-none">
+        <p className="text-white font-bold text-xs sm:text-sm leading-tight truncate">{name}</p>
+        <div className="mt-0.5 flex items-center gap-2 pointer-events-auto">
+          <Link href={href} className="text-[11px] font-semibold text-gold-300 hover:text-gold-200">View Business →</Link>
+          {stopped && (
+            <button type="button" onClick={() => setStopped(false)}
+              className="text-[10px] font-semibold text-white/80 hover:text-white bg-white/15 hover:bg-white/25 px-2 py-0.5 rounded-full transition-all">▶ Resume</button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export default function AdSlideshow({ ads, className = '' }) {
+  const feed = useMediaFeed(ads);
+
+  if (!ads || ads.length === 0) return null;
+
+  // Still measuring media shapes — show matching skeleton boxes so the layout doesn't jump
+  if (feed === null) {
+    return (
+      <div className={`relative ${className}`}>
+        <div className="grid grid-cols-2 gap-2.5 mb-2.5">
+          <div className="aspect-[3/4] max-h-[32vh] rounded-2xl bg-gray-100 animate-pulse" />
+          <div className="aspect-[3/4] max-h-[32vh] rounded-2xl bg-gray-100 animate-pulse" />
+        </div>
+        <div className="aspect-[16/9] max-h-[30vh] rounded-2xl bg-gray-100 animate-pulse" />
+      </div>
+    );
+  }
+
+  // Auto-select media by shape; if one shape is missing entirely, fill it from whatever exists
+  let portrait = interleave(feed.filter((i) => i.portrait));
+  let landscape = interleave(feed.filter((i) => !i.portrait));
+  if (!portrait.length && landscape.length) portrait = landscape;
+  if (!landscape.length && portrait.length) landscape = portrait;
 
   return (
     <div className={`relative ${className}`}>
-      <div
-        className="relative h-[46vh] min-h-[330px] max-h-[540px] rounded-2xl overflow-hidden bg-gray-900 shadow-lg shadow-gray-200 select-none"
-        onTouchStart={onTouchStart}
-        onTouchEnd={onTouchEnd}
-      >
-        {/* ===== current slide media — tap to open the business profile (tapped item pinned first) ===== */}
-        <Link href={`/business/${raw.id}${itemParam}`} className="absolute inset-0 block" title={`Open ${businessName}`}>
-          {current ? (
-            isVideoSrc(current) ? (
-              <div key={`${a}-${m}`} className="ad-slide-media absolute inset-0 flex items-center justify-center bg-black">
-                {/* object-contain: the FULL video is visible, never cropped */}
-                <video src={current} muted loop playsInline autoPlay className="w-full h-full object-contain" />
-              </div>
-            ) : (
-              <div key={`${a}-${m}`} className="ad-slide-media absolute inset-0">
-                {/* blurred backdrop fills the frame so the edges always look designed */}
-                <div aria-hidden="true" className="absolute inset-0 scale-125 blur-2xl opacity-60 bg-center bg-cover" style={{ backgroundImage: `url("${current}")` }} />
-                {/* object-contain: the FULL image is visible at full resolution, never cropped */}
-                <img src={current} alt={businessName} className="relative w-full h-full object-contain" />
-              </div>
-            )
-          ) : (
-            <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-primary-700 to-primary-900">
-              <span className="text-6xl font-bold text-white/60">{(businessName || 'B').charAt(0)}</span>
-            </div>
-          )}
-        </Link>
-
-        {/* ===== top badges ===== */}
-        <span className="absolute top-3 left-3 bg-gold-500 text-gray-900 text-[11px] font-bold px-2.5 py-1 rounded-full shadow">Sponsored</span>
-        <span className="absolute top-3 right-3 bg-black/60 text-white text-[11px] font-semibold px-2.5 py-1 rounded-full">
-          Ad {a + 1} of {active}
-        </span>
-
-        {/* ===== previous / next ad — manual slide stops the auto slideshow ===== */}
-        {active > 1 && (
-          <>
-            <button
-              type="button"
-              aria-label="Previous ad"
-              onClick={(e) => { e.preventDefault(); e.stopPropagation(); step(-1); }}
-              className="absolute left-2.5 top-1/2 -translate-y-1/2 bg-black/55 hover:bg-black/75 text-white rounded-full p-2 shadow transition-all"
-            ><HiChevronLeft className="w-6 h-6" /></button>
-            <button
-              type="button"
-              aria-label="Next ad"
-              onClick={(e) => { e.preventDefault(); e.stopPropagation(); step(1); }}
-              className="absolute right-2.5 top-1/2 -translate-y-1/2 bg-black/55 hover:bg-black/75 text-white rounded-full p-2 shadow transition-all"
-            ><HiChevronRight className="w-6 h-6" /></button>
-          </>
-        )}
-
-        {/* ===== bottom info bar ===== */}
-        <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/85 via-black/45 to-transparent pt-14 pb-3 px-4 pointer-events-none">
-          <p className="text-white font-bold text-base sm:text-lg leading-tight">{businessName}</p>
-          {description && (
-            <p className="text-white/85 text-xs sm:text-sm mt-0.5 line-clamp-2">{description}</p>
-          )}
-          <div className="mt-1.5 flex items-center gap-3 pointer-events-auto">
-            <Link href={`/business/${raw.id}${itemParam}`} className="text-xs sm:text-sm font-semibold text-gold-300 hover:text-gold-200">
-              View Business →
-            </Link>
-            {stopped ? (
-              <button
-                type="button"
-                onClick={() => setStopped(false)}
-                className="text-[11px] font-semibold text-white/80 hover:text-white bg-white/15 hover:bg-white/25 px-2.5 py-1 rounded-full transition-all"
-              >▶ Resume slideshow</button>
-            ) : (
-              active > 1 && <span className="text-[11px] text-white/60">Auto slideshow · swipe or tap arrows to browse</span>
-            )}
-          </div>
-        </div>
-
-        {/* ===== media counter for this ad ===== */}
-        {media.length > 1 && (
-          <span className="absolute bottom-3 right-3 bg-black/60 text-white text-[10px] font-semibold px-2 py-0.5 rounded-full">{m + 1}/{media.length}</span>
-        )}
+      {/* ===== two portrait slots ===== */}
+      <div className="grid grid-cols-2 gap-2.5 mb-2.5">
+        <AdSlot items={portrait} slotKey="p0" startOffset={0} ratio="aspect-[3/4] max-h-[32vh]" />
+        <AdSlot items={portrait} slotKey="p1" startOffset={1} ratio="aspect-[3/4] max-h-[32vh]" />
       </div>
+      {/* ===== one landscape slot below ===== */}
+      <AdSlot items={landscape} slotKey="land" startOffset={0} ratio="aspect-[16/9] max-h-[30vh]" />
     </div>
   );
 }
