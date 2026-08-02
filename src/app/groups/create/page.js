@@ -91,12 +91,13 @@ export default function CreateGroupPage() {
     if (storedUser) {
       try { const u = JSON.parse(storedUser); localStorage.setItem(`trial_used_${u.email?.toLowerCase()}`, 'true'); } catch {}
     }
-    setTimeout(() => {
+    setTimeout(async () => {
       const groupId = 'PR' + Math.floor(10000 + Math.random() * 90000);
+      const ok = await syncGroupToSupabase(groupId, 'trial_active', false);
+      if (!ok) return; // error already shown — user keeps everything and can retry
       const groups = JSON.parse(localStorage.getItem('payround_groups_custom') || '[]');
       groups.push({ id: groupId, ...formData, color: selectedColor, status: 'trial_active', trialEndsAt: new Date(Date.now()+7*24*60*60*1000).toISOString(), createdAt: new Date().toISOString() });
       localStorage.setItem('payround_groups_custom', JSON.stringify(groups));
-      syncGroupToSupabase(groupId, 'trial_active', false);
       toast.success(`Group ${groupId} created on trial!`);
       router.push(`/groups/${groupId}`);
     }, 1500);
@@ -108,12 +109,13 @@ export default function CreateGroupPage() {
     if (!receiptFile) { toast.error(`Upload receipt of ₦${planPrice.toLocaleString()} to Palmpay 9151723199 Basikoro James Okeroghene`); return; }
     toast.success('Payment receipt uploaded - pending PayRound approval.');
     setPaid(true);
-    setTimeout(() => {
+    setTimeout(async () => {
       const groupId = 'PR' + Math.floor(10000 + Math.random() * 90000);
+      const ok = await syncGroupToSupabase(groupId, 'pending_owner', true);
+      if (!ok) return; // error already shown — user keeps everything and can retry
       const groups = JSON.parse(localStorage.getItem('payround_groups_custom') || '[]');
       groups.push({ id: groupId, ...formData, color: selectedColor, status: 'pending_owner', hasReceipt: true, createdAt: new Date().toISOString() });
       localStorage.setItem('payround_groups_custom', JSON.stringify(groups));
-      syncGroupToSupabase(groupId, 'pending_owner', true);
       const waMsg = `New Group Request: ${formData.name} by user, ₦${planPrice.toLocaleString()} paid (${selectedPlan}-month plan) to Palmpay 9151723199, needs approval. Selfie+ID attached.`;
       const waLink = `https://wa.me/2349151723199?text=${encodeURIComponent(waMsg)}`;
       window.open(waLink, '_blank');
@@ -142,14 +144,45 @@ export default function CreateGroupPage() {
   }, []);
   const planPrice = planPrices[selectedPlan] || 8000;
 
-  // Store group in Supabase so the owner panel can review/approve it (reflects on both sites)
+  // Shrink any already-picked photo so big camera shots never break the upload
+  const shrinkDataUrl = (dataUrl, maxSize = 900, quality = 0.8) => new Promise((resolve) => {
+    if (!dataUrl) return resolve(null);
+    if (!dataUrl.startsWith('data:image')) return resolve(dataUrl); // pdf/other left as-is
+    const img = new Image();
+    img.onload = () => {
+      try {
+        const scale = Math.min(1, maxSize / Math.max(img.width || 1, img.height || 1));
+        const c = document.createElement('canvas');
+        c.width = Math.max(1, Math.round((img.width || 1) * scale));
+        c.height = Math.max(1, Math.round((img.height || 1) * scale));
+        c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+        resolve(c.toDataURL('image/jpeg', quality));
+      } catch { resolve(dataUrl); }
+    };
+    img.onerror = () => resolve(dataUrl);
+    img.src = dataUrl;
+  });
+
+  // Store group in Supabase so the owner panel can review/approve it (reflects on both sites).
+  // Returns true ONLY when the row is really saved — we never pretend otherwise.
   const syncGroupToSupabase = async (groupId, status, withReceipt) => {
     try {
       const { supabase } = await import('@/lib/supabase');
       let adminEmail = '', adminName = '';
       const s = localStorage.getItem('payround_user');
       if (s) { try { const u = JSON.parse(s); adminEmail = u.email || ''; adminName = u.name || ''; } catch {} }
-      await supabase.from('groups').insert({
+      const [selfie, idImg, logo, receipt] = await Promise.all([
+        shrinkDataUrl(selfiePreview, 768, 0.8),
+        shrinkDataUrl(idPreview, 1000, 0.82),
+        shrinkDataUrl(avatarPreview, 512, 0.85),
+        withReceipt ? shrinkDataUrl(receiptPreview, 1000, 0.82) : Promise.resolve(null),
+      ]);
+      const tooBig = [selfie, idImg, logo, receipt].filter(Boolean).some(d => String(d).length > 2200000);
+      if (tooBig) {
+        toast.error('One of your files is too large — please re-upload it as a normal photo (JPG or PNG), not a video or PDF.');
+        return false;
+      }
+      const { error } = await supabase.from('groups').insert({
         id: groupId,
         name: formData.name,
         description: formData.description,
@@ -160,16 +193,22 @@ export default function CreateGroupPage() {
         admin_email: adminEmail,
         admin_name: adminName,
         status,
-        selfie_url: selfiePreview || null,
-        id_url: idPreview || null,
+        selfie_url: selfie || null,
+        id_url: idImg || null,
         id_type: formData.idType,
-        avatar_url: avatarPreview || null,
+        avatar_url: logo || null,
         plan_months: withReceipt ? selectedPlan : null,
         plan_price: withReceipt ? planPrice : null,
         expiry_at: withReceipt ? new Date(Date.now() + selectedPlan * 30 * 24 * 60 * 60 * 1000).toISOString() : null,
-        creation_receipt_url: withReceipt ? (receiptPreview || null) : null,
+        creation_receipt_url: withReceipt ? (receipt || null) : null,
       });
-    } catch (e) { console.log('Group sync to Supabase failed (offline ok)', e.message); }
+      if (error) throw error;
+      return true;
+    } catch (e) {
+      console.log('Group sync to Supabase failed', e.message);
+      toast.error(`Could not submit your group — ${e.message || 'check your connection and try again'}. Nothing was saved yet, your details are safe here.`);
+      return false;
+    }
   };
 
   return (
