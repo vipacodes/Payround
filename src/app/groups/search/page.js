@@ -5,8 +5,9 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import Header from '@/components/Header';
 import Footer from '@/components/Footer';
 import { HiSearch, HiUserGroup, HiCalendar, HiCurrencyDollar, HiBadgeCheck } from 'react-icons/hi';
+import GroupBadge from '@/components/GroupBadge';
 
-const badgeEmoji = { bronze: '🥉', silver: '🥈', gold: '🥇' };
+
 
 function RealGroupCard({ group, memberCount }) {
   const router = useRouter();
@@ -23,14 +24,11 @@ function RealGroupCard({ group, memberCount }) {
           <div className="min-w-0">
             <h3 className="font-semibold text-gray-900 flex items-center gap-1.5 min-w-0">
               <span className="truncate">{group.name}</span>
-              {group.is_verified && <HiBadgeCheck className="w-5 h-5 text-blue-500 drop-shadow shrink-0" />}
+              <GroupBadge verified={group.is_verified} tier={group.badge_tier} className="w-5 h-5 drop-shadow shrink-0" />
             </h3>
             <p className="text-xs text-gray-500 font-mono">ID: {group.id}</p>
           </div>
         </div>
-        {group.badge_tier && (
-          <span className="text-xs bg-amber-50 border border-amber-200 text-amber-700 px-2 py-0.5 rounded-full shrink-0">{badgeEmoji[group.badge_tier] || ''} {group.badge_tier}</span>
-        )}
       </div>
 
       <p className="text-sm text-gray-600 mb-4 line-clamp-2 min-h-[2.5rem]">{group.description || 'Ajo savings group on PayRound.'}</p>

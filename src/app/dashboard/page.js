@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Header from '@/components/Header';
+import GroupBadge from '@/components/GroupBadge';
 import Footer from '@/components/Footer';
 import LoadingScreen from '@/components/LoadingScreen';
 import BroadcastAlert from '@/components/BroadcastAlert';
@@ -16,7 +17,7 @@ import {
   buildSpotMap, nextDueForMember, nextCashOutForMember, nextPayoutForGroup
 } from '@/lib/payments';
 
-const badgeEmoji = { bronze: '🥉', silver: '🥈', gold: '🥇' };
+
 const fmtDate = (d) => d ? new Date(d).toLocaleDateString(undefined, { day: 'numeric', month: 'short' }) : '—';
 
 export default function DashboardPage() {
@@ -197,8 +198,7 @@ export default function DashboardPage() {
                   <div className="min-w-0 flex-1">
                     <p className="text-sm font-semibold text-gray-900 flex items-center gap-1 min-w-0">
                       <span className="truncate">{g.name}</span>
-                      {g.is_verified && <HiBadgeCheck className="w-4 h-4 text-blue-500 shrink-0" />}
-                      {g.badge_tier && <span className="text-xs">{badgeEmoji[g.badge_tier]}</span>}
+                      <GroupBadge verified={g.is_verified} tier={g.badge_tier} />
                     </p>
                     <p className="text-[11px] text-gray-500">{mySpots.length ? `My spot${mySpots.length > 1 ? 's' : ''}: #${mySpots.join(', #')} • ` : ''}₦{Number(g.amount || 0).toLocaleString()} {g.frequency || 'weekly'}</p>
                     <p className="text-[11px] mt-0.5"><span className={due?.dueNow ? 'text-amber-600 font-semibold' : 'text-gray-500'}>{due ? (due.dueNow ? 'Payment due now ⚠️' : `Next due ${fmtDate(due.date)}`) : 'No spot yet'}</span>{cash ? <span className={cash.dueNow ? 'text-emerald-600 font-semibold' : 'text-gray-500'}> • Cash out {cash.dueNow ? 'NOW 💰' : `${fmtDate(cash.date)} (#${cash.spot})`}</span> : null}</p>
@@ -227,7 +227,7 @@ export default function DashboardPage() {
                     <div className="min-w-0 flex-1">
                       <p className="text-sm font-semibold text-gray-900 flex items-center gap-1 min-w-0">
                         <span className="truncate">{g.name}</span>
-                        {g.is_verified && <HiBadgeCheck className="w-4 h-4 text-blue-500 shrink-0" />}
+                        <GroupBadge verified={g.is_verified} tier={g.badge_tier} />
                       </p>
                       <p className="text-[11px] text-gray-500">{members.length} members • {filled}/{N} spots{nextPay ? ` • Payout ${nextPay.dueNow ? 'due now' : fmtDate(nextPay.date)} (#${nextPay.spot})` : ''}</p>
                       <p className={`text-[11px] flex items-center gap-1 ${renewalSoon ? 'text-amber-600 font-semibold' : 'text-gray-500'}`}>
@@ -292,7 +292,7 @@ export default function DashboardPage() {
                     ? <img src={g.avatar_url} alt="" className="w-9 h-9 rounded-lg object-cover border border-gray-100 shrink-0" />
                     : <div className="w-9 h-9 bg-primary-100 rounded-lg flex items-center justify-center shrink-0"><span className="text-primary-700 font-bold text-xs">{g.name?.charAt(0)}</span></div>}
                   <div className="min-w-0 flex-1">
-                    <p className="text-sm font-semibold text-gray-900 flex items-center gap-1 min-w-0"><span className="truncate">{g.name}</span>{g.is_verified && <HiBadgeCheck className="w-4 h-4 text-blue-500 shrink-0" />}{g.badge_tier && <span className="text-xs">{badgeEmoji[g.badge_tier]}</span>}</p>
+                    <p className="text-sm font-semibold text-gray-900 flex items-center gap-1 min-w-0"><span className="truncate">{g.name}</span><GroupBadge verified={g.is_verified} tier={g.badge_tier} /></p>
                     <p className="text-[11px] text-gray-500">₦{Number(g.amount || 0).toLocaleString()} {g.frequency || 'weekly'} • {groupCounts[g.id] ?? '…'}{g.max_members ? `/${g.max_members}` : ''} members • by {g.admin_name || '—'}</p>
                   </div>
                   <span className="text-[11px] font-semibold text-primary-600 shrink-0">View & Join →</span>

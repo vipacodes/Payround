@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import GroupBadge from '@/components/GroupBadge';
 import { useRouter, useParams } from 'next/navigation';
 import Header from '@/components/Header';
 import Footer from '@/components/Footer';
@@ -13,7 +14,7 @@ import {
 import toast from 'react-hot-toast';
 import FollowersList from '@/components/FollowersList';
 
-const badgeEmoji = { bronze: '🥉', silver: '🥈', gold: '🥇' };
+
 
 export default function PublicUserProfilePage() {
   const router = useRouter();
@@ -144,8 +145,7 @@ export default function PublicUserProfilePage() {
       <div className="min-w-0 flex-1">
         <p className="font-medium text-gray-900 truncate flex items-center gap-1.5">
           {g.name}
-          {g.is_verified && <HiBadgeCheck className="w-4 h-4 text-blue-500 shrink-0" />}
-          {g.badge_tier && <span className="text-[10px] bg-amber-50 border border-amber-200 text-amber-700 px-1.5 py-0.5 rounded-full">{badgeEmoji[g.badge_tier]} {g.badge_tier}</span>}
+          <GroupBadge verified={g.is_verified} tier={g.badge_tier} className="w-4 h-4 shrink-0" />
         </p>
         <p className="text-xs text-gray-500">₦{Number(g.amount || 0).toLocaleString()} • {g.frequency || 'Weekly'}{admin ? ' • 👑 they admin' : ''}</p>
       </div>

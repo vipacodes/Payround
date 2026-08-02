@@ -19,6 +19,8 @@ function MessagesInner() {
   const [otherUser, setOtherUser] = useState(null);
   const [body, setBody] = useState('');
   const [sending, setSending] = useState(false);
+  const [sel, setSel] = useState('');        // bubble the user tapped (shows the 🗑 Delete chip)
+  const [deleting, setDeleting] = useState(false);
   const listRef = useRef(null);        // the scrollable message box (never the page!)
   const nearBottom = useRef(true);    // true while the user is reading the newest messages
   const firstOpen = useRef(true);     // jump straight to the bottom the first time a chat opens
@@ -117,6 +119,22 @@ function MessagesInner() {
     setSending(false);
   };
 
+  // Delete a message you sent — it is removed for BOTH sides
+  const del = async (m) => {
+    if (String(m.id).startsWith('local-')) { toast('Just sent — try again in a second'); return; }
+    if (!window.confirm('Delete this message? It disappears for both of you.')) return;
+    setDeleting(true);
+    try {
+      const { supabase } = await import('@/lib/supabase');
+      const { error } = await supabase.from('messages').delete().eq('id', m.id);
+      if (error) throw error;
+      setMsgs(prev => prev.filter(x => x.id !== m.id));
+      setSel('');
+      loadThreads(me);
+    } catch (err) { toast.error(`Could not delete: ${err.message || 'try again'}`); }
+    setDeleting(false);
+  };
+
   const nameOf = (t) => t?.user?.name || otherUser?.name || 'PayRound member';
   const timeOf = (iso) => iso ? new Date(iso).toLocaleTimeString('en-NG', { hour: 'numeric', minute: '2-digit' }) : '';
   const dateOf = (iso) => iso ? new Date(iso).toLocaleDateString('en-NG', { day: 'numeric', month: 'short' }) : '';
@@ -158,6 +176,9 @@ function MessagesInner() {
               {msgs.length === 0 && (
                 <p className="text-center text-xs text-gray-400 py-10">No messages yet — say hello! 👋<br />Messages are delivered in-app (this is not WhatsApp).</p>
               )}
+              {msgs.length > 0 && (
+                <p className="text-center text-[10px] text-gray-300 mb-1">Tip: tap your own bubble to delete it 🗑</p>
+              )}
               {msgs.map((m, i) => {
                 const mine = m.from_email === me;
                 const prev = msgs[i - 1];
@@ -166,11 +187,19 @@ function MessagesInner() {
                   <div key={m.id}>
                     {showDate && <p className="text-center text-[10px] text-gray-400 font-semibold my-2">{dateOf(m.created_at)}</p>}
                     <div className={`flex ${mine ? 'justify-end' : 'justify-start'}`}>
-                      <div className={`max-w-[78%] px-3.5 py-2 rounded-2xl text-sm ${mine ? 'bg-primary-600 text-white rounded-br-md' : 'bg-gray-100 text-gray-900 rounded-bl-md'}`}>
+                      <div
+                        onClick={mine && !String(m.id).startsWith('local-') ? () => setSel(sel === m.id ? '' : m.id) : undefined}
+                        className={`max-w-[78%] px-3.5 py-2 rounded-2xl text-sm ${mine ? 'bg-primary-600 text-white rounded-br-md' : 'bg-gray-100 text-gray-900 rounded-bl-md'} ${mine ? 'cursor-pointer' : ''} ${sel === m.id ? 'ring-2 ring-red-300' : ''}`}
+                      >
                         <p className="whitespace-pre-line break-words">{m.body}</p>
                         <p className={`text-[9px] mt-0.5 ${mine ? 'text-primary-200 text-right' : 'text-gray-400'}`}>{timeOf(m.created_at)}{mine && m.read ? ' · read' : ''}</p>
                       </div>
                     </div>
+                    {mine && sel === m.id && (
+                      <div className="flex justify-end">
+                        <button onClick={() => del(m)} disabled={deleting} className="text-[11px] font-semibold text-red-600 bg-red-50 border border-red-100 px-3 py-1 rounded-full hover:bg-red-100 disabled:opacity-50">🗑 Delete this message</button>
+                      </div>
+                    )}
                   </div>
                 );
               })}

@@ -7,15 +7,14 @@ import Footer from '@/components/Footer';
 import LoadingScreen from '@/components/LoadingScreen';
 import {
   HiUserGroup, HiCalendar, HiCurrencyDollar,
-  HiUser, HiCheckCircle, HiClock, HiBadgeCheck, HiArrowLeft,
+  HiUser, HiCheckCircle, HiClock, HiArrowLeft,
   HiPhotograph, HiUpload, HiExclamation
 } from 'react-icons/hi';
 import ImageLightbox from '@/components/ImageLightbox';
+import GroupBadge from '@/components/GroupBadge';
 import { parseSpots, formatSpots, currentPeriod, cycleLength, periodLabel, paidWeeksForSpot, isSpotCurrent, buildSpotMap, payoutForSpot } from '@/lib/payments';
 import { compressImage } from '@/lib/image';
 import toast from 'react-hot-toast';
-
-const badgeEmoji = { bronze: '🥉', silver: '🥈', gold: '🥇' };
 
 export default function GroupDetailsPage() {
   const router = useRouter();
@@ -201,8 +200,7 @@ export default function GroupDetailsPage() {
             <div className="min-w-0 flex-1">
               <h1 className="text-xl md:text-2xl font-bold text-gray-900 flex items-center gap-2 flex-wrap">
                 {group.name}
-                {group.is_verified && <HiBadgeCheck className="w-6 h-6 text-blue-500 drop-shadow-md shrink-0" title="Verified by PayRound" />}
-                {group.badge_tier && <span className="text-xs bg-amber-50 border border-amber-200 text-amber-700 px-2 py-0.5 rounded-full">{badgeEmoji[group.badge_tier] || ''} {group.badge_tier}</span>}
+                <GroupBadge verified={group.is_verified} tier={group.badge_tier} className="w-6 h-6 drop-shadow-md shrink-0" />
               </h1>
               <p className="text-xs text-gray-400 font-mono mt-0.5">ID: {group.id}</p>
               <p className="text-sm text-gray-600 mt-2">{group.description || 'Ajo savings group on PayRound.'}</p>

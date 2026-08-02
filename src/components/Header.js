@@ -18,6 +18,8 @@ export default function Header() {
   const [userRole, setUserRole] = useState('');
   const [unreadCount, setUnreadCount] = useState(0);
   const [unreadMsgs, setUnreadMsgs] = useState(0);
+  const [gchatShow, setGchatShow] = useState(false);   // 👥 icon appears ONLY for group admins & members
+  const [gchatUnread, setGchatUnread] = useState(0);
 
   useEffect(() => {
     const stored = localStorage.getItem('payround_user');
@@ -42,6 +44,25 @@ export default function Header() {
           if (mounted) setUnreadMsgs((ms || []).length);
         }
       } catch { if (mounted) setUnreadMsgs(0); }
+      // Group chats (👥 icon) — visible ONLY to group admins and approved members
+      try {
+        if (email) {
+          const { supabase } = await import('@/lib/supabase');
+          const { getMyGroupIds } = await import('@/lib/notifications');
+          const gids = await getMyGroupIds(supabase, email);
+          if (mounted) setGchatShow(gids.length > 0);
+          if (gids.length) {
+            const { data: gm } = await supabase.from('group_messages').select('group_id, from_email, created_at').in('group_id', gids).order('created_at', { ascending: false }).limit(300);
+            let n = 0;
+            (gm || []).forEach(x => {
+              if ((x.from_email || '').toLowerCase() === email) return;
+              const cur = localStorage.getItem(`payround_gchat_read_${x.group_id}`) || '';
+              if (!cur || x.created_at > cur) n += 1;
+            });
+            if (mounted) setGchatUnread(n);
+          } else if (mounted) setGchatUnread(0);
+        }
+      } catch { if (mounted) setGchatUnread(0); } // group chat table missing? hide dot, never break the header
       // Unread notifications (🟢 dot on the bell) — simple rules, no silent failures
       try {
         const { supabase } = await import('@/lib/supabase');
@@ -172,6 +193,18 @@ export default function Header() {
                   {unreadMsgs > 0 && <span className="msg-dot absolute top-1 right-1 w-2.5 h-2.5 bg-green-500 rounded-full" title="You have new messages" />}
                 </button>
 
+                {gchatShow && (
+                  <button
+                    onClick={() => router.push('/group-chat')}
+                    aria-label="Group chats"
+                    title="Group chats"
+                    className="relative p-2 text-gray-500 hover:text-primary-600 transition-colors"
+                  >
+                    <HiUserGroup className="w-6 h-6" />
+                    {gchatUnread > 0 && <span className="msg-dot absolute top-1 right-1 w-2.5 h-2.5 bg-green-500 rounded-full" title="You have new group messages" />}
+                  </button>
+                )}
+
                 <div className="flex items-center gap-3 pl-4 border-l border-gray-200">
                   <div className="text-right">
                     <p className="text-sm font-medium text-gray-900">{userName}</p>
@@ -234,6 +267,16 @@ export default function Header() {
                 {unreadMsgs > 0 && <span className="msg-dot absolute top-1 right-1 w-2.5 h-2.5 bg-green-500 rounded-full" title="You have new messages" />}
               </button>
             )}
+            {isLoggedIn && gchatShow && (
+              <button
+                onClick={() => router.push('/group-chat')}
+                aria-label="Group chats"
+                className="relative p-2 text-gray-600 hover:text-primary-600 transition-colors"
+              >
+                <HiUserGroup className="w-6 h-6" />
+                {gchatUnread > 0 && <span className="msg-dot absolute top-1 right-1 w-2.5 h-2.5 bg-green-500 rounded-full" title="You have new group messages" />}
+              </button>
+            )}
             <button
               onClick={() => setIsMenuOpen(!isMenuOpen)}
               aria-label="Menu"
@@ -271,6 +314,9 @@ export default function Header() {
                   <MobileNavItem icon={<HiChartBar className="w-5 h-5" />} label="Create Group" onClick={() => { router.push('/groups/create'); setIsMenuOpen(false); }} active={isActive('/groups/create')} />
                   <MobileNavItem icon={<HiBell className="w-5 h-5" />} label={`Notifications${unreadCount > 0 ? ` (${unreadCount})` : ''}`} onClick={() => { router.push('/notifications'); setIsMenuOpen(false); }} active={isActive('/notifications')} />
                   <MobileNavItem icon={<HiChatAlt2 className="w-5 h-5" />} label={`Messages${unreadMsgs > 0 ? ` (${unreadMsgs})` : ''}`} onClick={() => { router.push('/messages'); setIsMenuOpen(false); }} active={isActive('/messages')} />
+                  {gchatShow && (
+                    <MobileNavItem icon={<HiUserGroup className="w-5 h-5" />} label={`Group chats${gchatUnread > 0 ? ` (${gchatUnread})` : ''}`} onClick={() => { router.push('/group-chat'); setIsMenuOpen(false); }} active={isActive('/group-chat')} />
+                  )}
                   <MobileNavItem icon={<HiUser className="w-5 h-5" />} label="Profile" onClick={() => { router.push('/profile'); setIsMenuOpen(false); }} active={isActive('/profile')} />
                   <MobileNavItem icon={<HiCog className="w-5 h-5" />} label="Settings" onClick={() => { router.push('/settings'); setIsMenuOpen(false); }} active={isActive('/settings')} />
                   <button
