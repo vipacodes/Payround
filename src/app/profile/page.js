@@ -18,6 +18,11 @@ export default function ProfilePage() {
   const [zoomPhoto, setZoomPhoto] = useState(null); // expanded photo src
   const [formData, setFormData] = useState({ name: '', phone: '', gender: '', dob: '', address: '', occupation: '', bio: '' });
   const photoRef = useRef(null);
+  const [badgeReq, setBadgeReq] = useState(undefined); // undefined = still loading, null = none yet
+  const [idType, setIdType] = useState('');
+  const [idFront, setIdFront] = useState('');
+  const [idBack, setIdBack] = useState('');
+  const [applying, setApplying] = useState(false);
 
   useEffect(() => {
     const stored = localStorage.getItem('payround_user');
@@ -42,6 +47,15 @@ export default function ProfilePage() {
             address: data.address || '', occupation: data.occupation || '', bio: data.bio || '',
           });
         }
+        try {
+          const { data: reqs } = await supabase.from('verification_requests')
+            .select('id, status, reason, created_at, reviewed_at, decline_reason')
+            .eq('subject_type', 'user')
+            .eq('user_email', (parsed.email || '').toLowerCase())
+            .order('created_at', { ascending: false })
+            .limit(1);
+          setBadgeReq(reqs && reqs[0] ? reqs[0] : null);
+        } catch { setBadgeReq(null); }
       } catch (e) {
         console.log('Profile load:', e.message);
       }
@@ -71,6 +85,47 @@ export default function ProfilePage() {
       toast.error(`Could not send photo: ${e.message || 'try again'}`);
     }
     setUploadingPhoto(false);
+  };
+
+  // Read + compress an ID photo for the badge application
+  const pickIdImage = async (file, setter) => {
+    if (!file) return;
+    if (!file.type.startsWith('image/')) { toast.error('Please choose an image file.'); return; }
+    if (file.size > 8 * 1024 * 1024) { toast.error('Image too large. Max 8MB.'); return; }
+    try {
+      const { compressImage } = await import('@/lib/image');
+      setter(await compressImage(file, 900, 0.82));
+    } catch { toast.error('Could not read that image — try another.'); }
+  };
+
+  // Submit a blue-badge application: valid ID (compared with the profile selfie by PayRound)
+  const applyForBadge = async () => {
+    if (!idType) { toast.error('Choose your ID type.'); return; }
+    if (!idFront) { toast.error('Upload the front photo of your ID.'); return; }
+    setApplying(true);
+    try {
+      const { supabase } = await import('@/lib/supabase');
+      const now = new Date().toISOString();
+      const row = {
+        id: `vr-${Date.now()}`,
+        subject_type: 'user',
+        user_email: user.email.toLowerCase(),
+        user_name: (account?.name || user.name || '').trim(),
+        reason: `ID provided: ${idType}${idBack ? ' (front & back)' : ' (front only)'}`,
+        id_front_url: idFront,
+        id_back_url: idBack || null,
+        status: 'pending',
+        created_at: now,
+      };
+      const { error } = await supabase.from('verification_requests').insert(row);
+      if (error) throw error;
+      setBadgeReq({ id: row.id, status: 'pending', reason: row.reason, created_at: now });
+      setIdType(''); setIdFront(''); setIdBack('');
+      toast.success('🔵 Application sent! PayRound will compare your ID with your profile selfie.');
+    } catch (e) {
+      toast.error(`Could not apply: ${e.message || 'try again'}`);
+    }
+    setApplying(false);
   };
 
   const handleSave = async () => {
@@ -155,15 +210,97 @@ export default function ProfilePage() {
             </div>
           )}
 
-          <div className="p-4 bg-blue-50 border border-blue-100 rounded-xl mb-6">
-            <div className="flex items-center gap-3">
-              <HiBadgeCheck className="w-6 h-6 text-blue-600" />
-              <div>
-                <p className="text-sm font-medium text-gray-900">{account?.is_verified ? 'Verified account' : 'Verification handled by PayRound'}</p>
-                <p className="text-xs text-gray-500">{account?.is_verified ? 'The 🔵 blue badge on your profile was granted by PayRound.' : 'Profile photo changes and the blue badge are reviewed and approved by PayRound.'}</p>
+          {account?.is_verified ? (
+            <div className="p-4 bg-blue-50 border border-blue-100 rounded-xl mb-6">
+              <div className="flex items-center gap-3">
+                <HiBadgeCheck className="w-6 h-6 text-blue-600" />
+                <div>
+                  <p className="text-sm font-medium text-gray-900">Verified account</p>
+                  <p className="text-xs text-gray-500">The 🔵 blue badge on your profile was granted by PayRound after comparing your ID with your profile selfie.</p>
+                </div>
               </div>
             </div>
-          </div>
+          ) : badgeReq?.status === 'pending' ? (
+            <div className="p-4 bg-amber-50 border border-amber-200 rounded-xl mb-6">
+              <div className="flex items-start gap-3">
+                <HiClock className="w-6 h-6 text-amber-600 shrink-0" />
+                <div>
+                  <p className="text-sm font-medium text-gray-900">🔵 Blue badge application under review</p>
+                  <p className="text-xs text-gray-500 mt-0.5">{badgeReq.reason || 'Valid ID submitted'} • Sent {badgeReq.created_at ? new Date(badgeReq.created_at).toLocaleDateString() : ''}</p>
+                  <p className="text-xs text-gray-500 mt-1">PayRound is comparing the photo on your ID with your profile selfie. You will be notified here as soon as it is decided.</p>
+                </div>
+              </div>
+            </div>
+          ) : (badgeReq?.status === 'declined' && badgeReq.reviewed_at && Date.now() < new Date(badgeReq.reviewed_at).getTime() + 7 * 24 * 60 * 60 * 1000) ? (
+            <div className="p-4 bg-red-50 border border-red-200 rounded-xl mb-6">
+              <div className="flex items-start gap-3">
+                <HiBadgeCheck className="w-6 h-6 text-red-400 shrink-0" />
+                <div>
+                  <p className="text-sm font-medium text-gray-900">Verification declined</p>
+                  <p className="text-xs text-gray-500 mt-0.5">{badgeReq.decline_reason ? `Reason: ${badgeReq.decline_reason}. ` : ''}You can re-apply on {new Date(new Date(badgeReq.reviewed_at).getTime() + 7 * 24 * 60 * 60 * 1000).toLocaleDateString()}.</p>
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div className="p-4 bg-blue-50 border border-blue-100 rounded-xl mb-6">
+              <div className="flex items-start gap-3 mb-3">
+                <HiBadgeCheck className="w-6 h-6 text-blue-600 shrink-0" />
+                <div>
+                  <p className="text-sm font-medium text-gray-900">Get the 🔵 verified badge</p>
+                  <p className="text-xs text-gray-500 mt-0.5">Upload a valid means of ID. PayRound compares the photo on your ID with your profile selfie — the faces must match before the badge is granted.</p>
+                </div>
+              </div>
+              {account?.approval_status === 'approved' && photo ? (
+                <div className="space-y-3">
+                  <div>
+                    <label className="block text-xs font-medium text-gray-700 mb-1">ID type *</label>
+                    <select value={idType} onChange={e => setIdType(e.target.value)} className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500">
+                      <option value="">Choose your ID…</option>
+                      <option>National ID Card</option>
+                      <option>NIN Slip</option>
+                      <option>Driver&apos;s License</option>
+                      <option>International Passport</option>
+                      <option>Voter&apos;s Card</option>
+                    </select>
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs font-medium text-gray-700 mb-1">Front of ID *</label>
+                      <label className="block cursor-pointer">
+                        <input type="file" accept="image/*" className="hidden" onChange={(e) => { pickIdImage(e.target.files[0], setIdFront); e.target.value = ''; }} />
+                        {idFront ? (
+                          <img src={idFront} alt="ID front" className="w-full h-24 object-contain rounded-lg border border-blue-300 bg-gray-900" />
+                        ) : (
+                          <div className="h-24 rounded-lg border-2 border-dashed border-blue-300 flex flex-col items-center justify-center text-blue-500">
+                            <HiIdentification className="w-6 h-6" /><span className="text-[11px] font-medium mt-1">Tap to upload</span>
+                          </div>
+                        )}
+                      </label>
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-gray-700 mb-1">Back of ID (optional)</label>
+                      <label className="block cursor-pointer">
+                        <input type="file" accept="image/*" className="hidden" onChange={(e) => { pickIdImage(e.target.files[0], setIdBack); e.target.value = ''; }} />
+                        {idBack ? (
+                          <img src={idBack} alt="ID back" className="w-full h-24 object-contain rounded-lg border border-blue-200 bg-gray-900" />
+                        ) : (
+                          <div className="h-24 rounded-lg border-2 border-dashed border-gray-300 flex flex-col items-center justify-center text-gray-400">
+                            <HiCamera className="w-6 h-6" /><span className="text-[11px] font-medium mt-1">Tap to upload</span>
+                          </div>
+                        )}
+                      </label>
+                    </div>
+                  </div>
+                  <button onClick={applyForBadge} disabled={applying || !idType || !idFront} className="w-full bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-semibold text-sm py-2.5 rounded-xl transition-colors">
+                    {applying ? 'Sending…' : 'Apply for the 🔵 Blue Badge'}
+                  </button>
+                  <p className="text-[11px] text-gray-400">Your ID is only visible to PayRound for this review — it never shows on your public profile. Declined applications can re-apply after 7 days.</p>
+                </div>
+              ) : (
+                <p className="text-xs text-gray-500 border border-blue-100 rounded-lg p-3">You can apply for the blue badge after your account (with your profile selfie) has been approved by PayRound.</p>
+              )}
+            </div>
+          )}
 
           {editing ? (
             <div className="space-y-4">
