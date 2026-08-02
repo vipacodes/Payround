@@ -12,7 +12,7 @@ import {
 } from 'react-icons/hi';
 import ImageLightbox from '@/components/ImageLightbox';
 import GroupBadge from '@/components/GroupBadge';
-import { parseSpots, formatSpots, currentPeriod, cycleLength, periodLabel, paidWeeksForSpot, isSpotCurrent, buildSpotMap, payoutForSpot } from '@/lib/payments';
+import { parseSpots, formatSpots, currentPeriod, cycleLength, periodLabel, periodDays, paidWeeksForSpot, isSpotCurrent, buildSpotMap, payoutForSpot } from '@/lib/payments';
 import { compressImage } from '@/lib/image';
 import toast from 'react-hot-toast';
 
@@ -160,6 +160,15 @@ export default function GroupDetailsPage() {
   const payingMembers = (members || [])
     .filter(m => parseSpots(m.spots).length > 0)
     .sort((a, b) => Math.min(...parseSpots(a.spots)) - Math.min(...parseSpots(b.spots)));
+  // Open spots with estimated payout dates — shown to visitors BEFORE they join
+  const openSpots = Array.from({ length: N }, (_, i) => i + 1).filter(sp => !(sp in spotMap));
+  const filledCount = Object.keys(spotMap).length;
+  const saveStartMs = new Date(group.start_date || group.created_at || Date.now()).getTime();
+  const daysPerPeriod = periodDays(group.frequency);
+  const spotDateText = (spot) => {
+    const d = new Date(saveStartMs + spot * daysPerPeriod * 86400000);
+    return d.toLocaleDateString('en-NG', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' });
+  };
   const myPayments = me?.email ? payments.filter(p => (p.user_email || '').toLowerCase() === me.email.toLowerCase()) : [];
   const receiptAmount = (group.amount || 0) * Math.max(1, paySpots.length) * payWeeks;
 
@@ -345,6 +354,33 @@ export default function GroupDetailsPage() {
             </>
           )}
         </div>
+
+        {/* ✨ Available spots with payout dates — visitors see these BEFORE joining */}
+        {!isMember && (
+          <div className="bg-white rounded-2xl border border-gray-100 p-6 mb-6">
+            <h2 className="font-bold text-gray-900 mb-1 flex items-center gap-2"><HiCalendar className="w-5 h-5 text-primary-600" /> Available Spots & Payout Dates</h2>
+            <p className="text-xs text-gray-500 mb-4">
+              {openSpots.length} of {N} spot{N === 1 ? '' : 's'} still open. Each spot collects the whole pot when its turn comes —
+              the earlier your spot number, the sooner you&apos;re paid. The admin assigns your number(s) when approving you, so ask for an early one!
+            </p>
+            {openSpots.length === 0 ? (
+              <p className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-xl p-3">All {N} spots are currently taken — this group is full for this round.</p>
+            ) : (
+              <div className="space-y-2">
+                {openSpots.map(spot => (
+                  <div key={spot} className="flex items-center gap-3 bg-gray-50 rounded-xl px-3 py-2.5">
+                    <span className="w-10 h-8 bg-primary-600 text-white text-sm font-bold rounded-lg flex items-center justify-center shrink-0">#{spot}</span>
+                    <span className="text-xs text-gray-700 flex-1 min-w-0">
+                      receives payment <b>{spotDateText(spot)}</b>
+                      <span className="text-gray-400 block text-[11px]">#{spot} receives payment {spot * daysPerPeriod} days after saving starts</span>
+                    </span>
+                  </div>
+                ))}
+                <p className="text-[11px] text-gray-400 pt-1">Pot per payout right now: ≈ ₦{((group.amount || 0) * Math.max(1, filledCount)).toLocaleString()} — it grows as more members join the group.</p>
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Join CTA — respects account & membership state */}
         <div className="bg-white rounded-2xl border border-gray-100 p-6">

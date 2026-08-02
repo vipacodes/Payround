@@ -2,7 +2,8 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
-import { HiMenu, HiX, HiSearch, HiBell, HiHome, HiUserGroup, HiCurrencyDollar, HiUser, HiLogout, HiChartBar, HiCog, HiChatAlt2 } from 'react-icons/hi';
+import { HiMenu, HiX, HiSearch, HiBell, HiHome, HiUserGroup, HiCurrencyDollar, HiUser, HiLogout, HiChartBar, HiCog, HiChatAlt2, HiCalculator } from 'react-icons/hi';
+import QuickCalc from '@/components/QuickCalc';
 import { logoutUser } from '@/lib/data';
 import toast from 'react-hot-toast';
 
@@ -18,7 +19,8 @@ export default function Header() {
   const [userRole, setUserRole] = useState('');
   const [unreadCount, setUnreadCount] = useState(0);
   const [unreadMsgs, setUnreadMsgs] = useState(0);
-  const [gchatShow, setGchatShow] = useState(false);   // 👥 icon appears ONLY for group admins & members
+  const [gchatShow, setGchatShow] = useState(false);
+  const [showCalc, setShowCalc] = useState(false);   // 👥 icon appears ONLY for group admins & members
   const [gchatUnread, setGchatUnread] = useState(0);
 
   useEffect(() => {
@@ -174,6 +176,15 @@ export default function Header() {
                 </button>
 
                 <button
+                  onClick={() => setShowCalc(true)}
+                  aria-label="Quick calculator"
+                  title="Quick calculator"
+                  className="relative p-2 text-gray-500 hover:text-primary-600 transition-colors"
+                >
+                  <HiCalculator className="w-6 h-6" />
+                </button>
+
+                <button
                   onClick={() => router.push('/notifications')}
                   aria-label="Notifications"
                   title="Notifications"
@@ -230,6 +241,14 @@ export default function Header() {
             ) : (
               <>
                 <button
+                  onClick={() => setShowCalc(true)}
+                  aria-label="Quick calculator"
+                  title="Quick calculator"
+                  className="relative p-2 text-gray-500 hover:text-primary-600 transition-colors"
+                >
+                  <HiCalculator className="w-6 h-6" />
+                </button>
+                <button
                   onClick={() => router.push('/login')}
                   className="text-sm font-medium text-gray-600 hover:text-primary-600 transition-colors"
                 >
@@ -247,6 +266,13 @@ export default function Header() {
 
           {/* Mobile: 🔔 bell sits directly beside the ☰ hamburger */}
           <div className="md:hidden flex items-center gap-1">
+            <button
+              onClick={() => setShowCalc(true)}
+              aria-label="Quick calculator"
+              className="relative p-2 text-gray-600 hover:text-primary-600 transition-colors"
+            >
+              <HiCalculator className="w-6 h-6" />
+            </button>
             {isLoggedIn && (
               <button
                 onClick={() => router.push('/notifications')}
@@ -337,6 +363,7 @@ export default function Header() {
           </div>
         </div>
       )}
+      <QuickCalc open={showCalc} onClose={() => setShowCalc(false)} />
     </header>
   );
 }
