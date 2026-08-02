@@ -207,7 +207,7 @@ export default function ProfilePage() {
             <div className="min-w-0">
               <h2 className="text-xl font-bold text-gray-900 flex items-center gap-1.5">
                 <span className="truncate">{account?.name || user.name}</span>
-                {account?.is_verified && <HiBadgeCheck className="w-7 h-7 text-blue-500 drop-shadow-md shrink-0" title="Verified by PayRound" />}
+                {account?.is_verified && <HiBadgeCheck className="w-7 h-7 text-blue-500 shrink-0 badge-emboss" title="Verified by PayRound" />}
               </h2>
               <p className="text-sm text-gray-500 capitalize">{account?.role || user.role || 'member'}</p>
               {account?.approval_status === 'approved' && <p className="text-[11px] text-green-700 bg-green-50 border border-green-200 rounded-full px-2 py-0.5 mt-1 inline-block">✅ Account approved</p>}

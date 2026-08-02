@@ -100,7 +100,7 @@ export default function AdminDashboardPage() {
                   <div className="min-w-0">
                     <h3 className="font-bold text-gray-900 flex items-center gap-1.5">
                       <span className="truncate">{g.name}</span>
-                      {g.is_verified && <HiBadgeCheck className="w-5 h-5 text-blue-500 shrink-0" />}
+                      {g.is_verified && <HiBadgeCheck className="w-5 h-5 text-blue-500 shrink-0 badge-emboss" />}
                     </h3>
                     <p className="text-[11px] text-gray-400 font-mono">ID: {g.id}</p>
                     <p className="text-xs text-gray-500 mt-0.5">₦{Number(g.amount || 0).toLocaleString()} {g.frequency || 'weekly'} • Period {period} of {N} • Status: {g.status}</p>

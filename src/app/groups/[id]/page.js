@@ -8,7 +8,7 @@ import LoadingScreen from '@/components/LoadingScreen';
 import {
   HiUserGroup, HiCalendar, HiCurrencyDollar,
   HiUser, HiCheckCircle, HiClock, HiArrowLeft,
-  HiPhotograph, HiUpload, HiExclamation
+  HiPhotograph, HiUpload, HiExclamation, HiDocumentText
 } from 'react-icons/hi';
 import ImageLightbox from '@/components/ImageLightbox';
 import GroupBadge from '@/components/GroupBadge';
@@ -36,6 +36,9 @@ export default function GroupDetailsPage() {
   const [uploading, setUploading] = useState(false);
   const [zoomImg, setZoomImg] = useState(null);
   const [me, setMe] = useState(null);
+  const [editingRules, setEditingRules] = useState(false);
+  const [rulesText, setRulesText] = useState('');
+  const [savingRules, setSavingRules] = useState(false);
 
   useEffect(() => {
     let mounted = true;
@@ -61,7 +64,7 @@ export default function GroupDetailsPage() {
 
         // Group admin's public profile — so members can open it and tap Follow
         if (g.admin_email) {
-          const { data: adm } = await supabase.from('users').select('id, name, phone').eq('email', g.admin_email.toLowerCase()).single();
+          const { data: adm } = await supabase.from('users').select('id, name, phone, profile_pic').eq('email', g.admin_email.toLowerCase()).single();
           if (mounted && adm) setAdminProfile(adm);
         }
 
@@ -118,6 +121,21 @@ export default function GroupDetailsPage() {
 
   const isLive = ['active', 'approved'].includes(group.status);
   const joinPath = `/groups/${group.id}/join`;
+
+  // Admin writes the group's own rules — every user reads them BEFORE joining
+  const saveRules = async () => {
+    setSavingRules(true);
+    try {
+      const { supabase } = await import('@/lib/supabase');
+      const txt = rulesText.trim();
+      const { error } = await supabase.from('groups').update({ rules: txt || null }).eq('id', group.id);
+      if (error) throw error;
+      setGroup(prev => ({ ...prev, rules: txt || null }));
+      setEditingRules(false);
+      toast.success(txt ? 'Group rules saved — everyone sees them before joining.' : 'Custom rules cleared.');
+    } catch (e) { toast.error(`Could not save rules: ${e.message || 'try again'}`); }
+    setSavingRules(false);
+  };
 
   const handleJoin = () => {
     if (!me) {
@@ -233,7 +251,7 @@ export default function GroupDetailsPage() {
             title={adminProfile ? 'View admin profile — tap Follow there' : 'Group admin'}
             className={`bg-white rounded-2xl border border-gray-100 p-4 text-left ${adminProfile ? 'card-hover cursor-pointer' : 'cursor-default'}`}
           >
-            <div className="flex items-center gap-2 text-gray-500 text-xs mb-1"><HiUser className="w-4 h-4 text-primary-500" /> Group Admin {adminProfile && <span className="text-[10px] text-primary-600 font-semibold">• View profile</span>}</div>
+            <div className="flex items-center gap-2 text-gray-500 text-xs mb-1"><HiUser className="w-4 h-4 text-primary-500" /> Group Admin {adminProfile && <span className="text-[10px] text-primary-600 font-semibold">• Tap to view profile →</span>}</div>
             <p className="text-lg font-bold text-gray-900 truncate">{group.admin_name || '—'}</p>
             {adminProfile?.phone && (
               <a href={`tel:${adminProfile.phone}`} onClick={e => e.stopPropagation()} className="text-xs text-primary-600 font-semibold mt-0.5 inline-flex items-center gap-1 hover:text-primary-700">
@@ -255,6 +273,46 @@ export default function GroupDetailsPage() {
             </p>
           </div>
         )}
+
+        {/* 📜 Group Rules — visible to EVERYONE before joining */}
+        <div className="bg-white rounded-2xl border border-gray-100 p-6 mb-6">
+          <div className="flex items-center justify-between gap-2 mb-3">
+            <h2 className="font-bold text-gray-900 flex items-center gap-2"><HiDocumentText className="w-5 h-5 text-primary-600" /> Group Rules</h2>
+            {isAdmin && !editingRules && (
+              <button onClick={() => { setRulesText(group.rules || ''); setEditingRules(true); }} className="text-xs font-semibold text-primary-600 border border-primary-100 bg-primary-50 px-3 py-1.5 rounded-full hover:bg-primary-100">✏️ {group.rules ? 'Edit rules' : 'Add rules'}</button>
+            )}
+          </div>
+          {editingRules ? (
+            <div>
+              <textarea
+                value={rulesText}
+                onChange={e => setRulesText(e.target.value)}
+                rows={5}
+                maxLength={2000}
+                placeholder="Write your group rules here — every user sees them before joining. E.g. payment days, late fees, receipt rules, meeting times…"
+                className="w-full px-4 py-3 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+              />
+              <div className="flex gap-2 mt-3">
+                <button onClick={saveRules} disabled={savingRules} className="bg-primary-600 text-white text-sm font-semibold px-5 py-2.5 rounded-xl hover:bg-primary-700 disabled:opacity-50">{savingRules ? 'Saving…' : 'Save Rules'}</button>
+                <button onClick={() => setEditingRules(false)} className="border border-gray-200 text-gray-600 text-sm px-5 py-2.5 rounded-xl hover:bg-gray-50">Cancel</button>
+              </div>
+            </div>
+          ) : (
+            <>
+              {group.rules ? (
+                <p className="text-sm text-gray-700 whitespace-pre-line">{group.rules}</p>
+              ) : (
+                <p className="text-sm text-gray-500">The admin of this group hasn&apos;t added their own rules yet — the standard PayRound rules below apply.</p>
+              )}
+              <ul className="mt-3 pt-3 border-t border-gray-50 space-y-1.5 text-xs text-gray-500">
+                <li className="flex items-start gap-2"><HiCheckCircle className="w-3.5 h-3.5 text-primary-500 shrink-0 mt-0.5" /> Pay your contribution on time every cycle.</li>
+                <li className="flex items-start gap-2"><HiCheckCircle className="w-3.5 h-3.5 text-primary-500 shrink-0 mt-0.5" /> Upload your payment receipt after every payment — the admin confirms it.</li>
+                <li className="flex items-start gap-2"><HiCheckCircle className="w-3.5 h-3.5 text-primary-500 shrink-0 mt-0.5" /> Payouts follow your spot number in the rotation order.</li>
+                <li className="flex items-start gap-2"><HiCheckCircle className="w-3.5 h-3.5 text-primary-500 shrink-0 mt-0.5" /> Respect every member — take any dispute to the group admin first.</li>
+              </ul>
+            </>
+          )}
+        </div>
 
         {/* Join CTA — respects account & membership state */}
         <div className="bg-white rounded-2xl border border-gray-100 p-6">

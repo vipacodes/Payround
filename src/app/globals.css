@@ -196,3 +196,11 @@ body {
   50% { transform: scale(1.25); box-shadow: 0 0 0 4px rgba(34, 197, 94, 0); }
 }
 .msg-dot { animation: msgDotPulse 1.6s ease-in-out infinite; }
+
+/* Raised / embossed 3D look for every verification check mark (blue + tier checks) */
+.badge-emboss {
+  filter:
+    drop-shadow(0 1px 0 rgba(255, 255, 255, 0.6))
+    drop-shadow(0 -1px 1px rgba(0, 0, 0, 0.35))
+    drop-shadow(0 2px 3px rgba(0, 0, 0, 0.22));
+}

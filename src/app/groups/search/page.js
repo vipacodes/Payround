@@ -24,11 +24,13 @@ function RealGroupCard({ group, memberCount }) {
           <div className="min-w-0">
             <h3 className="font-semibold text-gray-900 flex items-center gap-1.5 min-w-0">
               <span className="truncate">{group.name}</span>
-              <GroupBadge verified={group.is_verified} tier={group.badge_tier} className="w-5 h-5 drop-shadow shrink-0" />
+              <GroupBadge verified={group.is_verified} className="w-5 h-5 shrink-0" />
             </h3>
             <p className="text-xs text-gray-500 font-mono">ID: {group.id}</p>
           </div>
         </div>
+        {/* tier check sits where the old badge pill used to be — embossed, owner-given only */}
+        {group.badge_tier && <GroupBadge tier={group.badge_tier} className="w-8 h-8 shrink-0" />}
       </div>
 
       <p className="text-sm text-gray-600 mb-4 line-clamp-2 min-h-[2.5rem]">{group.description || 'Ajo savings group on PayRound.'}</p>
@@ -240,7 +242,7 @@ function SearchContent() {
                       <div className="min-w-0 flex-1">
                         <p className="font-semibold text-gray-900 flex items-center gap-1.5 min-w-0">
                           <span className="truncate">{u.name || '—'}</span>
-                          {u.is_verified && <HiBadgeCheck className="w-5 h-5 text-blue-500 drop-shadow shrink-0" />}
+                          {u.is_verified && <HiBadgeCheck className="w-5 h-5 text-blue-500 shrink-0 badge-emboss" />}
                         </p>
                         <p className="text-xs text-gray-400 font-mono">ID: {String(u.id || '').slice(0, 8)}</p>
                         <p className="text-xs text-gray-500 capitalize mt-0.5">{u.role || 'member'}</p>

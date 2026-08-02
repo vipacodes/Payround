@@ -171,7 +171,7 @@ export default function PublicUserProfilePage() {
           </div>
           <h1 className="text-2xl font-bold text-gray-900 flex items-center justify-center gap-2">
             {person.name}
-            {person.is_verified && <HiBadgeCheck className="w-8 h-8 text-blue-500 drop-shadow-md shrink-0" title="Verified by PayRound" />}
+            {person.is_verified && <HiBadgeCheck className="w-8 h-8 text-blue-500 shrink-0 badge-emboss" title="Verified by PayRound" />}
           </h1>
           <p className="text-sm text-gray-500 capitalize mt-1">{person.role || 'member'}</p>
           {person.is_verified && (

@@ -162,7 +162,7 @@ function MessagesInner() {
               <div className="flex-1 min-w-0">
                 <p className="flex items-center gap-1 text-sm font-bold text-gray-900">
                   <span className="truncate">{displayName}</span>
-                  {otherUser?.is_verified && <HiBadgeCheck className="w-4 h-4 text-blue-500 shrink-0" />}
+                  {otherUser?.is_verified && <HiBadgeCheck className="w-4 h-4 text-blue-500 shrink-0 badge-emboss" />}
                 </p>
                 {otherUser?.id && (
                   <button onClick={() => router.push(`/users/${otherUser.id}`)} className="text-[11px] text-primary-600 font-medium hover:text-primary-700">View profile →</button>
@@ -257,7 +257,7 @@ function MessagesInner() {
                 <span className="flex-1 min-w-0">
                   <span className="flex items-center gap-1 text-sm font-bold text-gray-900">
                     <span className="truncate">{nameOf(t)}</span>
-                    {t.user?.is_verified && <HiBadgeCheck className="w-4 h-4 text-blue-500 shrink-0" />}
+                    {t.user?.is_verified && <HiBadgeCheck className="w-4 h-4 text-blue-500 shrink-0 badge-emboss" />}
                     <span className="ml-auto text-[10px] font-normal text-gray-400 shrink-0">{t.last ? dateOf(t.last.created_at) : ''}</span>
                   </span>
                   <span className={`block text-xs truncate mt-0.5 ${t.unread > 0 ? 'font-semibold text-gray-900' : 'text-gray-500'}`}>

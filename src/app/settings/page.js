@@ -140,7 +140,7 @@ export default function SettingsPage() {
             icon={<HiUser className="w-5 h-5" />}
             title={user?.name || 'Not logged in'}
             desc={user?.email || 'Log in to manage your account'}
-            right={<div className="flex items-center gap-2">{user?.is_verified && <HiBadgeCheck className="w-5 h-5 text-blue-500 drop-shadow" />} <HiChevronRight className="w-4 h-4 text-gray-400" /></div>}
+            right={<div className="flex items-center gap-2">{user?.is_verified && <HiBadgeCheck className="w-5 h-5 text-blue-500 badge-emboss" />} <HiChevronRight className="w-4 h-4 text-gray-400" /></div>}
             onClick={() => router.push('/profile')}
           />
           <div className="px-4 py-3.5">

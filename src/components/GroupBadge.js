@@ -19,11 +19,11 @@ export default function GroupBadge({ verified = false, tier = '', className = 'w
   return (
     <>
       {verified && (
-        <HiBadgeCheck className={`${className} text-blue-500`} title="Blue check — given by PayRound" />
+        <HiBadgeCheck className={`${className} text-blue-500 badge-emboss`} title="Blue check — given by PayRound" />
       )}
       {showTier && (
         <HiBadgeCheck
-          className={`${className} ${tierCheckClass[t]}`}
+          className={`${className} ${tierCheckClass[t]} badge-emboss`}
           title={`${t.charAt(0).toUpperCase() + t.slice(1)} check — given by PayRound`}
         />
       )}

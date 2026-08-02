@@ -233,7 +233,7 @@ function GroupChatInner() {
                             {!mine && (
                               <p className="text-[10px] font-bold text-emerald-600 flex items-center gap-1">
                                 <span className="truncate">{u?.name || 'Group member'}</span>
-                                {u?.is_verified && <HiBadgeCheck className="w-3 h-3 text-blue-500 shrink-0" />}
+                                {u?.is_verified && <HiBadgeCheck className="w-3 h-3 text-blue-500 shrink-0 badge-emboss" />}
                               </p>
                             )}
                             <p className="whitespace-pre-line break-words">{m.body}</p>

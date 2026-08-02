@@ -20,6 +20,7 @@ export default function JoinGroupPage() {
   const [agreed, setAgreed] = useState(false);
   const [step, setStep] = useState('rules'); // gate | rules | form | success | already
   const [me, setMe] = useState(null); // logged-in user (localStorage + DB row)
+  const [adminProfile, setAdminProfile] = useState(null); // group admin's public profile — viewable BEFORE joining
   const [existing, setExisting] = useState(null); // existing membership row (pending/approved)
   const [formData, setFormData] = useState({ name: '', phone: '', email: '', spots: 1 });
   const [errors, setErrors] = useState({});
@@ -39,6 +40,11 @@ export default function JoinGroupPage() {
         if (!mounted) return;
         if (error || !g) { setNotFound(true); setLoading(false); return; }
         setGroup(g);
+        // The group admin's public profile — so users can check who runs the group BEFORE joining
+        if (g.admin_email) {
+          const { data: adm } = await supabase.from('users').select('id, name, phone, profile_pic, is_verified').eq('email', g.admin_email.toLowerCase()).single();
+          if (mounted && adm) setAdminProfile(adm);
+        }
 
         if (user?.email) {
           const email = user.email.toLowerCase();
@@ -229,6 +235,35 @@ export default function JoinGroupPage() {
               <HiDocumentText className="w-6 h-6 text-primary-600" />
               <h2 className="text-lg font-semibold text-gray-900">Before You Join</h2>
             </div>
+
+            {/* Real group rules — every user must read these BEFORE joining */}
+            <div className="p-4 bg-amber-50 border border-amber-100 rounded-xl mb-4">
+              <p className="text-xs font-bold text-amber-800 mb-1.5">📜 {group.name} — Group Rules</p>
+              {group.rules ? (
+                <p className="text-sm text-gray-700 whitespace-pre-line">{group.rules}</p>
+              ) : (
+                <p className="text-xs text-gray-500">This group hasn&apos;t added its own rules yet — the standard PayRound rules below apply.</p>
+              )}
+            </div>
+            <ul className="space-y-1.5 text-xs text-gray-500 mb-5">
+              <li className="flex items-start gap-2"><HiCheckCircle className="w-3.5 h-3.5 text-primary-500 shrink-0 mt-0.5" /> Pay your contribution on time every {group.frequency || 'week'}.</li>
+              <li className="flex items-start gap-2"><HiCheckCircle className="w-3.5 h-3.5 text-primary-500 shrink-0 mt-0.5" /> Upload your payment receipt after every payment — the admin confirms it.</li>
+              <li className="flex items-start gap-2"><HiCheckCircle className="w-3.5 h-3.5 text-primary-500 shrink-0 mt-0.5" /> Payouts follow your spot number in the rotation order.</li>
+            </ul>
+
+            {/* Who runs this group? — check the admin's profile BEFORE joining */}
+            {adminProfile && (
+              <button type="button" onClick={() => router.push(`/users/${adminProfile.id}`)} className="w-full flex items-center gap-3 p-3 bg-gray-50 rounded-xl mb-5 text-left hover:bg-gray-100 transition-colors">
+                {adminProfile.profile_pic
+                  ? <img src={adminProfile.profile_pic} alt="" className="w-10 h-10 rounded-full object-cover border border-gray-100 shrink-0" />
+                  : <span className="w-10 h-10 rounded-full bg-primary-100 text-primary-700 font-bold flex items-center justify-center shrink-0">{(adminProfile.name || 'A').charAt(0).toUpperCase()}</span>}
+                <span className="min-w-0 flex-1">
+                  <span className="text-xs text-gray-500 block">Group Admin</span>
+                  <span className="text-sm font-semibold text-gray-900 truncate block">{adminProfile.name || '—'}</span>
+                </span>
+                <span className="text-xs font-semibold text-primary-600 shrink-0">View admin profile →</span>
+              </button>
+            )}
             <div className="space-y-3 mb-6">
               <div className="flex items-center gap-3 p-3 bg-gray-50 rounded-xl">
                 <HiCurrencyDollar className="w-5 h-5 text-primary-500 shrink-0" />
@@ -253,7 +288,7 @@ export default function JoinGroupPage() {
                 className="w-5 h-5 mt-0.5 text-primary-600 rounded focus:ring-primary-500"
               />
               <span className="text-sm text-gray-700">
-                I have read and agree to the contribution terms above.
+                I have read and agree to the group rules and contribution terms above.
               </span>
             </label>
 

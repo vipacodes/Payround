@@ -164,7 +164,7 @@ export default function DashboardPage() {
             : <div className="w-11 h-11 bg-primary-100 rounded-xl flex items-center justify-center shrink-0"><span className="text-primary-700 font-bold">{(account?.name || user.name || 'U').charAt(0).toUpperCase()}</span></div>}
           <h1 className="text-lg md:text-xl font-bold text-gray-900 flex items-center gap-1.5 truncate">
             Welcome back, {(account?.name || user.name || 'there').split(' ')[0]} 👋
-            {account?.is_verified && <HiBadgeCheck className="w-6 h-6 text-blue-500 drop-shadow shrink-0" title="Verified by PayRound" />}
+            {account?.is_verified && <HiBadgeCheck className="w-6 h-6 text-blue-500 shrink-0 badge-emboss" title="Verified by PayRound" />}
           </h1>
         </div>
 
@@ -320,7 +320,7 @@ export default function DashboardPage() {
                   ? <img src={u.profile_pic} alt="" className="w-9 h-9 rounded-lg object-cover border border-gray-100 shrink-0" />
                   : <div className="w-9 h-9 bg-primary-100 rounded-lg flex items-center justify-center shrink-0"><span className="text-primary-700 font-bold text-xs">{(u.name || 'U').charAt(0)}</span></div>}
                 <div className="min-w-0 flex-1">
-                  <p className="text-sm font-semibold text-gray-900 flex items-center gap-1 min-w-0"><span className="truncate">{u.name || '—'}</span>{u.is_verified && <HiBadgeCheck className="w-4 h-4 text-blue-500 shrink-0" />}</p>
+                  <p className="text-sm font-semibold text-gray-900 flex items-center gap-1 min-w-0"><span className="truncate">{u.name || '—'}</span>{u.is_verified && <HiBadgeCheck className="w-4 h-4 text-blue-500 shrink-0 badge-emboss" />}</p>
                   <p className="text-[11px] text-gray-400 font-mono">ID: {String(u.id).slice(0, 8)} • {u.role || 'member'}</p>
                 </div>
                 <span className="text-[11px] font-semibold text-primary-600 shrink-0">View →</span>

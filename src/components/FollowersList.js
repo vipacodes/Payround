@@ -59,7 +59,7 @@ export default function FollowersList({ userId, userEmail, userName, onClose }) 
                 <span className="flex-1 min-w-0">
                   <span className="flex items-center gap-1 text-sm font-semibold text-gray-900">
                     <span className="truncate">{u?.name || 'PayRound member'}</span>
-                    {u?.is_verified && <HiBadgeCheck className="w-4 h-4 text-blue-500 shrink-0" title="Verified by PayRound" />}
+                    {u?.is_verified && <HiBadgeCheck className="w-4 h-4 text-blue-500 shrink-0 badge-emboss" title="Verified by PayRound" />}
                   </span>
                 </span>
                 {u?.id && <span className="text-xs font-medium text-primary-600 shrink-0">View →</span>}
