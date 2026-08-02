@@ -13,6 +13,7 @@ function MessagesInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [me, setMe] = useState('');
+  const [meName, setMeName] = useState('');
   const [threads, setThreads] = useState(null); // [{ email, last, unread, user }]
   const [active, setActive] = useState('');     // other party's email
   const [msgs, setMsgs] = useState([]);
@@ -36,6 +37,7 @@ function MessagesInner() {
     try { parsed = JSON.parse(stored); } catch { router.push('/login'); return; }
     const email = (parsed.email || '').toLowerCase();
     setMe(email);
+    setMeName(parsed.name || '');
     loadThreads(email);
     const to = (searchParams.get('to') || '').toLowerCase();
     if (to && to !== email) setActive(to);
@@ -141,6 +143,25 @@ function MessagesInner() {
 
   if (!me) return <LoadingScreen label="Loading messages…" />;
 
+  /* Safety: two windows on one phone share ONE login — never render a chat "with myself" */
+  if (active && active === me) {
+    return (
+      <div className="min-h-screen bg-gray-50">
+        <Header />
+        <div className="max-w-md mx-auto px-4 py-16 text-center">
+          <div className="bg-white rounded-2xl border border-gray-100 p-8">
+            <p className="text-4xl mb-3">😅</p>
+            <h2 className="text-lg font-bold text-gray-900 mb-2">You can&apos;t message yourself</h2>
+            <p className="text-sm text-gray-500 mb-1">This device is logged in as <b>{meName || me}</b> ({me}) — the conversation you opened points back to this same account.</p>
+            <p className="text-xs text-gray-400 mb-5">Tip: the installed PayRound app and Chrome on the same phone share ONE login. To chat between two accounts, use two devices — or keep one account in Chrome&apos;s Incognito window.</p>
+            <button onClick={() => setActive('')} className="bg-primary-600 text-white text-sm font-semibold px-6 py-2.5 rounded-xl hover:bg-primary-700">Back to Messages</button>
+          </div>
+        </div>
+        <Footer />
+      </div>
+    );
+  }
+
   /* ============ CHAT VIEW ============ */
   if (active) {
     const displayName = otherUser?.name || 'PayRound member';
@@ -167,6 +188,7 @@ function MessagesInner() {
                 {otherUser?.id && (
                   <button onClick={() => router.push(`/users/${otherUser.id}`)} className="text-[11px] text-primary-600 font-medium hover:text-primary-700">View profile →</button>
                 )}
+                <p className="text-[10px] text-gray-400 mt-0.5">You&apos;re chatting as <span className="font-semibold text-gray-600">{meName || me}</span></p>
               </div>
             </div>
 
