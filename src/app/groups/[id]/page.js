@@ -62,7 +62,7 @@ export default function GroupDetailsPage() {
 
         // Group admin's public profile — so members can open it and tap Follow
         if (g.admin_email) {
-          const { data: adm } = await supabase.from('users').select('id').eq('email', g.admin_email.toLowerCase()).single();
+          const { data: adm } = await supabase.from('users').select('id, name, phone').eq('email', g.admin_email.toLowerCase()).single();
           if (mounted && adm) setAdminProfile(adm);
         }
 
@@ -237,6 +237,11 @@ export default function GroupDetailsPage() {
           >
             <div className="flex items-center gap-2 text-gray-500 text-xs mb-1"><HiUser className="w-4 h-4 text-primary-500" /> Group Admin {adminProfile && <span className="text-[10px] text-primary-600 font-semibold">• View profile</span>}</div>
             <p className="text-lg font-bold text-gray-900 truncate">{group.admin_name || '—'}</p>
+            {adminProfile?.phone && (
+              <a href={`tel:${adminProfile.phone}`} onClick={e => e.stopPropagation()} className="text-xs text-primary-600 font-semibold mt-0.5 inline-flex items-center gap-1 hover:text-primary-700">
+                📞 {adminProfile.phone}
+              </a>
+            )}
           </button>
         </div>
 

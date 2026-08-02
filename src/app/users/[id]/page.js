@@ -8,7 +8,7 @@ import LoadingScreen from '@/components/LoadingScreen';
 import ImageLightbox from '@/components/ImageLightbox';
 import {
   HiArrowLeft, HiBadgeCheck, HiUserGroup, HiCalendar,
-  HiShieldCheck, HiUser, HiCheck, HiUserAdd
+  HiShieldCheck, HiUser, HiCheck, HiUserAdd, HiPhone
 } from 'react-icons/hi';
 import toast from 'react-hot-toast';
 
@@ -35,7 +35,7 @@ export default function PublicUserProfilePage() {
         const { supabase } = await import('@/lib/supabase');
         const { data: u, error } = await supabase
           .from('users')
-          .select('id, name, email, profile_pic, is_verified, role, created_at')
+          .select('id, name, email, phone, profile_pic, is_verified, role, created_at')
           .eq('id', params.id)
           .single();
         if (!mounted) return;
@@ -74,6 +74,9 @@ export default function PublicUserProfilePage() {
     })();
     return () => { mounted = false; };
   }, [params.id]);
+
+  const isSupport = (person?.email || '').toLowerCase() === 'payroundsupport@gmail.com';
+  const phonePublic = !!person?.phone && (groupsAdmin.length > 0 || isSupport);
 
   const toggleFollow = async () => {
     if (!meEmail) { toast.error('Log in to follow people.'); router.push('/login'); return; }
@@ -166,6 +169,11 @@ export default function PublicUserProfilePage() {
             <p className="inline-flex items-center gap-1.5 text-xs font-semibold text-blue-700 bg-blue-50 border border-blue-200 rounded-full px-3 py-1.5 mt-3">
               <HiShieldCheck className="w-4 h-4" /> Verified by PayRound
             </p>
+          )}
+          {phonePublic && (
+            <a href={`tel:${person.phone}`} className="inline-flex items-center gap-2 bg-primary-50 border border-primary-200 text-primary-700 text-sm font-semibold px-4 py-2 rounded-full mt-3 hover:bg-primary-100 transition-colors">
+              <HiPhone className="w-4 h-4" /> {person.phone} <span className="text-[10px] font-normal text-primary-500">• {isSupport ? 'PayRound support line' : 'Group admin contact'}</span>
+            </a>
           )}
           <div className="flex items-center justify-center gap-3 mt-4">
             <span className="text-sm font-semibold text-gray-900">{followers} <span className="text-xs font-normal text-gray-500">Follower{followers === 1 ? '' : 's'}</span></span>

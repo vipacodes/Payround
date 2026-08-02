@@ -16,6 +16,7 @@ export default function AdminMembersPage() {
   const router = useRouter();
   const params = useParams();
   const [group, setGroup] = useState(null);
+  const [meEmail, setMeEmail] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedMember, setSelectedMember] = useState(null);
   const [joinRequests, setJoinRequests] = useState([]);
@@ -27,6 +28,7 @@ export default function AdminMembersPage() {
 
   // Load the REAL group from the database (bundled demo data only as fallback for legacy demo links)
   useEffect(() => {
+    try { setMeEmail((JSON.parse(localStorage.getItem('payround_user') || '{}').email || '').toLowerCase()); } catch {}
     (async () => {
       try {
         const { supabase } = await import('@/lib/supabase');
@@ -108,6 +110,23 @@ export default function AdminMembersPage() {
   };
 
   if (!group) return null;
+
+  // Privacy lock: member contact details (phone numbers) are visible ONLY to the group admin
+  const isGroupAdmin = meEmail && group.admin_email && meEmail === (group.admin_email || '').toLowerCase();
+  if (!isGroupAdmin) {
+    return (
+      <div className="min-h-screen bg-gray-50">
+        <Header />
+        <div className="max-w-md mx-auto px-4 py-20 text-center">
+          <HiExclamation className="w-12 h-12 text-amber-400 mx-auto mb-3" />
+          <h2 className="text-lg font-bold text-gray-900 mb-1">Admin Only</h2>
+          <p className="text-sm text-gray-500 mb-4">Member contact details are private — only the admin of "{group.name}" can manage members here.</p>
+          <button onClick={() => router.push(`/groups/${params.groupId}`)} className="bg-primary-600 text-white text-sm font-medium px-5 py-2.5 rounded-xl">Back to Group</button>
+        </div>
+        <Footer />
+      </div>
+    );
+  }
 
   const q = searchQuery.toLowerCase();
   const filteredMembers = approvedMembers.filter(m =>

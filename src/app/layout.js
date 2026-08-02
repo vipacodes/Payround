@@ -1,5 +1,6 @@
 import './globals.css';
 import { Toaster } from 'react-hot-toast';
+import BootLoader from '@/components/BootLoader';
 
 export const viewport = {
   width: 'device-width',
@@ -36,6 +37,7 @@ export default function RootLayout({ children }) {
         <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
       </head>
       <body className="antialiased">
+        <BootLoader />
         <Toaster
           position="top-center"
           toastOptions={{
