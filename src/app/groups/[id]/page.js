@@ -12,6 +12,7 @@ import {
 } from 'react-icons/hi';
 import ImageLightbox from '@/components/ImageLightbox';
 import GroupBadge from '@/components/GroupBadge';
+import { remindRenewalIfSoon } from '@/lib/renewal';
 import { parseSpots, formatSpots, currentPeriod, cycleLength, periodLabel, periodDays, paidWeeksForSpot, isSpotCurrent, buildSpotMap, payoutForSpot } from '@/lib/payments';
 import { compressImage } from '@/lib/image';
 import toast from 'react-hot-toast';
@@ -42,6 +43,10 @@ export default function GroupDetailsPage() {
   const [editingRules, setEditingRules] = useState(false);
   const [rulesText, setRulesText] = useState('');
   const [savingRules, setSavingRules] = useState(false);
+  // 🪑 Join flow lives HERE on the group page — tap green spots, agree to the rules, one tap to join
+  const [desiredSpots, setDesiredSpots] = useState([]);
+  const [agreeRules, setAgreeRules] = useState(false);
+  const [joining, setJoining] = useState(false);
 
   useEffect(() => {
     let mounted = true;
@@ -69,6 +74,11 @@ export default function GroupDetailsPage() {
         if (g.admin_email) {
           const { data: adm } = await supabase.from('users').select('id, name, phone, profile_pic, bank_name, account_number, account_name').eq('email', g.admin_email.toLowerCase()).single();
           if (mounted && adm) setAdminProfile(adm);
+        }
+
+        // 🔔 Renewal reminder — the group admin gets a bell notification 7 days before the group plan renews
+        if (user?.email && g.admin_email && user.email.toLowerCase() === g.admin_email.toLowerCase()) {
+          remindRenewalIfSoon(supabase, g);
         }
 
         if (user?.email) {
@@ -135,7 +145,6 @@ export default function GroupDetailsPage() {
   }
 
   const isLive = ['active', 'approved'].includes(group.status);
-  const joinPath = `/groups/${group.id}/join`;
 
   // Spot offer answers: accept joins the group with the offered spots; decline keeps you out
   const acceptOffer = async () => {
@@ -215,19 +224,61 @@ export default function GroupDetailsPage() {
     setSavingRules(false);
   };
 
-  const handleJoin = () => {
-    if (!me) {
-      // Never force account creation — offer login (existing users) or signup (new users)
-      router.push(`/login?redirect=${encodeURIComponent(joinPath)}`);
-      return;
-    }
-    router.push(joinPath);
+  // Tap a green (open) spot number to add/remove it from your join wishlist
+  const toggleDesiredSpot = (sp) => {
+    setDesiredSpots(prev => prev.includes(sp) ? prev.filter(x => x !== sp) : [...prev, sp].sort((a, b) => a - b));
+  };
+
+  // One-tap join — name, phone & email pulled straight from the profile (no forms, no typing)
+  const submitJoinRequest = async () => {
+    if (!me || !agreeRules || joining) return;
+    setJoining(true);
+    try {
+      const { supabase } = await import('@/lib/supabase');
+      const email = me.email.toLowerCase();
+      // Pull details straight from the user's profile — the admin sees these in the Members tab
+      let prof = { name: me.name || '', phone: '' };
+      try {
+        const { data: acc } = await supabase.from('users').select('name, phone').eq('email', email).single();
+        if (acc) { if (acc.name) prof.name = acc.name; if (acc.phone) prof.phone = acc.phone; }
+      } catch {}
+      const payload = {
+        group_id: params.id,
+        member_email: email,
+        member_name: prof.name || '',
+        member_phone: prof.phone || '',
+        spots_requested: Math.max(1, desiredSpots.length),
+        desired_spots: formatSpots(desiredSpots) || null,
+        spots: '',
+        offered_spots: '',
+        status: 'pending',
+        requested_at: new Date().toISOString(),
+      };
+      // Re-requesting after a decline? Revive the same row instead of stacking a duplicate.
+      const { data: stale } = await supabase.from('members').select('id').eq('group_id', params.id).eq('member_email', email).in('status', ['declined', 'spot_offered']);
+      if (stale && stale.length) {
+        const { error } = await supabase.from('members').update(payload).eq('id', stale[0].id);
+        if (error) throw error;
+      } else {
+        const { error } = await supabase.from('members').insert({ id: `m-${Date.now()}`, ...payload });
+        if (error) throw error;
+      }
+      // Notify ONLY the group admin
+      await supabase.from('notifications').insert({
+        id: `join-${Date.now()}`, type: 'join_request', group_id: params.id, is_read: false,
+        user_email: (group.admin_email || '').toLowerCase() || null,
+        message: `🔔 ${payload.member_name || email} requested to join "${group.name}"${desiredSpots.length ? ` — picked spot(s) #${desiredSpots.join(', #')}` : ' (no spot preference)'} — their profile details are waiting in your Members tab; approve or offer an alternative spot.`,
+      });
+      setDesiredSpots([]);
+      setAgreeRules(false);
+      setDeclinedOffer(null);
+      setMyStatus('pending');
+      toast.success('Join request sent! The admin will review it — you will be notified. 🎉');
+    } catch (e) { toast.error(`Could not send request: ${e.message || 'try again'}`); }
+    setJoining(false);
   };
 
   const isAdmin = me?.email && group.admin_email && me.email.toLowerCase() === group.admin_email.toLowerCase();
-  const renewal = group.expiry_at ? new Date(group.expiry_at) : null;
-  const renewalSoon = renewal && (renewal.getTime() - Date.now()) < 7 * 86400000;
-  const renewalPassed = renewal && renewal.getTime() <= Date.now();
   const isMember = myStatus === 'approved' || isAdmin;
   const period = currentPeriod(group);
   const N = cycleLength(group);
@@ -375,19 +426,6 @@ export default function GroupDetailsPage() {
           </button>
         </div>
 
-        {/* Group plan renewal — admins need to see when their group subscription renews */}
-        {isAdmin && renewal && (
-          <div className={`rounded-2xl border p-4 mb-6 flex items-center gap-3 ${renewalPassed ? 'bg-red-50 border-red-200' : renewalSoon ? 'bg-amber-50 border-amber-200' : 'bg-emerald-50 border-emerald-200'}`}>
-            <HiCalendar className={`w-5 h-5 shrink-0 ${renewalPassed ? 'text-red-500' : renewalSoon ? 'text-amber-500' : 'text-emerald-600'}`} />
-            <p className="text-xs">
-              <span className={`font-semibold ${renewalPassed ? 'text-red-700' : renewalSoon ? 'text-amber-700' : 'text-emerald-700'}`}>
-                {renewalPassed ? 'Group plan has expired' : `Next group payment (plan renewal) due ${renewal.toLocaleDateString(undefined, { day: 'numeric', month: 'long', year: 'numeric' })}`}
-              </span>
-              <span className="text-gray-500"> — pay via Palmpay 9151723199 (Basikoro James Okeroghene) and create a renewal receipt through PayRound to extend your plan.</span>
-            </p>
-          </div>
-        )}
-
         {/* 📜 Group Rules — visible to EVERYONE before joining */}
         <div className="bg-white rounded-2xl border border-gray-100 p-6 mb-6">
           <div className="flex items-center justify-between gap-2 mb-3">
@@ -428,30 +466,101 @@ export default function GroupDetailsPage() {
           )}
         </div>
 
-        {/* ✨ Available spots with payout dates — visitors see these BEFORE joining */}
-        {!isMember && (
+        {/* 🪑 Pick your spots & join — the whole join flow lives right here on the group page */}
+        {!isMember && myStatus !== 'offered' && (
           <div className="bg-white rounded-2xl border border-gray-100 p-6 mb-6">
-            <h2 className="font-bold text-gray-900 mb-1 flex items-center gap-2"><HiCalendar className="w-5 h-5 text-primary-600" /> Available Spots & Payout Order</h2>
-            <p className="text-xs text-gray-500 mb-4">
-              {openSpots.length} of {N} spot{N === 1 ? '' : 's'} still open. Each spot collects the whole pot when its turn comes —
-              the earlier your spot number, the sooner you&apos;re paid. <b>Exact payout dates can&apos;t be shown yet: savings start once every spot is filled</b>,
-              and you can pick your wishlist spots when you join — the admin confirms or offers you an alternative!
-            </p>
-            {openSpots.length === 0 ? (
-              <p className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-xl p-3">All {N} spots are currently taken — this group is full for this round.</p>
+            <h2 className="font-bold text-gray-900 mb-2 flex items-center gap-2"><HiCalendar className="w-5 h-5 text-primary-600" /> Available Spots — Tap to Pick Yours</h2>
+            {myStatus === 'pending' ? (
+              <p className="text-sm font-medium text-amber-700 flex items-center gap-2 bg-amber-50 border border-amber-200 rounded-xl p-3"><HiClock className="w-5 h-5 shrink-0" /> Your join request is awaiting the admin&apos;s approval — you&apos;ll get a notification.</p>
+            ) : openSpots.length === 0 ? (
+              <p className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-xl p-3">All {N} spots are currently taken — this group is full for this round. Check back after the next payout round!</p>
             ) : (
-              <div className="space-y-2">
-                {openSpots.map(spot => (
-                  <div key={spot} className="flex items-center gap-3 bg-gray-50 rounded-xl px-3 py-2.5">
-                    <span className="w-10 h-8 bg-primary-600 text-white text-sm font-bold rounded-lg flex items-center justify-center shrink-0">#{spot}</span>
-                    <span className="text-xs text-gray-700 flex-1 min-w-0">
-                      receives payment <b>{spot * daysPerPeriod} days after savings start</b>
-                      <span className="text-gray-400 block text-[11px]">savings begin when the group is full — that&apos;s when the {group.frequency || 'weekly'} payout clock starts</span>
-                    </span>
-                  </div>
-                ))}
-                <p className="text-[11px] text-gray-400 pt-1">Pot per payout right now: ≈ ₦{((group.amount || 0) * Math.max(1, filledCount)).toLocaleString()} — it grows as more members join the group.</p>
-              </div>
+              <>
+                <p className="text-xs text-gray-500 mb-3">
+                  <b>{openSpots.length} of {N} spot{N === 1 ? '' : 's'} still open.</b> Tap a green spot to choose it — you can hold several:
+                  each spot pays <b>₦{Number(group.amount || 0).toLocaleString()}</b> every {label} and collects its own full payout when its turn comes.
+                </p>
+                <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-gray-500 mb-3">
+                  <span className="inline-flex items-center gap-1.5"><span className="w-3 h-3 rounded bg-emerald-500 inline-block" /> Open — tap to pick</span>
+                  <span className="inline-flex items-center gap-1.5"><span className="w-3 h-3 rounded bg-red-400 inline-block" /> Taken — not available</span>
+                </div>
+                <div className="grid grid-cols-5 sm:grid-cols-8 gap-1.5 mb-2">
+                  {Array.from({ length: N }, (_, i) => i + 1).map(spot => {
+                    const taken = spot in spotMap;
+                    const on = desiredSpots.includes(spot);
+                    return (
+                      <button
+                        key={spot}
+                        type="button"
+                        disabled={taken}
+                        onClick={() => toggleDesiredSpot(spot)}
+                        title={taken ? `Spot #${spot} is taken` : on ? `Picked — tap to remove. Payout: ${spot * daysPerPeriod} days after savings start` : `Pick spot #${spot} — payout ${spot * daysPerPeriod} days after savings start`}
+                        className={`h-10 rounded-lg text-sm font-bold transition-all ${
+                          taken
+                            ? 'bg-red-100 text-red-400 border border-red-200 cursor-not-allowed line-through'
+                            : on
+                              ? 'bg-emerald-600 text-white border border-emerald-600 badge-emboss ring-2 ring-emerald-300'
+                              : 'bg-emerald-50 text-emerald-700 border border-emerald-300 hover:bg-emerald-100'
+                        }`}
+                      >
+                        #{spot}{on ? ' ✓' : ''}
+                      </button>
+                    );
+                  })}
+                </div>
+                <p className="text-[11px] text-gray-400 mb-3">
+                  Each later spot pays out one {label} later: <b>#1 → {daysPerPeriod} days</b> after savings start · <b>#2 → {2 * daysPerPeriod} days</b> · <b>#3 → {3 * daysPerPeriod} days</b> …
+                  Exact dates can&apos;t be fixed yet — <b>savings start when the group is full</b>; that&apos;s when the {group.frequency || 'weekly'} payout clock starts.
+                  Pot per payout right now: ≈ ₦{((group.amount || 0) * Math.max(1, filledCount)).toLocaleString()} — it grows as more members join.
+                </p>
+                {desiredSpots.length > 0 && (
+                  <p className="text-xs bg-emerald-50 border border-emerald-200 text-emerald-900 rounded-xl p-3 mb-3">
+                    You picked spot{desiredSpots.length > 1 ? 's' : ''} <b>#{desiredSpots.join(', #')}</b> → you pay <b>₦{((group.amount || 0) * desiredSpots.length).toLocaleString()}</b> every {label} and collect <b>{desiredSpots.length}</b> payout{desiredSpots.length > 1 ? 's' : ''}
+                    {' '}({desiredSpots.map(x => `#${x}: ${x * daysPerPeriod} days after savings start`).join(' · ')}).
+                    The admin grants these exact spots if still free — otherwise they offer you an alternative and <b>you</b> accept or decline.
+                  </p>
+                )}
+              </>
+            )}
+            {isLive && myStatus !== 'pending' && openSpots.length > 0 && (
+              <>
+                {myStatus === 'declined' && (
+                  <p className="text-xs text-red-700 bg-red-50 border border-red-200 rounded-xl p-2.5 mb-3">You declined the last spot offer — pick your spot(s) above and send a brand-new request below.</p>
+                )}
+                <label className="flex items-start gap-3 p-3 bg-primary-50 rounded-xl mb-3 cursor-pointer">
+                  <input type="checkbox" checked={agreeRules} onChange={e => setAgreeRules(e.target.checked)} className="w-5 h-5 mt-0.5 text-primary-600 rounded focus:ring-primary-500" />
+                  <span className="text-sm text-gray-700">I have read and agree to the <b>group rules</b> and contribution terms above.</span>
+                </label>
+                {me ? (
+                  <>
+                    <button
+                      onClick={submitJoinRequest}
+                      disabled={!agreeRules || joining}
+                      className="w-full bg-primary-600 text-white font-semibold py-3.5 rounded-xl hover:bg-primary-700 transition-all shadow-lg shadow-primary-200 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      {joining ? 'Sending…' : myStatus === 'declined' ? 'Send a New Join Request' : `Request to Join${desiredSpots.length ? ` — #${desiredSpots.join(', #')}` : ''}`}
+                    </button>
+                    <p className="text-[11px] text-gray-400 mt-2 text-center">
+                      No forms, no typing — your name, phone and email are pulled straight from your profile and shown to this group&apos;s admin only.
+                    </p>
+                  </>
+                ) : (
+                  <>
+                    <button
+                      onClick={() => router.push(`/login?redirect=${encodeURIComponent(`/groups/${group.id}`)}`)}
+                      className="w-full bg-primary-600 text-white font-semibold py-3.5 rounded-xl hover:bg-primary-700 transition-all shadow-lg shadow-primary-200"
+                    >
+                      Log In to Join
+                    </button>
+                    <p className="text-[11px] text-gray-400 mt-2 text-center">
+                      Already have an account? Just log in — your details fill in automatically. New to PayRound? You can create one in under a minute.
+                    </p>
+                  </>
+                )}
+              </>
+            )}
+            {!isLive && (
+              <p className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-xl p-3 flex items-center gap-2"><HiClock className="w-4 h-4 shrink-0" /> This group is still under PayRound review — joining opens once it goes live.</p>
             )}
           </div>
         )}
@@ -474,39 +583,15 @@ export default function GroupDetailsPage() {
           </div>
         )}
 
-        {/* Join CTA — respects account & membership state */}
-        <div className="bg-white rounded-2xl border border-gray-100 p-6">
-          {myStatus === 'approved' ? (
+        {/* Approved member? Straight to the dashboard */}
+        {myStatus === 'approved' && (
+          <div className="bg-white rounded-2xl border border-gray-100 p-6">
             <div className="flex items-center justify-between gap-3 flex-wrap">
               <p className="text-sm font-medium text-emerald-700 flex items-center gap-2"><HiCheckCircle className="w-5 h-5" /> You&apos;re a member of this group</p>
               <button onClick={() => router.push('/dashboard')} className="bg-primary-600 text-white font-medium px-6 py-3 rounded-xl hover:bg-primary-700 transition-all">Open Dashboard</button>
             </div>
-          ) : myStatus === 'pending' ? (
-            <p className="text-sm font-medium text-amber-700 flex items-center gap-2"><HiClock className="w-5 h-5" /> Your join request is awaiting the admin&apos;s approval — you&apos;ll get a notification.</p>
-          ) : myStatus === 'declined' ? (
-            <div>
-              <p className="text-sm font-medium text-gray-700 mb-3 flex items-center gap-2"><HiExclamation className="w-5 h-5 text-red-400 shrink-0" /> You declined the last spot offer, so you&apos;re not in this group.</p>
-              <button onClick={handleJoin} disabled={!isLive} className="w-full bg-primary-600 text-white font-semibold py-3.5 rounded-xl hover:bg-primary-700 transition-all shadow-lg shadow-primary-200 disabled:opacity-50 disabled:cursor-not-allowed">Send a New Join Request</button>
-            </div>
-          ) : myStatus === 'offered' ? (
-            <p className="text-sm font-medium text-amber-700 flex items-center gap-2"><HiClock className="w-5 h-5" /> Answer the spot offer above to finish joining.</p>
-          ) : (
-            <div>
-              <button
-                onClick={handleJoin}
-                disabled={!isLive}
-                className="w-full bg-primary-600 text-white font-semibold py-3.5 rounded-xl hover:bg-primary-700 transition-all shadow-lg shadow-primary-200 disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {isLive ? (me ? 'Join This Group' : 'Log In to Join') : 'Not Open for Joins Yet'}
-              </button>
-              <p className="text-xs text-gray-400 mt-3 text-center">
-                {me
-                  ? 'Your account details are used automatically — no new account needed.'
-                  : 'Already have an account? Just log in. New to PayRound? You can create one in under a minute.'}
-              </p>
-            </div>
-          )}
-        </div>
+          </div>
+        )}
 
         {/* ===== MEMBER AREA: rotation board + receipt upload + history (visible to everyone in the group) ===== */}
         {isMember && (

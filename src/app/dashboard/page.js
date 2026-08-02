@@ -16,6 +16,7 @@ import {
   parseSpots, currentPeriod, cycleLength,
   buildSpotMap, nextDueForMember, nextCashOutForMember, nextPayoutForGroup
 } from '@/lib/payments';
+import { remindRenewalIfSoon } from '@/lib/renewal';
 
 
 const fmtDate = (d) => d ? new Date(d).toLocaleDateString(undefined, { day: 'numeric', month: 'short' }) : '—';
@@ -74,6 +75,7 @@ export default function DashboardPage() {
           const { data: mems } = await supabase.from('members').select('*').eq('group_id', g.id).eq('status', 'approved');
           const { data: pays } = await supabase.from('payments').select('spots, weeks, status').eq('group_id', g.id);
           const { data: outs } = await supabase.from('payouts').select('*').eq('group_id', g.id);
+          remindRenewalIfSoon(supabase, g); // 🔔 admin gets a bell notification 7 days before the group plan renews
           managedOut.push({ group: g, members: mems || [], payments: pays || [], payouts: outs || [] });
         }
         setManaged(managedOut);
@@ -321,7 +323,7 @@ export default function DashboardPage() {
                   : <div className="w-9 h-9 bg-primary-100 rounded-lg flex items-center justify-center shrink-0"><span className="text-primary-700 font-bold text-xs">{(u.name || 'U').charAt(0)}</span></div>}
                 <div className="min-w-0 flex-1">
                   <p className="text-sm font-semibold text-gray-900 flex items-center gap-1 min-w-0"><span className="truncate">{u.name || '—'}</span>{u.is_verified && <HiBadgeCheck className="w-4 h-4 text-blue-500 shrink-0 badge-emboss" />}</p>
-                  <p className="text-[11px] text-gray-400 font-mono">ID: {String(u.id).slice(0, 8)} • {u.role || 'member'}</p>
+                  <p className="text-[11px] text-gray-400 font-mono">ID: {String(u.id).slice(0, 8)}</p>
                 </div>
                 <span className="text-[11px] font-semibold text-primary-600 shrink-0">View →</span>
               </button>

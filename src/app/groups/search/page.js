@@ -245,7 +245,6 @@ function SearchContent() {
                           {u.is_verified && <HiBadgeCheck className="w-5 h-5 text-blue-500 shrink-0 badge-emboss" />}
                         </p>
                         <p className="text-xs text-gray-400 font-mono">ID: {String(u.id || '').slice(0, 8)}</p>
-                        <p className="text-xs text-gray-500 capitalize mt-0.5">{u.role || 'member'}</p>
                       </div>
                       <span className="text-sm font-medium text-primary-600 shrink-0">View →</span>
                     </button>

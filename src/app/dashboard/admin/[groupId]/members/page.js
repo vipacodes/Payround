@@ -240,7 +240,7 @@ export default function AdminMembersPage() {
                 <div className="flex flex-wrap justify-between items-start gap-2">
                   <div>
                     <div className="font-medium text-sm">{req.member_name || '—'}</div>
-                    <div className="text-xs text-gray-500">{req.member_email} • Requested {req.requested_at ? new Date(req.requested_at).toLocaleDateString() : '—'}</div>
+                    <div className="text-xs text-gray-500">{req.member_email}{req.member_phone ? ` • 📞 ${req.member_phone}` : ''} • Requested {req.requested_at ? new Date(req.requested_at).toLocaleDateString() : '—'}</div>
                     {parseSpotsLite(req.desired_spots).length > 0 && (() => {
                       const wants = parseSpotsLite(req.desired_spots);
                       const blocked = wants.filter(w => takenNow.includes(w));

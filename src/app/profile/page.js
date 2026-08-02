@@ -209,7 +209,6 @@ export default function ProfilePage() {
                 <span className="truncate">{account?.name || user.name}</span>
                 {account?.is_verified && <HiBadgeCheck className="w-7 h-7 text-blue-500 shrink-0 badge-emboss" title="Verified by PayRound" />}
               </h2>
-              <p className="text-sm text-gray-500 capitalize">{account?.role || user.role || 'member'}</p>
               {account?.approval_status === 'approved' && <p className="text-[11px] text-green-700 bg-green-50 border border-green-200 rounded-full px-2 py-0.5 mt-1 inline-block">✅ Account approved</p>}
               <button onClick={() => setShowFollowers(true)} title="See your followers"
                 className="inline-flex items-center gap-1.5 bg-gray-100 hover:bg-gray-200 border border-gray-200 rounded-full px-3 py-1 mt-2 text-[11px] font-semibold text-gray-700 transition-colors">
