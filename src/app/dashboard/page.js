@@ -144,9 +144,9 @@ export default function DashboardPage() {
   const Tab = ({ id, icon, label, badge }) => (
     <button
       onClick={() => setActiveTab(activeTab === id ? null : id)}
-      className={`shrink-0 flex items-center gap-1.5 px-4 py-2 rounded-full text-xs font-semibold border transition-all ${activeTab === id ? 'bg-primary-600 text-white border-primary-600 shadow-md shadow-primary-200' : 'bg-white text-gray-600 border-gray-200 hover:border-primary-300'}`}
+      className={`shrink-0 flex items-center gap-2 px-5 py-3 rounded-full text-sm font-semibold border transition-all ${activeTab === id ? 'bg-primary-600 text-white border-primary-600 shadow-md shadow-primary-200' : 'bg-white text-gray-600 border-gray-200 hover:border-primary-300'}`}
     >
-      {icon}{label}{badge !== undefined && <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${activeTab === id ? 'bg-white/25 text-white' : 'bg-gray-100 text-gray-600'}`}>{badge}</span>}
+      {icon}{label}{badge !== undefined && <span className={`text-[11px] px-2 py-0.5 rounded-full ${activeTab === id ? 'bg-white/25 text-white' : 'bg-gray-100 text-gray-600'}`}>{badge}</span>}
     </button>
   );
 

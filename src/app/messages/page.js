@@ -19,7 +19,13 @@ function MessagesInner() {
   const [otherUser, setOtherUser] = useState(null);
   const [body, setBody] = useState('');
   const [sending, setSending] = useState(false);
-  const endRef = useRef(null);
+  const listRef = useRef(null);        // the scrollable message box (never the page!)
+  const nearBottom = useRef(true);    // true while the user is reading the newest messages
+  const firstOpen = useRef(true);     // jump straight to the bottom the first time a chat opens
+  const scrollToEnd = () => setTimeout(() => {
+    const el = listRef.current;
+    if (el) el.scrollTop = el.scrollHeight; // inner-container scroll — the page stays put
+  }, 40);
 
   useEffect(() => {
     const stored = localStorage.getItem('payround_user');
@@ -60,6 +66,8 @@ function MessagesInner() {
   // Open conversation: load messages, mark theirs as read, keep polling for new ones
   useEffect(() => {
     if (!active || !me) return;
+    nearBottom.current = true;
+    firstOpen.current = true;
     let alive = true;
     const load = async () => {
       try {
@@ -68,9 +76,12 @@ function MessagesInner() {
           .or(`and(from_email.eq.${me},to_email.eq.${active}),and(from_email.eq.${active},to_email.eq.${me})`)
           .order('created_at', { ascending: true }).limit(500);
         if (!alive) return;
-        setMsgs(data || []);
+        // Only auto-scroll on the first open, or while the user is already near the newest
+        // message — never yank the view while they're scrolling up to read history
+        if (firstOpen.current || nearBottom.current) scrollToEnd();
+        firstOpen.current = false;
+        setMsgs(data);
         await supabase.from('messages').update({ read: true }).eq('from_email', active).eq('to_email', me).eq('read', false);
-        setTimeout(() => endRef.current?.scrollIntoView({ behavior: 'smooth' }), 60);
       } catch {}
     };
     const loadUser = async () => {
@@ -98,8 +109,9 @@ function MessagesInner() {
       });
       if (error) throw error;
       setBody('');
+      nearBottom.current = true;
       setMsgs(prev => [...prev, { id: `local-${Date.now()}`, from_email: me, to_email: active, body: text, created_at: new Date().toISOString(), read: false }]);
-      setTimeout(() => endRef.current?.scrollIntoView({ behavior: 'smooth' }), 60);
+      scrollToEnd();
       loadThreads(me);
     } catch (err) { toast.error(`Could not send: ${err.message || 'try again'}`); }
     setSending(false);
@@ -141,7 +153,8 @@ function MessagesInner() {
             </div>
 
             {/* messages */}
-            <div className="h-[55vh] overflow-y-auto px-4 py-4 space-y-2.5">
+            <div ref={listRef} onScroll={(e) => { const el = e.currentTarget; nearBottom.current = el.scrollHeight - el.scrollTop - el.clientHeight < 120; }}
+              className="h-[55vh] overflow-y-auto px-4 py-4 space-y-2.5">
               {msgs.length === 0 && (
                 <p className="text-center text-xs text-gray-400 py-10">No messages yet — say hello! 👋<br />Messages are delivered in-app (this is not WhatsApp).</p>
               )}
@@ -161,7 +174,7 @@ function MessagesInner() {
                   </div>
                 );
               })}
-              <div ref={endRef} />
+
             </div>
 
             {/* composer */}

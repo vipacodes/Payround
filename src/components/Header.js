@@ -167,11 +167,7 @@ export default function Header() {
                   className="relative p-2 text-gray-500 hover:text-primary-600 transition-colors"
                 >
                   <HiChatAlt2 className="w-6 h-6" />
-                  {unreadMsgs > 0 && (
-                    <span className="absolute -top-0.5 -right-0.5 w-4.5 h-4.5 bg-red-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center shadow-lg shadow-red-200">
-                      {unreadMsgs > 9 ? '9+' : unreadMsgs}
-                    </span>
-                  )}
+                  {unreadMsgs > 0 && <span className="msg-dot absolute top-1 right-1 w-2.5 h-2.5 bg-green-500 rounded-full" title="New message" />}
                 </button>
 
                 <div className="flex items-center gap-3 pl-4 border-l border-gray-200">
@@ -237,11 +233,7 @@ export default function Header() {
                 className="relative p-2 text-gray-600 hover:text-primary-600 transition-colors"
               >
                 <HiChatAlt2 className="w-6 h-6" />
-                {unreadMsgs > 0 && (
-                  <span className="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] px-1 bg-red-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center shadow-lg shadow-red-200">
-                    {unreadMsgs > 9 ? '9+' : unreadMsgs}
-                  </span>
-                )}
+                {unreadMsgs > 0 && <span className="msg-dot absolute top-1 right-1 w-2.5 h-2.5 bg-green-500 rounded-full" title="New message" />}
               </button>
             )}
             <button
