@@ -21,7 +21,7 @@ export default function JoinGroupPage() {
   const [step, setStep] = useState('rules'); // gate | rules | form | success | already
   const [me, setMe] = useState(null); // logged-in user (localStorage + DB row)
   const [existing, setExisting] = useState(null); // existing membership row (pending/approved)
-  const [formData, setFormData] = useState({ name: '', phone: '', email: '' });
+  const [formData, setFormData] = useState({ name: '', phone: '', email: '', spots: 1 });
   const [errors, setErrors] = useState({});
   const [submitting, setSubmitting] = useState(false);
 
@@ -120,6 +120,7 @@ export default function JoinGroupPage() {
         member_email: formData.email.trim().toLowerCase(),
         member_name: formData.name.trim(),
         member_phone: formData.phone.trim(),
+        spots_requested: Math.max(1, parseInt(formData.spots, 10) || 1),
         status: 'pending',
       });
       if (error) throw error;
@@ -316,6 +317,23 @@ export default function JoinGroupPage() {
                       className="w-full pl-11 pr-4 py-3 border border-gray-100 bg-gray-50 text-gray-500 rounded-xl text-sm"
                     />
                   </div>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1.5">How many spots? *</label>
+                  <select
+                    value={formData.spots}
+                    onChange={(e) => updateField('spots', parseInt(e.target.value, 10) || 1)}
+                    className="w-full px-4 py-3 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 bg-white"
+                  >
+                    {[1, 2, 3, 4, 5].map(n => (
+                      <option key={n} value={n}>{n} spot{n > 1 ? 's' : ''}</option>
+                    ))}
+                  </select>
+                  <p className="text-[11px] text-gray-400 mt-1.5 leading-relaxed">
+                    Each spot pays <strong>₦{Number(group.amount || 0).toLocaleString()}</strong> per {group.frequency || 'week'} and receives its own payout —
+                    e.g. holding spot #1 and spot #19 means you contribute for 2 spots and collect 2 payouts.
+                    The admin assigns your exact spot numbers when approving you.
+                  </p>
                 </div>
               </div>
 

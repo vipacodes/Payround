@@ -19,42 +19,71 @@ export default function AdminMembersPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedMember, setSelectedMember] = useState(null);
   const [joinRequests, setJoinRequests] = useState([]);
+  const [approvedMembers, setApprovedMembers] = useState([]);
+  const [groupPayments, setGroupPayments] = useState([]);
+  const [groupPayouts, setGroupPayouts] = useState([]);
   const [memberReviews, setMemberReviews] = useState([]);
   const [reviewForm, setReviewForm] = useState({ rating: 5, review: '' });
 
+  // Load the REAL group from the database (bundled demo data only as fallback for legacy demo links)
   useEffect(() => {
-    const found = getGroupById(params.groupId);
-    if (found) setGroup(found);
+    (async () => {
+      try {
+        const { supabase } = await import('@/lib/supabase');
+        const { data: g } = await supabase.from('groups').select('*').eq('id', params.groupId).single();
+        if (g) { setGroup(g); return; }
+      } catch {}
+      const found = getGroupById(params.groupId);
+      if (found) setGroup(found);
+    })();
   }, [params.groupId]);
 
-  // Real join requests (members table) + member reviews, from Supabase
+  // Real join requests + approved members + payments + payouts + member reviews, from Supabase
   const loadSupa = async () => {
     try {
       const { supabase } = await import('@/lib/supabase');
       const { data: reqs } = await supabase.from('members').select('*').eq('group_id', params.groupId).eq('status', 'pending').order('requested_at', { ascending: false });
       if (reqs) setJoinRequests(reqs);
+      const { data: approved } = await supabase.from('members').select('*').eq('group_id', params.groupId).eq('status', 'approved');
+      if (approved) setApprovedMembers(approved.map(m => ({ ...m, name: m.member_name || '—', email: m.member_email, phone: m.member_phone || '—' })));
+      const { data: pays } = await supabase.from('payments').select('user_email, spots, weeks, status').eq('group_id', params.groupId);
+      if (pays) setGroupPayments(pays);
+      const { data: outs } = await supabase.from('payouts').select('*').eq('group_id', params.groupId);
+      if (outs) setGroupPayouts(outs);
       const { data: revs } = await supabase.from('member_reviews').select('*').order('created_at', { ascending: false });
       if (revs) setMemberReviews(revs);
     } catch {}
   };
   useEffect(() => { loadSupa(); }, [params.groupId]);
 
+  // Approve -> auto-assign the next free rotation spot(s); a member can hold several spots.
   const handleJoinRequest = async (req, approve) => {
     try {
       const { supabase } = await import('@/lib/supabase');
+      const { parseSpots, formatSpots, nextFreeSpots } = await import('@/lib/payments');
+      let assigned = [];
+      if (approve) {
+        const { data: existing } = await supabase.from('members').select('spots').eq('group_id', params.groupId).eq('status', 'approved');
+        const takenFlat = (existing || []).flatMap(m => parseSpots(m.spots));
+        const wanted = Math.max(1, parseInt(req.spots_requested, 10) || 1);
+        assigned = nextFreeSpots(takenFlat, Math.max(1, parseInt(group?.max_members, 10) || 1), wanted);
+      }
       await supabase.from('members').update({
         status: approve ? 'approved' : 'declined',
         approved_at: approve ? new Date().toISOString() : null,
+        spots: approve ? formatSpots(assigned) : '',
       }).eq('id', req.id);
       // Targeted: only the requesting user sees this notification
       await supabase.from('notifications').insert({
         id: `joinres-${Date.now()}`, type: approve ? 'join_approved' : 'join_declined', group_id: params.groupId, is_read: false,
         user_email: req.member_email,
         message: approve
-          ? `✅ Your request to join "${group?.name || params.groupId}" was approved — you are now a member.`
+          ? `✅ Your request to join "${group?.name || params.groupId}" was approved — you are now a member.${assigned.length ? ` You hold spot${assigned.length > 1 ? 's' : ''} #${assigned.join(', #')} — each spot pays its own contribution and collects its own payout.` : ' No free spots were left to assign yet — please contact your group admin.'}`
           : `Your request to join "${group?.name || params.groupId}" was declined.`,
       });
-      toast.success(approve ? 'Member approved and added to the group!' : 'Request declined.');
+      toast.success(approve
+        ? (assigned.length ? `Member approved — assigned spot${assigned.length > 1 ? 's' : ''} #${assigned.join(', #')}.` : 'Member approved (no free spots left to assign).')
+        : 'Request declined.');
     } catch (e) { toast.error('Could not update request.'); }
     loadSupa();
   };
@@ -80,10 +109,22 @@ export default function AdminMembersPage() {
 
   if (!group) return null;
 
-  const filteredMembers = group.members.filter(m =>
-    m.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    m.phone.includes(searchQuery)
+  const q = searchQuery.toLowerCase();
+  const filteredMembers = approvedMembers.filter(m =>
+    (m.name || '').toLowerCase().includes(q) ||
+    (m.email || '').toLowerCase().includes(q) ||
+    (m.phone || '').includes(searchQuery)
   );
+
+  // Real contribution progress: total approved receipt-weeks submitted BY this member
+  const paidWeeksFor = (email) => (groupPayments || [])
+    .filter(p => p.status === 'approved' && (p.user_email || '') === (email || ''))
+    .reduce((sum, p) => sum + (parseInt(p.weeks, 10) || 1), 0);
+  const spotsLabel = (m) => {
+    const sp = (m.spots || '').split(',').map(x => x.trim()).filter(Boolean);
+    return sp.length ? `Spot${sp.length > 1 ? 's' : ''} #${sp.join(', #')}` : 'No spot assigned yet';
+  };
+  const collectedForMember = (m) => (groupPayouts || []).filter(po => po.status === 'collected' && (po.user_email || '') === (m.email || ''));
 
   const getStatusBadge = (status) => {
     switch (status) {
@@ -105,7 +146,7 @@ export default function AdminMembersPage() {
         </button>
 
         <h1 className="text-2xl font-bold text-gray-900 mb-2">Members - {group.name}</h1>
-        <p className="text-gray-500 mb-6">{group.members.length} registered members</p>
+        <p className="text-gray-500 mb-6">{approvedMembers.length} approved member{approvedMembers.length === 1 ? '' : 's'} {joinRequests.length > 0 ? `• ${joinRequests.length} join request${joinRequests.length > 1 ? 's' : ''} waiting` : ''}</p>
 
         {/* Join Requests — real requests from the members table; preview profile before approving */}
         {joinRequests.length > 0 && (
@@ -169,12 +210,12 @@ export default function AdminMembersPage() {
                     </div>
                     <div>
                       <p className="text-sm font-medium text-gray-900">{member.name}</p>
-                      <p className="text-xs text-gray-500">Rot #{member.rotationNo} • {member.phone}</p>
+                      <p className="text-xs text-gray-500">{spotsLabel(member)} • {member.phone}</p>
                     </div>
                   </div>
                   <div className="flex items-center gap-3">
-                    <span className="text-sm font-medium text-gray-900">₦{member.totalPaid.toLocaleString()}</span>
-                    {getStatusBadge(member.contributions[member.contributions.length - 1]?.status)}
+                    <span className="text-xs font-medium text-emerald-700 bg-emerald-50 px-2 py-1 rounded-lg">{paidWeeksFor(member.email)} week{paidWeeksFor(member.email) === 1 ? '' : 's'} approved</span>
+                    {collectedForMember(member).length > 0 && <span className="text-xs font-medium text-amber-700 bg-amber-50 px-2 py-1 rounded-lg">💰 {collectedForMember(member).length} payout{collectedForMember(member).length > 1 ? 's' : ''}</span>}
                   </div>
                 </button>
               ))}
@@ -193,18 +234,16 @@ export default function AdminMembersPage() {
                     <span className="text-primary-700 font-bold text-2xl">{selectedMember.name.charAt(0)}</span>
                   </div>
                   <h3 className="text-lg font-semibold text-gray-900">{selectedMember.name}</h3>
-                  <p className="text-sm text-gray-500">Rotation #{selectedMember.rotationNo}</p>
+                  <p className="text-sm text-gray-500">{spotsLabel(selectedMember)}</p>
                 </div>
 
                 <div className="space-y-3">
                   <DetailRow icon={<HiPhone className="w-4 h-4" />} label="Phone" value={selectedMember.phone} />
                   <DetailRow icon={<HiMail className="w-4 h-4" />} label="Email" value={selectedMember.email} />
-                  <DetailRow icon={<HiLocationMarker className="w-4 h-4" />} label="Address" value={selectedMember.address} />
-                  <DetailRow icon={<HiBriefcase className="w-4 h-4" />} label="Occupation" value={selectedMember.occupation} />
-                  <DetailRow icon={<HiUser className="w-4 h-4" />} label="Next of Kin" value={selectedMember.nextOfKin} />
-                  <DetailRow icon={<HiCurrencyDollar className="w-4 h-4" />} label="Total Paid" value={`₦${selectedMember.totalPaid.toLocaleString()}`} />
-                  <DetailRow icon={<HiCurrencyDollar className="w-4 h-4" />} label="Total Received" value={`₦${(selectedMember.totalReceived || 0).toLocaleString()}`} />
-                  <DetailRow icon={<HiCheckCircle className="w-4 h-4" />} label="Payout Status" value={selectedMember.payoutStatus === 'next' ? 'Next to Receive 🎯' : selectedMember.payoutStatus === 'received' ? 'Received ✅' : 'Waiting'} />
+                  <DetailRow icon={<HiUser className="w-4 h-4" />} label="Spots Held" value={spotsLabel(selectedMember)} />
+                  <DetailRow icon={<HiCheckCircle className="w-4 h-4" />} label="Weeks Approved" value={`${paidWeeksFor(selectedMember.email)} (receipt-verified)`} />
+                  <DetailRow icon={<HiCurrencyDollar className="w-4 h-4" />} label="Payouts Collected" value={collectedForMember(selectedMember).length > 0 ? collectedForMember(selectedMember).map(po => `#${po.spot} ✅`).join(', ') : 'None yet'} />
+                  <DetailRow icon={<HiClock className="w-4 h-4" />} label="Joined" value={selectedMember.approved_at ? new Date(selectedMember.approved_at).toLocaleDateString() : '—'} />
                 </div>
 
                 {/* Member reviews — given by group admins, shown to other admins before approving joins */}

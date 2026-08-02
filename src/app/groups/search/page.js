@@ -21,8 +21,8 @@ function RealGroupCard({ group, memberCount }) {
             ? <img src={group.avatar_url} alt={group.name} className="w-12 h-12 rounded-xl object-cover border border-gray-100 shrink-0" />
             : <div className="w-12 h-12 bg-gradient-to-br from-primary-100 to-primary-50 rounded-xl flex items-center justify-center shrink-0"><span className="text-primary-700 font-bold text-lg">{group.name.charAt(0)}</span></div>}
           <div className="min-w-0">
-            <h3 className="font-semibold text-gray-900 truncate flex items-center gap-1.5">
-              {group.name}
+            <h3 className="font-semibold text-gray-900 flex items-center gap-1.5 min-w-0">
+              <span className="truncate">{group.name}</span>
               {group.is_verified && <HiBadgeCheck className="w-5 h-5 text-blue-500 drop-shadow shrink-0" />}
             </h3>
             <p className="text-xs text-gray-500 font-mono">ID: {group.id}</p>
@@ -62,7 +62,14 @@ function SearchContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const initialQuery = searchParams.get('q') || '';
-  const [tab, setTab] = useState(searchParams.get('tab') === 'users' ? 'users' : 'groups');
+  const [tab, setTabState] = useState(searchParams.get('tab') === 'users' ? 'users' : 'groups');
+
+  // Keep the active tab (and query) in the URL so pressing "back" from a
+  // profile/group returns to the SAME tab instead of resetting to Groups.
+  const setTab = (t) => {
+    setTabState(t);
+    try { router.replace(`/groups/search?tab=${t}`, { scroll: false }); } catch {}
+  };
   const [query, setQuery] = useState(initialQuery);
   const [groupsList, setGroupsList] = useState([]);
   const [memberCounts, setMemberCounts] = useState({});
@@ -233,8 +240,8 @@ function SearchContent() {
                         ? <img src={u.profile_pic} alt={u.name} className="w-14 h-14 rounded-2xl object-cover border border-gray-100 shrink-0" />
                         : <div className="w-14 h-14 rounded-2xl bg-primary-100 flex items-center justify-center shrink-0"><span className="text-primary-700 font-bold text-xl">{(u.name || 'U').charAt(0).toUpperCase()}</span></div>}
                       <div className="min-w-0 flex-1">
-                        <p className="font-semibold text-gray-900 truncate flex items-center gap-1.5">
-                          {u.name || '—'}
+                        <p className="font-semibold text-gray-900 flex items-center gap-1.5 min-w-0">
+                          <span className="truncate">{u.name || '—'}</span>
                           {u.is_verified && <HiBadgeCheck className="w-5 h-5 text-blue-500 drop-shadow shrink-0" />}
                         </p>
                         <p className="text-xs text-gray-400 font-mono">ID: {String(u.id || '').slice(0, 8)}</p>

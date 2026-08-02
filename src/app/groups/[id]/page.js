@@ -6,8 +6,13 @@ import Header from '@/components/Header';
 import Footer from '@/components/Footer';
 import {
   HiUserGroup, HiCalendar, HiCurrencyDollar,
-  HiUser, HiCheckCircle, HiClock, HiBadgeCheck, HiArrowLeft
+  HiUser, HiCheckCircle, HiClock, HiBadgeCheck, HiArrowLeft,
+  HiPhotograph, HiUpload, HiExclamation
 } from 'react-icons/hi';
+import ImageLightbox from '@/components/ImageLightbox';
+import { parseSpots, formatSpots, currentPeriod, cycleLength, periodLabel, paidWeeksForSpot, isSpotCurrent, buildSpotMap, payoutForSpot } from '@/lib/payments';
+import { compressImage } from '@/lib/image';
+import toast from 'react-hot-toast';
 
 const badgeEmoji = { bronze: '🥉', silver: '🥈', gold: '🥇' };
 
@@ -19,6 +24,16 @@ export default function GroupDetailsPage() {
   const [loading, setLoading] = useState(true);
   const [memberCount, setMemberCount] = useState(0);
   const [myStatus, setMyStatus] = useState(null); // null | 'pending' | 'approved'
+  const [members, setMembers] = useState([]);
+  const [payments, setPayments] = useState([]);
+  const [payouts, setPayouts] = useState([]);
+  const [myMember, setMyMember] = useState(null);
+  const [paySpots, setPaySpots] = useState([]);     // selected spots for the receipt
+  const [payWeeks, setPayWeeks] = useState(1);
+  const [receiptData, setReceiptData] = useState(null);
+  const [receiptName, setReceiptName] = useState('');
+  const [uploading, setUploading] = useState(false);
+  const [zoomImg, setZoomImg] = useState(null);
   const [me, setMe] = useState(null);
 
   useEffect(() => {
@@ -35,15 +50,28 @@ export default function GroupDetailsPage() {
         if (error || !g) { setNotFound(true); setLoading(false); return; }
         setGroup(g);
 
-        const { data: mems } = await supabase.from('members').select('id').eq('group_id', params.id).eq('status', 'approved');
-        if (mounted) setMemberCount((mems || []).length);
+        const { data: mems } = await supabase.from('members').select('*').eq('group_id', params.id).eq('status', 'approved');
+        if (mounted) { setMemberCount((mems || []).length); setMembers(mems || []); }
+
+        const { data: pays } = await supabase.from('payments').select('*').eq('group_id', params.id).order('created_at', { ascending: false });
+        if (mounted) setPayments(pays || []);
+        const { data: outs } = await supabase.from('payouts').select('*').eq('group_id', params.id);
+        if (mounted) setPayouts(outs || []);
 
         if (user?.email) {
-          const { data: mine } = await supabase
+          const email = user.email.toLowerCase();
+          const mine = (mems || []).find(m => (m.member_email || '').toLowerCase() === email);
+          const { data: pendingMine } = await supabase
             .from('members').select('status')
-            .eq('group_id', params.id).eq('member_email', user.email.toLowerCase())
-            .in('status', ['pending', 'approved']);
-          if (mounted && mine && mine.length > 0) setMyStatus(mine[0].status);
+            .eq('group_id', params.id).eq('member_email', email)
+            .eq('status', 'pending');
+          if (mounted) {
+            if (mine) {
+              setMyStatus('approved');
+              setMyMember(mine);
+              setPaySpots(parseSpots(mine.spots)); // pre-select all my spots
+            } else if (pendingMine && pendingMine.length > 0) setMyStatus('pending');
+          }
         }
       } catch (e) {
         if (mounted) setNotFound(true);
@@ -95,6 +123,57 @@ export default function GroupDetailsPage() {
       return;
     }
     router.push(joinPath);
+  };
+
+  const isAdmin = me?.email && group.admin_email && me.email.toLowerCase() === group.admin_email.toLowerCase();
+  const isMember = myStatus === 'approved' || isAdmin;
+  const period = currentPeriod(group);
+  const N = cycleLength(group);
+  const label = periodLabel(group.frequency);
+  const spotMap = buildSpotMap(members);
+  const mySpots = myMember ? parseSpots(myMember.spots) : [];
+  const myPayments = me?.email ? payments.filter(p => (p.user_email || '').toLowerCase() === me.email.toLowerCase()) : [];
+  const receiptAmount = (group.amount || 0) * Math.max(1, paySpots.length) * payWeeks;
+
+  const onReceiptPicked = async (file) => {
+    if (!file) return;
+    try {
+      const dataUrl = await compressImage(file, 800, 0.82);
+      setReceiptData(dataUrl);
+      setReceiptName(file.name);
+    } catch { toast.error('Could not read that image — try another.'); }
+  };
+
+  const submitReceipt = async () => {
+    if (paySpots.length === 0) { toast.error('Select at least one spot you are paying for.'); return; }
+    if (!receiptData) { toast.error('Please upload your payment receipt image.'); return; }
+    setUploading(true);
+    try {
+      const { supabase } = await import('@/lib/supabase');
+      const row = {
+        id: `pay-${Date.now()}`,
+        group_id: params.id,
+        member_id: myMember?.id || null,
+        user_email: me.email.toLowerCase(),
+        member_name: myMember?.member_name || me.name || '',
+        spots: formatSpots(paySpots),
+        weeks: payWeeks,
+        amount: receiptAmount,
+        receipt_url: receiptData,
+        status: 'pending',
+      };
+      const { error } = await supabase.from('payments').insert(row);
+      if (error) throw error;
+      await supabase.from('notifications').insert({
+        id: `paynew-${Date.now()}`, type: 'payment_submitted', group_id: params.id, is_read: false,
+        user_email: (group.admin_email || '').toLowerCase(),
+        message: `🧾 ${row.member_name || row.user_email} uploaded a receipt for spot${paySpots.length > 1 ? 's' : ''} #${paySpots.join(', #')} (${payWeeks} ${label}${payWeeks > 1 ? 's' : ''}, ₦${receiptAmount.toLocaleString()}) in "${group.name}" — review and approve/decline in Payments.`,
+      });
+      setPayments([row, ...payments]);
+      setReceiptData(null); setReceiptName(''); setPayWeeks(1);
+      toast.success('Receipt sent! The admin will review it shortly — you will be notified.');
+    } catch (e) { toast.error(`Upload failed: ${e.message || 'try again'}`); }
+    setUploading(false);
   };
 
   return (
@@ -176,7 +255,162 @@ export default function GroupDetailsPage() {
             </div>
           )}
         </div>
+
+        {/* ===== MEMBER AREA: rotation board + receipt upload + history (visible to everyone in the group) ===== */}
+        {isMember && (
+          <>
+            {/* Rotation & payout board */}
+            <div className="bg-white rounded-2xl border border-gray-100 p-6 mt-6">
+              <h2 className="font-bold text-gray-900 mb-1 flex items-center gap-2"><HiCurrencyDollar className="w-5 h-5 text-primary-600" /> Rotation & Payout Board</h2>
+              <p className="text-xs text-gray-500 mb-4">
+                All members can see this board. Spot #k collects the pot at {label} k • Current {label}: <strong>{Math.min(period, N)} of {N}</strong>.
+                A member holding several spots collects several payouts.
+              </p>
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="text-left text-[11px] text-gray-400 border-b">
+                      <th className="py-2 pr-3 font-semibold">Spot</th>
+                      <th className="py-2 pr-3 font-semibold">Holder</th>
+                      <th className="py-2 pr-3 font-semibold">Paid</th>
+                      <th className="py-2 pr-3 font-semibold">This {label}</th>
+                      <th className="py-2 font-semibold">Payout</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {Array.from({ length: N }, (_, i) => i + 1).map(spot => {
+                      const holder = spotMap[spot];
+                      const paid = paidWeeksForSpot(payments, spot);
+                      const collected = payoutForSpot(payouts, spot);
+                      const mine = mySpots.includes(spot);
+                      return (
+                        <tr key={spot} className={`border-b border-gray-50 ${mine ? 'bg-primary-50/40' : ''}`}>
+                          <td className="py-2.5 pr-3 font-bold text-gray-900">#{spot}{mine && <span className="ml-1 text-[10px] text-primary-600 font-semibold">YOU</span>}</td>
+                          <td className="py-2.5 pr-3 text-gray-800">{holder ? (holder.member_name || 'Member') : <span className="text-gray-300">Open spot</span>}</td>
+                          <td className="py-2.5 pr-3 text-gray-600">{paid}/{N}</td>
+                          <td className="py-2.5 pr-3">
+                            {holder
+                              ? (isSpotCurrent(paid, Math.min(period, N))
+                                  ? <span className="text-emerald-600 text-xs font-semibold flex items-center gap-1"><HiCheckCircle className="w-4 h-4" /> Paid</span>
+                                  : <span className="text-amber-600 text-xs font-semibold flex items-center gap-1"><HiClock className="w-4 h-4" /> Due</span>)
+                              : <span className="text-gray-300 text-xs">—</span>}
+                          </td>
+                          <td className="py-2.5">
+                            {collected
+                              ? <span className="text-amber-700 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-full text-xs font-semibold">💰 Collected {new Date(collected.created_at).toLocaleDateString()}</span>
+                              : period >= spot && holder
+                                ? <span className="text-amber-600 text-xs font-semibold">Due now</span>
+                                : <span className="text-gray-300 text-xs">Week #{spot}</span>}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            {/* Upload receipt */}
+            {myMember && (
+              <div className="bg-white rounded-2xl border border-gray-100 p-6 mt-6">
+                <h2 className="font-bold text-gray-900 mb-1 flex items-center gap-2"><HiUpload className="w-5 h-5 text-primary-600" /> Pay Your Contribution</h2>
+                <p className="text-xs text-gray-500 mb-4">
+                  Choose the spot(s) you are paying for and how many {label}s the payment covers — paying for several {label}s upfront is allowed.
+                  The admin reviews your receipt and marks you paid.
+                </p>
+                {mySpots.length === 0 ? (
+                  <p className="text-xs bg-amber-50 border border-amber-200 text-amber-800 rounded-xl p-3 flex items-center gap-2">
+                    <HiExclamation className="w-4 h-4 shrink-0" /> No spot assigned to you yet — please ask your group admin to assign your spot before paying.
+                  </p>
+                ) : (
+                  <>
+                    <label className="block text-xs font-semibold text-gray-600 mb-1.5">Which spot(s) are you paying for? *</label>
+                    <div className="flex flex-wrap gap-2 mb-4">
+                      {mySpots.map(spot => {
+                        const on = paySpots.includes(spot);
+                        return (
+                          <button
+                            key={spot}
+                            type="button"
+                            onClick={() => setPaySpots(on ? paySpots.filter(x => x !== spot) : [...paySpots, spot])}
+                            className={`px-3 py-1.5 rounded-full text-xs font-semibold border ${on ? 'bg-primary-600 text-white border-primary-600' : 'bg-white text-gray-600 border-gray-200'}`}
+                          >
+                            #{spot}
+                          </button>
+                        );
+                      })}
+                    </div>
+
+                    <label className="block text-xs font-semibold text-gray-600 mb-1.5">How many {label}s does this payment cover? *</label>
+                    <select
+                      value={payWeeks}
+                      onChange={e => setPayWeeks(Math.max(1, parseInt(e.target.value, 10) || 1))}
+                      className="w-full px-4 py-3 border border-gray-200 rounded-xl text-sm bg-white focus:outline-none focus:ring-2 focus:ring-primary-500 mb-1"
+                    >
+                      {Array.from({ length: Math.max(2, N) }, (_, i) => i + 1).map(w => (
+                        <option key={w} value={w}>{w} {label}{w > 1 ? `s${w > 1 ? ' (paying upfront)' : ''}` : ''}</option>
+                      ))}
+                    </select>
+                    <p className="text-[11px] text-gray-400 mb-4">Expected amount: <strong className="text-gray-700">₦{receiptAmount.toLocaleString()}</strong> ({paySpots.length || 1} spot{(paySpots.length || 1) > 1 ? 's' : ''} × {payWeeks} {label}{payWeeks > 1 ? 's' : ''} × ₦{Number(group.amount || 0).toLocaleString()})</p>
+
+                    <label className="block text-xs font-semibold text-gray-600 mb-1.5">Receipt image *</label>
+                    <label className="w-full border-2 border-dashed border-gray-200 rounded-xl p-4 flex items-center justify-center gap-2 cursor-pointer hover:border-primary-300 hover:bg-primary-50/40 transition-all mb-4">
+                      <input type="file" accept="image/*" className="hidden" onChange={e => onReceiptPicked(e.target.files?.[0])} />
+                      <HiPhotograph className="w-5 h-5 text-gray-400" />
+                      <span className="text-xs text-gray-500">{receiptName || 'Tap to upload receipt (compressed automatically)'}</span>
+                    </label>
+                    {receiptData && (
+                      <button onClick={() => setZoomImg(receiptData)} className="block mb-4" title="Tap to expand">
+                        <img src={receiptData} alt="receipt preview" className="h-24 rounded-xl border object-cover" />
+                      </button>
+                    )}
+
+                    <button
+                      onClick={submitReceipt}
+                      disabled={uploading}
+                      className="w-full bg-primary-600 text-white font-semibold py-3 rounded-xl hover:bg-primary-700 transition-all disabled:opacity-50"
+                    >
+                      {uploading ? 'Sending…' : `Send Receipt for Review (₦${receiptAmount.toLocaleString()})`}
+                    </button>
+                  </>
+                )}
+              </div>
+            )}
+
+            {/* My payment history */}
+            {myPayments.length > 0 && (
+              <div className="bg-white rounded-2xl border border-gray-100 p-6 mt-6">
+                <h2 className="font-bold text-gray-900 mb-3">My Payments</h2>
+                {myPayments.map(pay => (
+                  <div key={pay.id} className="flex items-start justify-between gap-3 py-3 border-b border-gray-50 last:border-0">
+                    <div className="flex gap-3 min-w-0">
+                      {pay.receipt_url && (
+                        <button onClick={() => setZoomImg(pay.receipt_url)} className="shrink-0" title="Tap to expand receipt">
+                          <img src={pay.receipt_url} alt="receipt" className="w-12 h-12 rounded-lg object-cover border" />
+                        </button>
+                      )}
+                      <div className="min-w-0">
+                        <div className="text-sm font-medium text-gray-800">₦{Number(pay.amount || 0).toLocaleString()} — spot(s) #{parseSpots(pay.spots).join(', #')}, {pay.weeks} {label}{pay.weeks > 1 ? 's' : ''}</div>
+                        <div className="text-[11px] text-gray-400">{pay.created_at ? new Date(pay.created_at).toLocaleString() : ''}</div>
+                        {pay.status === 'declined' && pay.decline_reason && (
+                          <div className="text-[11px] text-red-500 mt-1">Reason from admin: {pay.decline_reason}</div>
+                        )}
+                      </div>
+                    </div>
+                    {pay.status === 'approved'
+                      ? <span className="shrink-0 text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full text-xs font-semibold">Paid ✅</span>
+                      : pay.status === 'declined'
+                        ? <span className="shrink-0 text-red-600 bg-red-50 border border-red-200 px-2 py-0.5 rounded-full text-xs font-semibold">Declined ⚠️</span>
+                        : <span className="shrink-0 text-amber-700 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-full text-xs font-semibold">Under review ⏳</span>}
+                  </div>
+                ))}
+              </div>
+            )}
+          </>
+        )}
       </div>
+
+      {zoomImg && <ImageLightbox src={zoomImg} alt="Receipt" onClose={() => setZoomImg(null)} />}
 
       <Footer />
     </div>
