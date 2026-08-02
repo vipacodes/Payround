@@ -34,6 +34,7 @@ export default function CreateGroupPage() {
   const fileAvatarRef = useRef(null);
   const [receiptFile, setReceiptFile] = useState(null);
   const [receiptPreview, setReceiptPreview] = useState(null);
+  const [myGroups, setMyGroups] = useState(null); // my submissions — pending/live/declined, nothing auto-deleted
   const [trialUsed, setTrialUsed] = useState(false);
   const [selectedColor, setSelectedColor] = useState(GROUP_COLORS[0]);
 
@@ -142,6 +143,37 @@ export default function CreateGroupPage() {
       } catch {}
     })();
   }, []);
+  // My group submissions — pending approval stays visible, declined stays unless I delete it
+  const loadMyGroups = async () => {
+    let email = '';
+    try { email = (JSON.parse(localStorage.getItem('payround_user') || '{}').email || '').toLowerCase(); } catch {}
+    if (!email) { setMyGroups([]); return; }
+    try {
+      const { supabase } = await import('@/lib/supabase');
+      const { data } = await supabase.from('groups')
+        .select('id, name, status, rejection_reason, amount, frequency, plan_months, avatar_url, created_at')
+        .eq('admin_email', email).order('created_at', { ascending: false });
+      setMyGroups(data || []);
+    } catch { setMyGroups([]); }
+  };
+  useEffect(() => { loadMyGroups(); }, []);
+
+  // Only the group ADMIN can remove their own submission (pending or declined)
+  const deleteMyGroup = async (g) => {
+    if (!window.confirm(`Delete "${g.name}" permanently? This cannot be undone.`)) return;
+    try {
+      const { supabase } = await import('@/lib/supabase');
+      const { error } = await supabase.from('groups').delete().eq('id', g.id);
+      if (error) throw error;
+      try {
+        const keep = JSON.parse(localStorage.getItem('payround_groups_custom') || '[]').filter(x => x.id !== g.id);
+        localStorage.setItem('payround_groups_custom', JSON.stringify(keep));
+      } catch {}
+      setMyGroups(prev => (prev || []).filter(x => x.id !== g.id));
+      toast.success('Submission deleted.');
+    } catch (e) { toast.error(`Could not delete: ${e.message || 'try again'}`); }
+  };
+
   const planPrice = planPrices[selectedPlan] || 8000;
 
   // Shrink any already-picked photo so big camera shots never break the upload
@@ -203,6 +235,7 @@ export default function CreateGroupPage() {
         creation_receipt_url: withReceipt ? (receipt || null) : null,
       });
       if (error) throw error;
+      loadMyGroups();
       return true;
     } catch (e) {
       console.log('Group sync to Supabase failed', e.message);
@@ -222,6 +255,47 @@ export default function CreateGroupPage() {
           <h1 className="text-2xl font-bold text-gray-900">Create an Ajo Group</h1>
           <p className="text-gray-500 mt-1">Set up your group in 5 steps - Selfie + Valid ID + Group Logo required, Color picker 12 options</p>
         </div>
+
+        {myGroups && myGroups.length > 0 && (
+          <div className="bg-white rounded-2xl border border-gray-100 p-4 mb-6">
+            <p className="text-sm font-bold text-gray-900 mb-3">📋 My group submissions</p>
+            <div className="space-y-2.5">
+              {myGroups.map(g => (
+                <div key={g.id} className="border border-gray-100 rounded-xl p-3">
+                  <div className="flex items-center gap-3">
+                    {g.avatar_url ? (
+                      <img src={g.avatar_url} alt="" className="w-9 h-9 rounded-lg object-cover border border-gray-100 shrink-0" />
+                    ) : (
+                      <span className="w-9 h-9 rounded-lg bg-primary-100 text-primary-700 font-bold flex items-center justify-center shrink-0">{(g.name || 'G').charAt(0)}</span>
+                    )}
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-semibold text-gray-900 truncate">{g.name} <span className="text-[10px] font-normal text-gray-400">• {g.id}</span></p>
+                      <p className="text-[11px] text-gray-500">₦{Number(g.amount || 0).toLocaleString()} {g.frequency} • {g.plan_months ? `${g.plan_months}-month plan` : 'trial'} • {g.created_at ? new Date(g.created_at).toLocaleDateString() : ''}</p>
+                    </div>
+                    {g.status === 'pending_owner' && <span className="text-[10px] font-bold bg-amber-100 text-amber-700 px-2 py-1 rounded-full shrink-0">⏳ Pending approval</span>}
+                    {g.status === 'trial_active' && <span className="text-[10px] font-bold bg-blue-100 text-blue-700 px-2 py-1 rounded-full shrink-0">🧪 Trial</span>}
+                    {['active', 'approved'].includes(g.status) && <span className="text-[10px] font-bold bg-emerald-100 text-emerald-700 px-2 py-1 rounded-full shrink-0">✅ Live</span>}
+                    {g.status === 'rejected' && <span className="text-[10px] font-bold bg-red-100 text-red-700 px-2 py-1 rounded-full shrink-0">❌ Declined</span>}
+                  </div>
+                  {g.status === 'rejected' && g.rejection_reason && (
+                    <p className="text-[11px] text-red-600 mt-2">Reason: {g.rejection_reason}. Your details stay saved — fix the issue and create a fresh group anytime, or delete this submission.</p>
+                  )}
+                  {g.status === 'pending_owner' && (
+                    <p className="text-[11px] text-gray-400 mt-1.5">Waiting for PayRound review — you will be notified. Nothing is deleted automatically.</p>
+                  )}
+                  <div className="flex gap-3 mt-2">
+                    {['active', 'approved'].includes(g.status) && (
+                      <button onClick={() => router.push(`/groups/${g.id}`)} className="text-[11px] font-semibold text-primary-600">Open group →</button>
+                    )}
+                    {['pending_owner', 'rejected'].includes(g.status) && (
+                      <button onClick={() => deleteMyGroup(g)} className="text-[11px] font-semibold text-red-500 hover:text-red-600">🗑 Delete submission</button>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
         <div className="flex items-center justify-between mb-8 px-2">
           {STEPS.map((s, index) => (
