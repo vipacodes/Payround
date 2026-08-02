@@ -54,15 +54,15 @@ export default function BroadcastAlert() {
 
   return (
     <div className="fixed top-3 left-1/2 -translate-x-1/2 z-[80] w-[calc(100%-1.5rem)] max-w-md animate-slide-down">
-      <div className="broadcast-card rounded-2xl shadow-2xl border-2 border-primary-500 overflow-hidden">
-        <div className="bg-primary-600 px-4 py-2 flex items-center justify-between">
-          <div className="flex items-center space-x-2 text-white">
+      <div className="broadcast-card rounded-2xl shadow-2xl border-2 border-amber-400 overflow-hidden">
+        <div className="broadcast-head px-4 py-2 flex items-center justify-between">
+          <div className="flex items-center space-x-2 text-amber-900">
             <HiSpeakerphone className="w-5 h-5" />
             <span className="text-sm font-bold">Announcement from PayRound</span>
           </div>
           <button
             onClick={() => setVisible(false)}
-            className="text-white/90 hover:text-white p-1"
+            className="text-amber-800 hover:text-amber-900 p-1"
             aria-label="Close announcement"
           >
             <HiX className="w-5 h-5" />
@@ -83,7 +83,7 @@ export default function BroadcastAlert() {
           )}
         </div>
         <div className="h-1 broadcast-track">
-          <div className="h-1 bg-primary-500 transition-all duration-100" style={{ width: `${progress}%` }}></div>
+          <div className="h-1 bg-amber-500 transition-all duration-100" style={{ width: `${progress}%` }}></div>
         </div>
       </div>
     </div>

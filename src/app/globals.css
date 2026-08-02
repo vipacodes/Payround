@@ -78,18 +78,20 @@ body {
   animation: slideDown 0.3s ease-out both;
 }
 
-/* Broadcast popup — explicit colors for both themes
-   (bg-white/text-gray-800 get remapped differently in .dark and the text became invisible) */
-.broadcast-card { background: #ffffff; color: #1f2937; }
-.broadcast-text { color: #1f2937; }
-.broadcast-sub { color: #64748b; }
-.broadcast-track { background: #f1f5f9; }
-.broadcast-media { background: #f8fafc; border-color: #e2e8f0; }
-.dark .broadcast-card { background: #131b31; color: #e5e7eb; }
-.dark .broadcast-text { color: #e5e7eb; }
-.dark .broadcast-sub { color: #98a3b7; }
-.dark .broadcast-track { background: #1a2440; }
-.dark .broadcast-media { background: #0f1a33; border-color: #2a3a5e; }
+/* Broadcast popup — FORCED bright yellow/white in both light and dark mode,
+   so the texts are always visible (dark mode can never dim them) */
+.broadcast-card { background: #fffbeb !important; color: #1f2937 !important; }
+.broadcast-head { background: linear-gradient(90deg, #f59e0b, #fbbf24) !important; color: #451a03 !important; }
+.broadcast-text { color: #1f2937 !important; }
+.broadcast-sub { color: #92400e !important; }
+.broadcast-track { background: #fde68a !important; }
+.broadcast-media { background: #fffdf5 !important; border-color: #fcd34d !important; }
+.dark .broadcast-card { background: #fffbeb !important; color: #1f2937 !important; }
+.dark .broadcast-head { background: linear-gradient(90deg, #f59e0b, #fbbf24) !important; color: #451a03 !important; }
+.dark .broadcast-text { color: #1f2937 !important; }
+.dark .broadcast-sub { color: #92400e !important; }
+.dark .broadcast-track { background: #fde68a !important; }
+.dark .broadcast-media { background: #fffdf5 !important; border-color: #fcd34d !important; }
 
 /* Glass effect */
 .glass {
