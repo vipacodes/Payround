@@ -6,6 +6,7 @@ import Header from '@/components/Header';
 import Footer from '@/components/Footer';
 import GroupCard from '@/components/GroupCard';
 import AdBanner from '@/components/AdBanner';
+import BroadcastAlert from '@/components/BroadcastAlert';
 import { groups, businessAds } from '@/lib/data';
 import {
   HiUserGroup, HiShieldCheck, HiBellAlert,
@@ -109,6 +110,7 @@ export default function HomePage() {
   return (
     <div className="min-h-screen bg-gray-50">
       <Header />
+      <BroadcastAlert />
 
       {/* Hero Section */}
       <section className="relative overflow-hidden bg-gradient-to-br from-primary-900 via-primary-800 to-primary-700">

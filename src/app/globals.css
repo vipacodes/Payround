@@ -62,6 +62,22 @@ body {
   animation: scanLine 2s ease-in-out infinite;
 }
 
+/* Broadcast announcement popup */
+@keyframes slideDown {
+  from {
+    opacity: 0;
+    transform: translate(-50%, -1rem);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, 0);
+  }
+}
+
+.animate-slide-down {
+  animation: slideDown 0.3s ease-out both;
+}
+
 /* Glass effect */
 .glass {
   background: rgba(255, 255, 255, 0.7);
