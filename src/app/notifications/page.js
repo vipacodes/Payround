@@ -56,6 +56,61 @@ export default function NotificationsPage() {
     return () => clearInterval(t);
   }, []);
 
+  // Where should tapping a notification take you? Every notification type has a sensible home.
+  const destinationFor = (n) => {
+    const t = n?.type || '';
+    const gid = n?.group_id;
+    const g = gid ? `/groups/${gid}` : null;
+    switch (t) {
+      // ADMIN-side: act on requests/reviews
+      case 'join_request':       // 🔔 someone requested to join → approve / offer spots in the Members tab
+      case 'offer_lapsed':
+      case 'offer_accepted':
+      case 'offer_declined':
+        return gid ? `/dashboard/admin/${gid}/members` : '/dashboard';
+      case 'payment_submitted':  // 🧾 a member uploaded a receipt → approve/decline in the Payments tab
+        return gid ? `/dashboard/admin/${gid}/payments` : '/dashboard';
+      // MEMBER-side: your group page has offers, trackers & payment history
+      case 'payment_approved':
+      case 'payment_declined':
+      case 'payout_collected':
+      case 'join_approved':
+      case 'join_declined':
+      case 'spot_offer':
+        return g || '/dashboard';
+      case 'renewal_reminder':   // ⏰ your group plan renews soon → dashboard shows the renewal date on your group
+        return '/dashboard';
+      case 'group_approved':
+        return g || '/dashboard';
+      case 'group_rejected':
+        return '/dashboard';
+      // Account-side
+      case 'photo_approved':
+      case 'photo_declined':     // message itself says "upload from Settings"
+        return '/settings';
+      case 'verification_approved':
+      case 'verification_declined':
+        return g || '/profile'; // group verifications → the group; personal blue badge → profile (re-apply there)
+      case 'new_follower':
+      case 'referral_bonus':
+        return '/profile';
+      case 'ad_review':
+        return '/ads';
+      case 'user_approved':
+      case 'user_declined':
+        return '/dashboard';
+      default:
+        return g || null; // group-related → the group; otherwise just mark it read
+    }
+  };
+
+  // Tap a notification: mark it read, then jump straight to where the action is
+  const openNotification = (n) => {
+    markRead(n.id);
+    const dest = destinationFor(n);
+    if (dest) router.push(dest);
+  };
+
   // Delete ONLY my personal notifications — shared/broadcast ones belong to everyone
   const deleteOne = async (id) => {
     try {
@@ -106,6 +161,7 @@ export default function NotificationsPage() {
             <h1 className="text-2xl font-bold text-gray-900">Notifications</h1>
             <p className="text-sm text-gray-500">
               {loading ? 'Loading…' : unread > 0 ? `${unread} unread` : 'All caught up 🎉'}
+              <span className="block text-[11px] text-gray-400 mt-0.5">Tap any notification to jump straight to the right place — approve joins, review receipts, answer spot offers…</span>
             </p>
           </div>
           <div className="flex gap-2">
@@ -134,7 +190,8 @@ export default function NotificationsPage() {
               return (
                 <button
                   key={n.id}
-                  onClick={() => markRead(n.id)}
+                  onClick={() => openNotification(n)}
+                  title="Tap to open"
                   className={`w-full text-left flex items-start gap-3 p-4 rounded-2xl border transition-colors ${typeStyle(n.type)} ${n.is_read ? 'opacity-60' : ''} bg-white hover:shadow-sm`}
                 >
                   <span className={`mt-0.5 w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${typeStyle(n.type)}`}>
@@ -147,6 +204,7 @@ export default function NotificationsPage() {
                       {n.group_id ? ` • Group ${n.group_id}` : ''}
                     </span>
                   </span>
+                  <HiChevronRight className="w-4 h-4 text-gray-300 shrink-0 mt-2.5" />
                   {!n.is_read && <span className="w-2.5 h-2.5 bg-primary-600 rounded-full shrink-0 mt-2" />}
                   {personal && (
                     <span
