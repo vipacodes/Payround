@@ -153,9 +153,10 @@ function BusinessContent() {
                 <HiStar className="w-3 h-3" /> Approved business
               </p>
               {owner && (
-                <button onClick={() => router.push(`/users/${owner.id}`)} className="text-xs text-primary-600 font-medium mt-1.5 flex items-center gap-1.5 hover:text-primary-700">
-                  {owner.profile_pic && <img src={owner.profile_pic} alt="" className="w-5 h-5 rounded-full object-cover" />}
-                  Advertised by {owner.name || 'a PayRound member'}
+                <button onClick={() => router.push(`/users/${owner.id}`)} title="Switch to their personal profile"
+                  className="text-xs font-semibold bg-gray-100 hover:bg-gray-200 text-gray-700 px-3 py-1.5 rounded-full mt-1.5 flex items-center gap-1.5 transition-colors">
+                  {owner.profile_pic && <img src={owner.profile_pic} alt="" className="w-4 h-4 rounded-full object-cover" />}
+                  👤 {owner.name || 'a PayRound member'} · View personal profile
                 </button>
               )}
             </div>

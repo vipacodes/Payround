@@ -23,6 +23,7 @@ export default function ProfilePage() {
   const [idFront, setIdFront] = useState('');
   const [idBack, setIdBack] = useState('');
   const [applying, setApplying] = useState(false);
+  const [myBiz, setMyBiz] = useState([]); // my approved business profile(s)
 
   useEffect(() => {
     const stored = localStorage.getItem('payround_user');
@@ -47,6 +48,13 @@ export default function ProfilePage() {
             address: data.address || '', occupation: data.occupation || '', bio: data.bio || '',
           });
         }
+        try {
+          const { data: biz } = await supabase.from('ads')
+            .select('id, business_name')
+            .eq('submitter_email', (parsed.email || '').toLowerCase())
+            .eq('status', 'approved');
+          setMyBiz(biz || []);
+        } catch {}
         try {
           const { data: reqs } = await supabase.from('verification_requests')
             .select('id, status, reason, created_at, reviewed_at, decline_reason')
@@ -195,6 +203,22 @@ export default function ProfilePage() {
               </h2>
               <p className="text-sm text-gray-500 capitalize">{account?.role || user.role || 'member'}</p>
               {account?.approval_status === 'approved' && <p className="text-[11px] text-green-700 bg-green-50 border border-green-200 rounded-full px-2 py-0.5 mt-1 inline-block">✅ Account approved</p>}
+            </div>
+          </div>
+
+          {/* Switch profile — personal (here) ⇄ business */}
+          <div className="p-4 bg-gray-50 border border-gray-200 rounded-xl mb-6">
+            <p className="text-xs font-semibold text-gray-500 mb-2">SWITCH PROFILE</p>
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-full bg-primary-600 text-white text-xs font-semibold shadow-sm">👤 Personal</span>
+              {myBiz.map(b => (
+                <button key={b.id} onClick={() => router.push(`/business/${b.id}`)}
+                  className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-full bg-white border border-gray-300 text-xs font-semibold text-gray-700 hover:border-gold-400 hover:text-gold-700 transition-colors">🏪 {b.business_name}</button>
+              ))}
+              {myBiz.length === 0 && (
+                <button onClick={() => router.push('/ads')}
+                  className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-full bg-white border border-dashed border-gray-300 text-xs font-semibold text-gray-500 hover:border-gold-400 hover:text-gold-700 transition-colors">+ Start a business profile</button>
+              )}
             </div>
           </div>
 

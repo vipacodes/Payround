@@ -27,6 +27,7 @@ export default function PublicUserProfilePage() {
   const [isFollowing, setIsFollowing] = useState(false);
   const [followers, setFollowers] = useState(0);
   const [busyFollow, setBusyFollow] = useState(false);
+  const [bizAds, setBizAds] = useState([]); // approved businesses this person runs on PayRound
 
   useEffect(() => {
     let mounted = true;
@@ -48,6 +49,12 @@ export default function PublicUserProfilePage() {
         const { data: mems } = await supabase.from('members').select('group_id').eq('member_email', email).in('status', ['active', 'approved']);
         if (!mounted) return;
         setGroupsAdmin(ag || []);
+
+        // Their approved business profile(s) on PayRound — linked from their personal profile
+        try {
+          const { data: biz } = await supabase.from('ads').select('id, business_name').eq('submitter_email', email).eq('status', 'approved');
+          if (mounted) setBizAds(biz || []);
+        } catch {}
 
         // Follow stats — visible to the public
         const { data: fols } = await supabase.from('follows').select('follower_email').eq('following_id', String(u.id));
@@ -192,6 +199,23 @@ export default function PublicUserProfilePage() {
             Member since {person.created_at ? new Date(person.created_at).toLocaleDateString('en-NG', { month: 'long', year: 'numeric' }) : '—'}
           </div>
         </div>
+
+        {/* Their business profile(s) — personal profile shows first, business one tap away */}
+        {bizAds.length > 0 && (
+          <div className="bg-white rounded-2xl border border-gray-100 p-4 mb-6">
+            <p className="text-xs font-bold text-gray-500 mb-2">🏪 BUSINESS ON PAYROUND</p>
+            <div className="space-y-2">
+              {bizAds.map(b => (
+                <button key={b.id} onClick={() => router.push(`/business/${b.id}`)}
+                  className="w-full flex items-center gap-3 bg-gradient-to-r from-amber-50 to-orange-50 border border-gold-200 rounded-xl px-4 py-3 text-left hover:shadow-md transition-all">
+                  <span className="w-9 h-9 bg-gold-100 rounded-lg flex items-center justify-center text-gold-700 font-bold shrink-0">{(b.business_name || 'B').charAt(0)}</span>
+                  <span className="flex-1 min-w-0 text-sm font-semibold text-gray-900 truncate">{b.business_name}</span>
+                  <span className="text-xs font-bold text-gold-700 shrink-0">View Business →</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* Their groups */}
         <div className="mb-3 flex items-center gap-2">
