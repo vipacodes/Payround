@@ -2,178 +2,149 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import Link from 'next/link';
 import Header from '@/components/Header';
 import Footer from '@/components/Footer';
-import { notifications as allNotifications } from '@/lib/data';
 import {
-  HiBell, HiCheckCircle, HiUser,
-  HiCalendar, HiChevronRight
+  HiBell, HiCheckCircle, HiUser, HiUserGroup,
+  HiChevronRight, HiBadgeCheck, HiRefresh
 } from 'react-icons/hi';
 import { HiMegaphone } from 'react-icons/hi2';
-import { HiCurrencyDollar } from 'react-icons/hi';
 
-const iconMap = {
-  bell: HiBell,
-  check: HiCheckCircle,
-  cash: HiCurrencyDollar,
-  megaphone: HiMegaphone,
-  user: HiUser,
+const typeStyle = (type = '') => {
+  if (type.includes('declin') || type.includes('reject')) return 'bg-red-50 border-red-100 text-red-700';
+  if (type.includes('approve') || type.includes('verif') || type.includes('join_approved')) return 'bg-emerald-50 border-emerald-100 text-emerald-700';
+  if (type.includes('referral') || type.includes('payment') || type.includes('payout')) return 'bg-yellow-50 border-yellow-100 text-yellow-700';
+  if (type.includes('announce')) return 'bg-blue-50 border-blue-100 text-blue-700';
+  return 'bg-primary-50 border-primary-100 text-primary-700';
 };
 
-const colorMap = {
-  payment_reminder: 'bg-yellow-50 border-yellow-100 text-yellow-700',
-  payment_approved: 'bg-emerald-50 border-emerald-100 text-emerald-700',
-  payout: 'bg-purple-50 border-purple-100 text-purple-700',
-  announcement: 'bg-blue-50 border-blue-100 text-blue-700',
-  join_request: 'bg-primary-50 border-primary-100 text-primary-700',
+const typeIcon = (type = '') => {
+  if (type.includes('join')) return <HiUserGroup className="w-5 h-5" />;
+  if (type.includes('verif')) return <HiBadgeCheck className="w-5 h-5" />;
+  if (type.includes('user')) return <HiUser className="w-5 h-5" />;
+  if (type.includes('announce')) return <HiMegaphone className="w-5 h-5" />;
+  return <HiBell className="w-5 h-5" />;
 };
 
 export default function NotificationsPage() {
   const router = useRouter();
   const [notifications, setNotifications] = useState([]);
-  const [filter, setFilter] = useState('all'); // all | unread
+  const [loading, setLoading] = useState(true);
+  const [myEmail, setMyEmail] = useState('');
 
-  useEffect(() => {
+  const load = async () => {
     try {
       const stored = localStorage.getItem('payround_user');
-      if (stored) {
-        const user = JSON.parse(stored);
-        // Each user's notification should not be about another account e.g finding James notification in Margaret's notification is wrong - per-user filtering
-        const userGroups = [...(user.memberGroups||[]), ...(user.adminGroups||[])];
-        const filteredForUser = allNotifications.filter(n => {
-          // Only show notifications for groups user is member of, or personal notifications
-          if (!n.groupId) return true; // general notifications
-          return userGroups.includes(n.groupId) || n.message?.toLowerCase().includes(user.name?.toLowerCase()) || n.message?.toLowerCase().includes(user.email?.split('@')[0]);
-        });
-        // If no user-specific notifications, show only general, not other users' notifications
-        setNotifications(filteredForUser.length > 0 ? filteredForUser : allNotifications.filter(n => n.type === 'payment_reminder' || n.type === 'announcement').slice(0,2));
-      } else {
-        setNotifications(allNotifications.slice(0,2));
-      }
-    } catch {
-      setNotifications(allNotifications.slice(0,2));
-    }
+      let email = '';
+      if (stored) { try { email = (JSON.parse(stored).email || '').toLowerCase(); } catch {} }
+      if (email) setMyEmail(email);
+      const { supabase } = await import('@/lib/supabase');
+      const { isVisibleTo, getMyGroupIds, purgeOldNotifications } = await import('@/lib/notifications');
+      // Auto-cleanup: notifications older than 60 days are deleted to save storage space
+      await purgeOldNotifications(supabase);
+      // Groups I belong to (admin or approved member) — for group-shared notifications
+      const gids = await getMyGroupIds(supabase, email);
+      const { data } = await supabase.from('notifications').select('*').order('created_at', { ascending: false }).limit(100);
+      // Only show notifications meant for ME: personal, my groups, or broadcasts
+      setNotifications((data || []).filter(n => isVisibleTo(n, email, gids)));
+    } catch {} finally { setLoading(false); }
+  };
+
+  useEffect(() => {
+    load();
+    const t = setInterval(load, 15000); // keep in sync with the bell
+    return () => clearInterval(t);
   }, []);
 
-  const filtered = filter === 'unread' 
-    ? notifications.filter(n => !n.read) 
-    : notifications;
-
-  const markAsRead = (id) => {
-    setNotifications(prev => prev.map(n => n.id === id ? { ...n, read: true } : n));
+  // Only marks MY visible notifications as read — never other users' notifications
+  const markAllRead = async () => {
+    try {
+      const ids = notifications.filter(n => !n.is_read).map(n => n.id);
+      if (ids.length === 0) return;
+      const { supabase } = await import('@/lib/supabase');
+      await supabase.from('notifications').update({ is_read: true }).in('id', ids);
+      load();
+    } catch {}
   };
 
-  const markAllAsRead = () => {
-    setNotifications(prev => prev.map(n => ({ ...n, read: true })));
+  const markRead = async (id) => {
+    try {
+      const { supabase } = await import('@/lib/supabase');
+      await supabase.from('notifications').update({ is_read: true }).eq('id', id);
+      setNotifications(prev => prev.map(n => n.id === id ? { ...n, is_read: true } : n));
+    } catch {}
   };
 
-  const unreadCount = notifications.filter(n => !n.read).length;
-  const IconComponent = ({ icon, className }) => {
-    const Icon = iconMap[icon] || HiBell;
-    return <Icon className={className} />;
-  };
+  const unread = notifications.filter(n => !n.is_read).length;
 
   return (
     <div className="min-h-screen bg-gray-50">
       <Header />
 
-      <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 py-6 md:py-8">
+      <div className="max-w-2xl mx-auto px-4 sm:px-6 py-8">
         <div className="flex items-center justify-between mb-6">
           <div>
             <h1 className="text-2xl font-bold text-gray-900">Notifications</h1>
-            <p className="text-gray-500 text-sm">{unreadCount} unread</p>
+            <p className="text-sm text-gray-500">
+              {loading ? 'Loading…' : unread > 0 ? `${unread} unread` : 'All caught up 🎉'}
+            </p>
           </div>
-          {unreadCount > 0 && (
-            <button
-              onClick={markAllAsRead}
-              className="text-sm text-primary-600 font-medium hover:text-primary-700"
-            >
-              Mark all as read
+          <div className="flex gap-2">
+            <button onClick={load} className="p-2.5 border border-gray-200 rounded-xl text-gray-500 hover:bg-gray-50" title="Refresh">
+              <HiRefresh className="w-5 h-5" />
             </button>
-          )}
+            {unread > 0 && (
+              <button onClick={markAllRead} className="flex items-center gap-1.5 text-sm font-medium text-primary-600 border border-primary-200 bg-primary-50 px-3.5 py-2 rounded-xl hover:bg-primary-100">
+                <HiCheckCircle className="w-4 h-4" /> Mark all read
+              </button>
+            )}
+          </div>
         </div>
 
-        {/* Filter tabs */}
-        <div className="flex gap-2 mb-6">
-          <button
-            onClick={() => setFilter('all')}
-            className={`px-4 py-2 rounded-xl text-sm font-medium transition-all ${
-              filter === 'all' 
-                ? 'bg-primary-600 text-white shadow-lg shadow-primary-200' 
-                : 'bg-white text-gray-600 border border-gray-200 hover:border-primary-200'
-            }`}
-          >
-            All
-          </button>
-          <button
-            onClick={() => setFilter('unread')}
-            className={`px-4 py-2 rounded-xl text-sm font-medium transition-all ${
-              filter === 'unread' 
-                ? 'bg-primary-600 text-white shadow-lg shadow-primary-200' 
-                : 'bg-white text-gray-600 border border-gray-200 hover:border-primary-200'
-            }`}
-          >
-            Unread
-          </button>
-        </div>
-
-        {/* Notifications list */}
-        <div className="space-y-3">
-          {filtered.length > 0 ? (
-            filtered.map(notification => (
-              <div
-                key={notification.id}
-                onClick={() => markAsRead(notification.id)}
-                className={`bg-white rounded-2xl border p-5 card-hover cursor-pointer ${
-                  notification.read ? 'border-gray-100' : 'border-primary-100 shadow-sm'
-                }`}
-              >
-                <div className="flex items-start gap-4">
-                  <div className={`w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 ${
-                    colorMap[notification.type] || 'bg-gray-50 text-gray-600'
-                  }`}>
-                    <IconComponent icon={notification.icon} className="w-5 h-5" />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-start justify-between gap-2">
-                      <h3 className={`text-sm ${notification.read ? 'font-medium text-gray-900' : 'font-semibold text-gray-900'}`}>
-                        {notification.title}
-                      </h3>
-                      {!notification.read && (
-                        <span className="w-2 h-2 bg-primary-500 rounded-full flex-shrink-0 mt-1.5"></span>
-                      )}
-                    </div>
-                    <p className="text-sm text-gray-600 mt-1">{notification.message}</p>
-                    <div className="flex items-center gap-3 mt-2">
-                      <span className="flex items-center gap-1 text-xs text-gray-400">
-                        <HiCalendar className="w-3.5 h-3.5" />
-                        {notification.date}
-                      </span>
-                      {notification.groupId && (
-                        <Link
-                          href={`/groups/${notification.groupId}`}
-                          onClick={(e) => e.stopPropagation()}
-                          className="flex items-center gap-1 text-xs text-primary-600 font-medium hover:text-primary-700"
-                        >
-                          View Group <HiChevronRight className="w-3 h-3" />
-                        </Link>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              </div>
-            ))
-          ) : (
-            <div className="bg-white rounded-2xl border border-gray-100 p-12 text-center">
-              <HiBell className="w-12 h-12 text-gray-300 mx-auto mb-3" />
-              <h3 className="text-lg font-semibold text-gray-900 mb-1">All caught up! 🎉</h3>
-              <p className="text-sm text-gray-500">
-                {filter === 'unread' ? 'No unread notifications.' : 'No notifications yet.'}
-              </p>
+        {loading ? (
+          <div className="space-y-3">
+            {[1, 2, 3].map(i => <div key={i} className="h-20 bg-white border border-gray-100 rounded-2xl animate-pulse" />)}
+          </div>
+        ) : notifications.length > 0 ? (
+          <div className="space-y-3">
+            {notifications.map(n => {
+              const personal = myEmail && n.user_email && n.user_email.toLowerCase() === myEmail;
+              return (
+                <button
+                  key={n.id}
+                  onClick={() => markRead(n.id)}
+                  className={`w-full text-left flex items-start gap-3 p-4 rounded-2xl border transition-colors ${typeStyle(n.type)} ${n.is_read ? 'opacity-60' : ''} bg-white hover:shadow-sm`}
+                >
+                  <span className={`mt-0.5 w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${typeStyle(n.type)}`}>
+                    {typeIcon(n.type)}
+                  </span>
+                  <span className="flex-1 min-w-0">
+                    <span className="block text-sm text-gray-900 leading-snug">{n.message}</span>
+                    <span className="block text-xs text-gray-400 mt-1">
+                      {personal ? 'For you • ' : ''}{n.created_at ? new Date(n.created_at).toLocaleString() : ''}
+                      {n.group_id ? ` • Group ${n.group_id}` : ''}
+                    </span>
+                  </span>
+                  {!n.is_read && <span className="w-2.5 h-2.5 bg-primary-600 rounded-full shrink-0 mt-2" />}
+                </button>
+              );
+            })}
+          </div>
+        ) : (
+          <div className="bg-white rounded-2xl border border-gray-100 p-12 text-center">
+            <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
+              <HiBell className="w-8 h-8 text-gray-400" />
             </div>
-          )}
-        </div>
+            <h3 className="font-semibold text-gray-900 mb-1">No notifications yet</h3>
+            <p className="text-sm text-gray-500 mb-6">Approvals, verifications, payouts and announcements will show here.</p>
+            <button
+              onClick={() => router.push('/dashboard')}
+              className="inline-flex items-center gap-2 bg-primary-600 text-white text-sm font-medium px-5 py-2.5 rounded-xl hover:bg-primary-700"
+            >
+              Go to Dashboard <HiChevronRight className="w-4 h-4" />
+            </button>
+          </div>
+        )}
       </div>
 
       <Footer />

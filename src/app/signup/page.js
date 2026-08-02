@@ -31,34 +31,43 @@ export default function SignUpPage() {
     email: '',
     phone: '',
     address: '',
+    referredBy: '',
     password: '',
     confirmPassword: '',
   });
   const [errors, setErrors] = useState({});
+  const [redirectPath, setRedirectPath] = useState(null); // where to go after signup (e.g. joining a group)
 
   useEffect(() => {
+    // Restore saved draft, then auto-fill "Referred by" from the referral link (?ref=UNIQUEID)
     const saved = sessionStorage.getItem(STORAGE_KEY);
-    if (saved) {
-      try { setFormData(JSON.parse(saved)); } catch (e) {}
-    }
+    let base = null;
+    if (saved) { try { base = JSON.parse(saved); } catch (e) {} }
+    const params = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : null;
+    const ref = params ? params.get('ref') : null;
+    const redir = params ? params.get('redirect') : null;
+    if (redir && redir.startsWith('/')) setRedirectPath(redir);
+    if (base || ref) setFormData(prev => ({ ...prev, ...(base || {}), ...(ref ? { referredBy: ref } : {} ) }));
   }, []);
 
   useEffect(() => {
     sessionStorage.setItem(STORAGE_KEY, JSON.stringify(formData));
   }, [formData]);
 
-  const handleFile = (file, setPreview, setData) => {
+  const handleFile = async (file, setPreview, setData) => {
     if (!file) return;
     if (file.size > 5 * 1024 * 1024) {
       toast.error('File too large. Max 5MB.');
       return;
     }
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      setPreview(e.target.result);
-      setData(e.target.result);
-    };
-    reader.readAsDataURL(file);
+    try {
+      const { compressImage } = await import('@/lib/image');
+      const compressed = await compressImage(file, 512, 0.85);
+      setPreview(compressed);
+      setData(compressed);
+    } catch {
+      toast.error('Could not read that file — try another image.');
+    }
   };
 
   const validateForm = () => {
@@ -109,7 +118,7 @@ export default function SignUpPage() {
     // Store in Supabase shared DB so owner site can see for approval - functional and reflects on owner site
     try {
       const { supabase } = await import('@/lib/supabase');
-      const { error } = await supabase.from('users').insert({
+      let { error } = await supabase.from('users').insert({
         email: formData.email.trim().toLowerCase(),
         name: formData.name,
         phone: formData.phone,
@@ -117,8 +126,44 @@ export default function SignUpPage() {
         trial_used: false,
         role: 'member',
         is_verified: false,
+        referred_by: formData.referredBy?.trim() || null,
+        profile_pic: profilePic || null,
+        id_front_url: idFront || null,
+        id_back_url: idBack || null,
       });
+      if (error) {
+        // Safety net: retry with core columns only so signup always works even if a migration hasn't been run yet
+        const retry = await supabase.from('users').insert({
+          email: formData.email.trim().toLowerCase(),
+          name: formData.name,
+          phone: formData.phone,
+          password_hash: formData.password,
+          trial_used: false,
+          role: 'member',
+        });
+        error = retry.error;
+      }
       if (error) console.log('Supabase insert fallback', error.message);
+
+      // Referral credit: referrer earns ₦200 if they are a member/admin of at least 1 group
+      const ref = (formData.referredBy || '').trim();
+      if (ref) {
+        const { data: allUsers } = await supabase.from('users').select('id,email,name,referral_earnings');
+        const referrer = (allUsers || []).find(x => x.id && String(x.id).toLowerCase().startsWith(ref.toLowerCase()));
+        if (referrer && referrer.email !== formData.email.trim().toLowerCase()) {
+          const { data: mem } = await supabase.from('members').select('id').eq('member_email', referrer.email).eq('status', 'approved');
+          const { data: adm } = await supabase.from('groups').select('id').eq('admin_email', referrer.email);
+          if ((mem && mem.length > 0) || (adm && adm.length > 0)) {
+            await supabase.from('users').update({ referral_earnings: (referrer.referral_earnings || 0) + 200 }).eq('id', referrer.id);
+            // Targeted: ONLY the referrer sees this — never broadcast to all users
+            await supabase.from('notifications').insert({
+              id: `ref-${Date.now()}`, type: 'referral_bonus', is_read: false,
+              user_email: referrer.email,
+              message: `🎁 ${formData.name} registered with your referral link — ₦200 earned. Minimum withdrawal ₦1,000.`,
+            });
+          }
+        }
+      }
     } catch (err) {
       console.log('Supabase insert error, using mock fallback', err.message);
     }
@@ -161,8 +206,8 @@ export default function SignUpPage() {
           <h2 className="text-xl font-bold text-gray-900 mb-2">Account Created! 🎉</h2>
           <p className="text-gray-500 mb-2">Your documents have been submitted for review.</p>
           <p className="text-sm text-gray-400 mb-6">An admin will verify your ID and profile picture before you can join groups.</p>
-          <button onClick={() => router.push('/dashboard')} className="w-full bg-primary-600 text-white font-semibold py-3.5 rounded-xl hover:bg-primary-700 transition-all shadow-lg shadow-primary-200">
-            Go to Dashboard
+          <button onClick={() => router.push(redirectPath || '/dashboard')} className="w-full bg-primary-600 text-white font-semibold py-3.5 rounded-xl hover:bg-primary-700 transition-all shadow-lg shadow-primary-200">
+            {redirectPath ? 'Continue →' : 'Go to Dashboard'}
           </button>
         </div>
         <Footer />
@@ -218,6 +263,15 @@ export default function SignUpPage() {
                 <input type="text" value={formData.address} onChange={e => updateField('address', e.target.value)} placeholder="Your home address" className={`w-full pl-11 pr-4 py-3 border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 ${errors.address ? 'border-red-300' : 'border-gray-200'}`} />
               </div>
               {errors.address && <p className="text-xs text-red-500 mt-1">{errors.address}</p>}
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1.5">Referred by (unique ID) <span className="text-gray-400 text-xs font-normal">— optional</span></label>
+              <div className="relative">
+                <HiUser className="absolute left-3.5 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+                <input type="text" value={formData.referredBy} onChange={e => updateField('referredBy', e.target.value)} placeholder="Unique ID of who referred you" className="w-full pl-11 pr-4 py-3 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary-500" />
+              </div>
+              <p className="text-xs text-gray-400 mt-1">Auto-filled when you open someone's referral link. The referrer earns ₦200.</p>
             </div>
 
             <div className="grid grid-cols-2 gap-4">

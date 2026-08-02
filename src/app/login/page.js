@@ -1,7 +1,7 @@
 'use client';
 
-import { useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useState, useEffect, Suspense } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import Header from '@/components/Header';
 import Footer from '@/components/Footer';
@@ -9,12 +9,22 @@ import { loginUser } from '@/lib/data';
 import { HiMail, HiLockClosed, HiEye, HiEyeOff } from 'react-icons/hi';
 import toast from 'react-hot-toast';
 
-export default function LoginPage() {
+function LoginForm() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  // After login, send the user back to where they were headed (e.g. joining a group)
+  const redirect = searchParams.get('redirect') || '/dashboard';
   const [showPassword, setShowPassword] = useState(false);
   const [formData, setFormData] = useState({ email: '', password: '' });
   const [errors, setErrors] = useState({});
   const [loading, setLoading] = useState(false);
+
+  // Already logged in? Skip the login form — straight to where you belong
+  useEffect(() => {
+    try {
+      if (localStorage.getItem('payround_user')) router.replace(redirect);
+    } catch {}
+  }, [redirect]);
 
   const validate = () => {
     const newErrors = {};
@@ -43,11 +53,11 @@ export default function LoginPage() {
             faceVerified: true,
           }));
           toast.success(`Welcome back, ${users.name}!`);
-          router.push('/dashboard');
+          router.push(redirect);
           setLoading(false);
           return;
         } else {
-          toast.error('Incorrect password. Only your password works for your account.');
+          toast.error('Incorrect password. Please try again.');
           setLoading(false);
           return;
         }
@@ -64,9 +74,9 @@ export default function LoginPage() {
           faceVerified: result.user.faceVerified,
         }));
         toast.success(`Welcome back, ${result.user.name}!`);
-        router.push('/dashboard');
+        router.push(redirect);
       } else {
-        toast.error(result.error + ' - If you signed up with Supabase, use that password. Only your password works.');
+        toast.error('Invalid email or password. Please check your details and try again.');
       }
     } catch (err) {
       toast.error('Login failed: ' + err.message);
@@ -88,7 +98,7 @@ export default function LoginPage() {
             <span className="text-white font-bold text-2xl">P</span>
           </div>
           <h1 className="text-2xl font-bold text-gray-900">Welcome Back</h1>
-          <p className="text-gray-500 mt-1">Log in - 1 account per email, only your password works</p>
+          <p className="text-gray-500 mt-1">Log in to your account to continue</p>
         </div>
         <div className="bg-white rounded-2xl border border-gray-100 p-6 md:p-8 shadow-sm">
           <form onSubmit={handleSubmit} className="space-y-4">
@@ -109,13 +119,28 @@ export default function LoginPage() {
               </div>
               {errors.password && <p className="text-xs text-red-500 mt-1">{errors.password}</p>}
             </div>
-            <div className="flex justify-end"><a href="/forgot-password" className="text-xs text-primary-600 font-medium hover:text-primary-700">Forgot password? Reset link will be sent to your email</a></div>
+            <div className="flex justify-end"><a href="/forgot-password" className="text-xs text-primary-600 font-medium hover:text-primary-700">Forgot password?</a></div>
             <button type="submit" disabled={loading} className="w-full bg-primary-600 text-white font-semibold py-3.5 rounded-xl hover:bg-primary-700 transition-all shadow-lg shadow-primary-200 disabled:opacity-50">{loading ? 'Logging in...' : 'Log In'}</button>
           </form>
-          <p className="text-center text-sm text-gray-500 mt-6">Don&apos;t have an account? <a href="/signup" className="text-primary-600 font-medium hover:text-primary-700">Sign up - 1 account per email</a></p>
+          {redirect !== '/dashboard' && (
+            <p className="text-center text-xs text-gray-400 mt-4">After logging in we&apos;ll take you right back to where you were.</p>
+          )}
+          <p className="text-center text-sm text-gray-500 mt-6">Don&apos;t have an account? <a href={`/signup?redirect=${encodeURIComponent(redirect)}`} className="text-primary-600 font-medium hover:text-primary-700">Sign up</a></p>
         </div>
       </div>
       <Footer />
     </div>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600"></div>
+      </div>
+    }>
+      <LoginForm />
+    </Suspense>
   );
 }

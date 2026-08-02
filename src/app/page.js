@@ -20,19 +20,47 @@ export default function HomePage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState([]);
   const [showSearchResults, setShowSearchResults] = useState(false);
+  const [stats, setStats] = useState({ users: 0, groups: 0, saved: 0, satisfaction: null });
+  const [gate, setGate] = useState('checking'); // checking | guest — prevents landing-page flash for logged-in users
 
+  // Already logged in? Skip the landing page — go straight to the dashboard (no flash)
   useEffect(() => {
-    // When a user that is already registered launches the app/site it should take them directly to their dashboard
     try {
-      const stored = localStorage.getItem('payround_user');
-      if (stored) {
-        const parsed = JSON.parse(stored);
-        if (parsed && parsed.email) {
-          router.push('/dashboard');
-        }
-      }
+      if (localStorage.getItem('payround_user')) { router.replace('/dashboard'); return; }
     } catch {}
+    setGate('guest');
   }, [router]);
+
+  // Real-time stats from Supabase (refreshed every 30s); PayRound can override any value from the owner panel
+  useEffect(() => {
+    let mounted = true;
+    const loadStats = async () => {
+      try {
+        const { supabase } = await import('@/lib/supabase');
+        const [u, g, rv, rc, s] = await Promise.all([
+          supabase.from('users').select('*', { count: 'exact', head: true }),
+          supabase.from('groups').select('*', { count: 'exact', head: true }).in('status', ['active', 'approved']),
+          supabase.from('group_reviews').select('rating'),
+          supabase.from('member_receipts').select('amount').in('status', ['active', 'approved']),
+          supabase.from('owner_settings').select('stats_users_override, stats_groups_override, stats_saved_override, stats_satisfaction_override').eq('id', 1).single(),
+        ]);
+        if (!mounted) return;
+        const ratings = rv.data || [];
+        const realSat = ratings.length ? Math.round((ratings.reduce((a, x) => a + (x.rating || 0), 0) / (ratings.length * 5)) * 100) : null;
+        const realSaved = (rc.data || []).reduce((a, x) => a + (x.amount || 0), 0);
+        const o = s.data || {};
+        setStats({
+          users: o.stats_users_override ?? (u.count || 0),
+          groups: o.stats_groups_override ?? (g.count || 0),
+          saved: o.stats_saved_override ?? realSaved,
+          satisfaction: o.stats_satisfaction_override ?? realSat,
+        });
+      } catch {}
+    };
+    loadStats();
+    const t = setInterval(loadStats, 30000);
+    return () => { mounted = false; clearInterval(t); };
+  }, []);
 
   const activeAds = businessAds.filter(ad => ad.active);
 
@@ -63,6 +91,20 @@ export default function HomePage() {
     { num: 3, title: 'Contribute', desc: 'Pay to the admin and upload your receipt as proof.' },
     { num: 4, title: 'Track & Get Paid', desc: 'Monitor progress and receive your payout when it\'s your turn.' },
   ];
+
+  // While we check the session, show a clean splash — logged-in users never see the landing
+  if (gate === 'checking') {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center">
+          <div className="w-12 h-12 bg-gradient-to-br from-primary-600 to-primary-500 rounded-2xl flex items-center justify-center mx-auto mb-3 shadow-lg shadow-primary-200">
+            <span className="text-white font-bold text-2xl">P</span>
+          </div>
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600 mx-auto"></div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -306,19 +348,19 @@ export default function HomePage() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="grid grid-cols-2 md:grid-cols-4 gap-8 text-center">
             <div>
-              <p className="text-3xl md:text-4xl font-bold text-white mb-1">245+</p>
+              <p className="text-3xl md:text-4xl font-bold text-white mb-1">{stats.users}</p>
               <p className="text-primary-200 text-sm">Registered Users</p>
             </div>
             <div>
-              <p className="text-3xl md:text-4xl font-bold text-white mb-1">18</p>
+              <p className="text-3xl md:text-4xl font-bold text-white mb-1">{stats.groups}</p>
               <p className="text-primary-200 text-sm">Active Groups</p>
             </div>
             <div>
-              <p className="text-3xl md:text-4xl font-bold text-white mb-1">₦2.4M+</p>
+              <p className="text-3xl md:text-4xl font-bold text-white mb-1">{`₦${Intl.NumberFormat('en', { notation: 'compact', maximumFractionDigits: 1 }).format(stats.saved)}`}</p>
               <p className="text-primary-200 text-sm">Saved Through Platform</p>
             </div>
             <div>
-              <p className="text-3xl md:text-4xl font-bold text-white mb-1">96%</p>
+              <p className="text-3xl md:text-4xl font-bold text-white mb-1">{stats.satisfaction !== null && stats.satisfaction !== undefined ? `${stats.satisfaction}%` : '—'}</p>
               <p className="text-primary-200 text-sm">Member Satisfaction</p>
             </div>
           </div>

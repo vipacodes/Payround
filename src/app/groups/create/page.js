@@ -32,6 +32,8 @@ export default function CreateGroupPage() {
   const [selfiePreview, setSelfiePreview] = useState(null);
   const [idFile, setIdFile] = useState(null);
   const [idPreview, setIdPreview] = useState(null);
+  const [avatarPreview, setAvatarPreview] = useState(null);
+  const fileAvatarRef = useRef(null);
   const [receiptFile, setReceiptFile] = useState(null);
   const [receiptPreview, setReceiptPreview] = useState(null);
   const [trialUsed, setTrialUsed] = useState(false);
@@ -106,6 +108,7 @@ export default function CreateGroupPage() {
       const groups = JSON.parse(localStorage.getItem('payround_groups_custom') || '[]');
       groups.push({ id: groupId, ...formData, color: selectedColor, status: 'trial_active', trialEndsAt: new Date(Date.now()+7*24*60*60*1000).toISOString(), createdAt: new Date().toISOString() });
       localStorage.setItem('payround_groups_custom', JSON.stringify(groups));
+      syncGroupToSupabase(groupId, 'trial_active', false);
       toast.success(`Group ${groupId} created on trial!`);
       router.push(`/groups/${groupId}`);
     }, 1500);
@@ -113,18 +116,19 @@ export default function CreateGroupPage() {
 
   const handlePay = () => {
     if (!selfieFile || !idFile) { toast.error('Selfie + ID mandatory'); return; }
-    if (!receiptFile) { toast.error('Upload receipt of ₦5000 to Palmpay 9151723199 Basikoro James Okeroghene'); return; }
-    toast.success('Payment receipt uploaded - pending Payround approval.');
+    if (!receiptFile) { toast.error(`Upload receipt of ₦${planPrice.toLocaleString()} to Palmpay 9151723199 Basikoro James Okeroghene`); return; }
+    toast.success('Payment receipt uploaded - pending PayRound approval.');
     setPaid(true);
     setTimeout(() => {
       const groupId = 'PR' + Math.floor(10000 + Math.random() * 90000);
       const groups = JSON.parse(localStorage.getItem('payround_groups_custom') || '[]');
       groups.push({ id: groupId, ...formData, color: selectedColor, status: 'pending_owner', hasReceipt: true, createdAt: new Date().toISOString() });
       localStorage.setItem('payround_groups_custom', JSON.stringify(groups));
-      const waMsg = `New Group Request: ${formData.name} by user, ₦5000 paid to Palmpay 9151723199, needs approval. Selfie+ID attached.`;
+      syncGroupToSupabase(groupId, 'pending_owner', true);
+      const waMsg = `New Group Request: ${formData.name} by user, ₦${planPrice.toLocaleString()} paid (${selectedPlan}-month plan) to Palmpay 9151723199, needs approval. Selfie+ID attached.`;
       const waLink = `https://wa.me/2349151723199?text=${encodeURIComponent(waMsg)}`;
       window.open(waLink, '_blank');
-      toast.success(`Group ${groupId} saved pending Payround approval`);
+      toast.success(`Group ${groupId} saved pending PayRound approval`);
       router.push(`/`);
     }, 1500);
   };
@@ -134,7 +138,50 @@ export default function CreateGroupPage() {
   const removeRule = (index) => { if (formData.rules.length>1) setFormData(prev=>({...prev, rules: prev.rules.filter((_,i)=>i!==index)})); };
   const updateField = (field, value) => setFormData(prev=>({...prev, [field]:value}));
 
-  const creationFee = 5000;
+  // Subscription plans — prices controlled by the owner. 1mo ₦1,500 / 6mo ₦8,000 / 12mo ₦15,000
+  const PLAN_MONTHS = [1, 6, 12];
+  const [planPrices, setPlanPrices] = useState({ 1: 1500, 6: 8000, 12: 15000 });
+  const [selectedPlan, setSelectedPlan] = useState(6);
+  useEffect(() => {
+    (async () => {
+      try {
+        const { supabase } = await import('@/lib/supabase');
+        const { data: s } = await supabase.from('owner_settings').select('plan_1m, plan_6m, plan_12m').eq('id', 1).single();
+        if (s) setPlanPrices({ 1: s.plan_1m ?? 1500, 6: s.plan_6m ?? 8000, 12: s.plan_12m ?? 15000 });
+      } catch {}
+    })();
+  }, []);
+  const planPrice = planPrices[selectedPlan] || 8000;
+
+  // Store group in Supabase so the owner panel can review/approve it (reflects on both sites)
+  const syncGroupToSupabase = async (groupId, status, withReceipt) => {
+    try {
+      const { supabase } = await import('@/lib/supabase');
+      let adminEmail = '', adminName = '';
+      const s = localStorage.getItem('payround_user');
+      if (s) { try { const u = JSON.parse(s); adminEmail = u.email || ''; adminName = u.name || ''; } catch {} }
+      await supabase.from('groups').insert({
+        id: groupId,
+        name: formData.name,
+        description: formData.description,
+        amount: parseInt(formData.contributionAmount) || 0,
+        frequency: formData.schedule || 'Weekly',
+        max_members: parseInt(formData.maxMembers) || 0,
+        color: selectedColor,
+        admin_email: adminEmail,
+        admin_name: adminName,
+        status,
+        selfie_url: selfiePreview || null,
+        id_url: idPreview || null,
+        id_type: formData.idType,
+        avatar_url: avatarPreview || null,
+        plan_months: withReceipt ? selectedPlan : null,
+        plan_price: withReceipt ? planPrice : null,
+        expiry_at: withReceipt ? new Date(Date.now() + selectedPlan * 30 * 24 * 60 * 60 * 1000).toISOString() : null,
+        creation_receipt_url: withReceipt ? (receiptPreview || null) : null,
+      });
+    } catch (e) { console.log('Group sync to Supabase failed (offline ok)', e.message); }
+  };
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -165,6 +212,16 @@ export default function CreateGroupPage() {
               <div className="flex items-center gap-2 mb-2"><HiUserGroup className="w-6 h-6 text-primary-600" /><h2 className="text-lg font-semibold">Group Information</h2></div>
               <div><label className="block text-sm font-medium mb-1.5">Group Name *</label><input type="text" value={formData.name} onChange={(e)=>updateField('name', e.target.value)} placeholder="e.g., Bright Future Ajo" className="w-full px-4 py-3 border rounded-xl text-sm focus:ring-2 focus:ring-primary-500 outline-none" /></div>
               <div><label className="block text-sm font-medium mb-1.5">Description *</label><textarea value={formData.description} onChange={(e)=>updateField('description', e.target.value)} placeholder="Describe purpose..." rows={3} className="w-full px-4 py-3 border rounded-xl text-sm focus:ring-2 focus:ring-primary-500 resize-none outline-none" /></div>
+
+              <div>
+                <label className="block text-sm font-medium mb-1.5">Group Picture <span className="text-gray-400 text-xs font-normal">(optional — shown on the group profile)</span></label>
+                <input type="file" ref={fileAvatarRef} accept="image/*" className="hidden" onChange={(e)=>{const f=e.target.files[0]; if(f){ if(f.size>5*1024*1024){toast.error('Max 5MB'); return;} const r=new FileReader(); r.onload=(ev)=>setAvatarPreview(ev.target.result); r.readAsDataURL(f);}}} />
+                {avatarPreview ? (
+                  <div className="relative w-24 h-24"><img src={avatarPreview} className="w-24 h-24 rounded-2xl object-cover border" /><button type="button" onClick={()=>setAvatarPreview(null)} className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full w-6 h-6 flex items-center justify-center">×</button></div>
+                ) : (
+                  <div onClick={()=>fileAvatarRef.current?.click()} className="border-2 border-dashed rounded-xl p-4 text-center cursor-pointer bg-white hover:border-primary-400 w-fit"><HiPhotograph className="w-6 h-6 mx-auto text-gray-400"/><p className="text-xs mt-1">Upload Group Picture</p></div>
+                )}
+              </div>
               
               <div>
                 <label className="block text-sm font-medium mb-2">Group Color * (12 options)</label>
@@ -214,7 +271,7 @@ export default function CreateGroupPage() {
           {step === 3 && (
             <div className="space-y-4">
               <div className="flex items-center gap-2 mb-4"><HiBanknotes className="w-6 h-6 text-primary-600" /><h2 className="text-lg font-semibold">Bank Details (for members to pay admin)</h2></div>
-              <p className="text-sm text-gray-500">Members will send contributions to this account - not Owner account.</p>
+              <p className="text-sm text-gray-500">Members will send contributions to this account - not to PayRound.</p>
               <div><label className="block text-sm font-medium mb-1.5">Bank Name *</label><input type="text" value={formData.bankName} onChange={(e)=>updateField('bankName', e.target.value)} placeholder="GTBank" className="w-full px-4 py-3 border rounded-xl text-sm outline-none" /></div>
               <div><label className="block text-sm font-medium mb-1.5">Account Name *</label><input type="text" value={formData.accountName} onChange={(e)=>updateField('accountName', e.target.value)} placeholder="Account holder" className="w-full px-4 py-3 border rounded-xl text-sm outline-none" /></div>
               <div><label className="block text-sm font-medium mb-1.5">Account Number *</label><input type="text" value={formData.accountNumber} onChange={(e)=>updateField('accountNumber', e.target.value)} placeholder="0123456789" maxLength={10} className="w-full px-4 py-3 border rounded-xl text-sm font-mono outline-none" /></div>
@@ -234,10 +291,10 @@ export default function CreateGroupPage() {
 
           {step === 5 && (
             <div className="space-y-6">
-              <div className="flex items-center gap-2 mb-2"><HiShieldCheck className="w-6 h-6 text-primary-600" /><h2 className="text-lg font-semibold">Review & Pay to Payround</h2></div>
+              <div className="flex items-center gap-2 mb-2"><HiShieldCheck className="w-6 h-6 text-primary-600" /><h2 className="text-lg font-semibold">Review & Pay</h2></div>
               
               <div className="p-4 bg-amber-50 border border-amber-200 rounded-xl">
-                <div className="font-bold text-sm">Pay to Payround</div>
+                <div className="font-bold text-sm">Pay to PayRound</div>
                 <div className="text-xs mt-1">Bank: Palmpay | Acct: 9151723199 | Name: Basikoro James Okeroghene</div>
               </div>
 
@@ -264,23 +321,37 @@ export default function CreateGroupPage() {
                   <div className="flex items-center gap-3"><div className="flex-1 h-px bg-gray-200"/><span className="text-sm text-gray-400">OR</span><div className="flex-1 h-px bg-gray-200"/></div>
 
                   <div className="p-5 bg-gold-50 rounded-2xl border border-gold-100">
-                    <div className="flex justify-between mb-2"><span className="text-sm font-medium">Pay ₦5000 Now</span><span className="text-2xl font-bold">₦{creationFee.toLocaleString()}</span></div>
-                    <p className="text-xs text-gray-500 mb-3">Upload receipt of ₦5000 payment to Palmpay account above.</p>
-                    
+                    <div className="text-sm font-medium mb-3">Choose a subscription plan</div>
+                    <div className="grid grid-cols-3 gap-2 mb-4">
+                      {PLAN_MONTHS.map(m => (
+                        <button
+                          key={m}
+                          type="button"
+                          onClick={() => setSelectedPlan(m)}
+                          className={`rounded-xl border-2 p-3 text-center transition-all ${selectedPlan === m ? 'border-primary-600 bg-white shadow-md' : 'border-transparent bg-white/60 hover:bg-white'}`}
+                        >
+                          <div className="font-bold text-gray-900 text-sm">{m} Month{m > 1 ? 's' : ''}</div>
+                          <div className={`text-xs font-bold mt-0.5 ${selectedPlan === m ? 'text-primary-700' : 'text-gray-500'}`}>₦{(planPrices[m] || 0).toLocaleString()}</div>
+                        </button>
+                      ))}
+                    </div>
+                    <div className="flex justify-between mb-2"><span className="text-sm font-medium">{selectedPlan}-Month Plan</span><span className="text-2xl font-bold">₦{planPrice.toLocaleString()}</span></div>
+                    <p className="text-xs text-gray-500 mb-3">Covers {selectedPlan} month{selectedPlan > 1 ? 's' : ''} of the platform. Upload receipt of ₦{planPrice.toLocaleString()} payment to the Palmpay account above.</p>
+
                     <div className="border-2 border-dashed rounded-xl p-4 bg-white mb-3">
                       <label className="block text-xs font-bold mb-2">Payment Receipt * (Palmpay {platformInfo.owner.accountNumber})</label>
                       <input type="file" ref={fileReceiptRef} accept="image/*,image/heic,image/heif,application/pdf,.pdf,video/*" onChange={(e)=>{const f=e.target.files[0]; if(f){setReceiptFile(f); const r=new FileReader(); r.onload=(ev)=>setReceiptPreview(ev.target.result); r.readAsDataURL(f);}}} className="hidden" />
                       {receiptPreview ? (<div className="relative w-24 h-24"><img src={receiptPreview} className="w-24 h-24 rounded-xl object-cover border" /><button type="button" onClick={()=>{setReceiptFile(null); setReceiptPreview(null);}} className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full w-6 h-6 flex items-center justify-center">×</button></div>) : (<div onClick={()=>fileReceiptRef.current?.click()} className="border rounded-xl p-4 text-center cursor-pointer"><HiPhotograph className="w-6 h-6 mx-auto text-gray-400"/><p className="text-xs mt-1">Upload Receipt</p></div>)}
                     </div>
 
-                    <button onClick={handlePay} className="w-full bg-black text-white font-bold py-3.5 rounded-xl shadow-xl flex items-center justify-center gap-2">Pay ₦{creationFee.toLocaleString()} & Create</button>
+                    <button onClick={handlePay} className="w-full bg-black text-white font-bold py-3.5 rounded-xl shadow-xl flex items-center justify-center gap-2">Pay ₦{planPrice.toLocaleString()} & Create</button>
                   </div>
                 </div>
               ) : (
                 <div className="text-center py-6">
                   <div className="w-16 h-16 bg-emerald-50 rounded-full flex items-center justify-center mx-auto mb-4"><HiCheckCircle className="w-10 h-10 text-emerald-500" /></div>
-                  <p className="text-lg font-semibold">{startedTrial ? '🎉 Trial Started!' : 'Pending Verification'}</p>
-                  <p className="text-sm text-gray-500">{startedTrial ? 'Your trial has begun.' : 'Receipt uploaded. Payround will review and approve.'}</p>
+                  <p className="text-lg font-semibold">{startedTrial ? '🎉 Trial Started!' : 'Pending PayRound Approval'}</p>
+                  <p className="text-sm text-gray-500">{startedTrial ? 'Your trial has begun.' : 'Receipt uploaded. PayRound will review and approve.'}</p>
                 </div>
               )}
             </div>
