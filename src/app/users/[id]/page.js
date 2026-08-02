@@ -8,7 +8,7 @@ import LoadingScreen from '@/components/LoadingScreen';
 import ImageLightbox from '@/components/ImageLightbox';
 import {
   HiArrowLeft, HiBadgeCheck, HiUserGroup, HiCalendar,
-  HiShieldCheck, HiUser, HiCheck, HiUserAdd, HiPhone
+  HiShieldCheck, HiUser, HiCheck, HiUserAdd, HiPhone, HiChatAlt2
 } from 'react-icons/hi';
 import toast from 'react-hot-toast';
 import FollowersList from '@/components/FollowersList';
@@ -189,6 +189,15 @@ export default function PublicUserProfilePage() {
               className="text-sm font-semibold text-gray-900 hover:text-primary-600 transition-colors">
               {followers} <span className="text-xs font-normal text-gray-500">Follower{followers === 1 ? '' : 's'}</span>
             </button>
+            {meEmail && meEmail !== (person.email || '').toLowerCase() && (
+              <button
+                onClick={() => router.push(`/messages?to=${encodeURIComponent((person.email || '').toLowerCase())}`)}
+                title="Send them a message"
+                className="flex items-center gap-1.5 text-sm font-semibold px-5 py-2 rounded-full bg-gray-900 text-white hover:bg-gray-800 transition-all"
+              >
+                <HiChatAlt2 className="w-4 h-4" /> Message
+              </button>
+            )}
             {(!meEmail || meEmail !== (person.email || '').toLowerCase()) && (
               <button
                 onClick={toggleFollow}

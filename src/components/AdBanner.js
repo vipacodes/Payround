@@ -4,11 +4,21 @@ import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { HiExternalLink, HiPhone, HiChevronLeft, HiChevronRight } from 'react-icons/hi';
 
-// Media helpers — ads can carry a slideshow of business images/videos
+// Media helpers — ads can carry a slideshow of business images/videos.
+// An item may be a plain data-URL string OR an object { src, name?, price? } (priced items).
 export function parseAdMedia(raw) {
   try {
     const arr = JSON.parse(raw || '[]');
-    return Array.isArray(arr) ? arr.filter(Boolean) : [];
+    if (!Array.isArray(arr)) return [];
+    return arr.map(x => (typeof x === 'string' ? x : x?.src)).filter(Boolean);
+  } catch { return []; }
+}
+// Full items with optional name + price attached (business profile shop items)
+export function parseAdItems(raw) {
+  try {
+    const arr = JSON.parse(raw || '[]');
+    if (!Array.isArray(arr)) return [];
+    return arr.map(x => (typeof x === 'string' ? { src: x } : (x && x.src ? x : null))).filter(Boolean);
   } catch { return []; }
 }
 export function isVideoSrc(src) {

@@ -5,7 +5,7 @@ import { useRouter, useParams, useSearchParams } from 'next/navigation';
 import Header from '@/components/Header';
 import Footer from '@/components/Footer';
 import LoadingScreen from '@/components/LoadingScreen';
-import { parseAdMedia, isVideoSrc } from '@/components/AdBanner';
+import { parseAdItems, isVideoSrc } from '@/components/AdBanner';
 import {
   HiArrowLeft, HiExternalLink, HiPhone, HiPlay, HiShare, HiTrash, HiPlusCircle,
   HiBadgeCheck, HiOfficeBuilding, HiChatAlt2, HiStar
@@ -28,6 +28,8 @@ const itemUrl = (id, idx) => `${SITE_URL}/business/${id}?item=${idx}`;
 // PayRound accounts allowed to manage ANY ad's items (e.g. the house ads)
 const MANAGER_EMAILS = ['vipadarapper@gmail.com', 'payroundsupport@gmail.com'];
 const MAX_ITEMS = 12;
+// A posted item carries an optional name + price (₦) shown to everyone
+const priceOk = (m) => m && m.price !== undefined && m.price !== null && m.price !== '';
 
 function BusinessContent() {
   const router = useRouter();
@@ -40,6 +42,9 @@ function BusinessContent() {
   const [notFound, setNotFound] = useState(false);
   const [viewerEmail, setViewerEmail] = useState('');
   const [adding, setAdding] = useState(false);
+  const [draft, setDraft] = useState(null); // staged media { src, isVideo } awaiting name/price
+  const [itemName, setItemName] = useState('');
+  const [itemPrice, setItemPrice] = useState('');
 
   useEffect(() => {
     let mounted = true;
@@ -62,10 +67,10 @@ function BusinessContent() {
     return () => { mounted = false; };
   }, [params.id]);
 
-  // Advertiser posts a NEW item — it goes live instantly (photos compressed, videos up to 6MB)
-  const addItem = async (file) => {
+  // Step 1: stage a picked photo/video — then the advertiser adds the item's name & price
+  const stageItem = async (file) => {
     if (!file) return;
-    const items = parseAdMedia(ad.media_urls);
+    const items = parseAdItems(ad.media_urls);
     if (items.length >= MAX_ITEMS) { toast.error(`Maximum of ${MAX_ITEMS} items per business — delete one first.`); return; }
     const isVideo = file.type.startsWith('video/');
     if (!isVideo && !file.type.startsWith('image/')) { toast.error('Only images and videos are allowed.'); return; }
@@ -79,11 +84,29 @@ function BusinessContent() {
         const { compressImage } = await import('@/lib/image');
         dataUrl = await compressImage(file, 900, 0.82);
       }
-      const next = [...items, dataUrl];
+      setItemName(''); setItemPrice('');
+      setDraft({ src: dataUrl, isVideo });
+    } catch { toast.error('Could not read that file — try another.'); }
+    setAdding(false);
+  };
+
+  // Step 2: post the staged item WITH its name & price — live instantly for everyone
+  const postItem = async () => {
+    if (!draft) return;
+    const price = itemPrice.trim() ? Number(itemPrice.replace(/[^0-9.]/g, '')) : null;
+    if (itemPrice.trim() && (!Number.isFinite(price) || price < 0)) { toast.error('Enter a valid price in naira.'); return; }
+    setAdding(true);
+    try {
+      const items = parseAdItems(ad.media_urls);
+      const item = { src: draft.src };
+      if (itemName.trim()) item.name = itemName.trim();
+      if (price !== null) item.price = price;
+      const next = [...items, item];
       const { supabase } = await import('@/lib/supabase');
       const { error } = await supabase.from('ads').update({ media_urls: JSON.stringify(next) }).eq('id', ad.id);
       if (error) throw error;
       setAd(prev => ({ ...prev, media_urls: JSON.stringify(next) }));
+      setDraft(null);
       toast.success('✅ Item added — it is live now! Tap Share to send it to your WhatsApp groups & status. 📤');
     } catch (e) { toast.error(`Could not add item: ${e.message || 'try again'}`); }
     setAdding(false);
@@ -92,7 +115,7 @@ function BusinessContent() {
   // Advertiser (or PayRound) can delete an item — it disappears for everyone
   const deleteItem = async (idx) => {
     if (!window.confirm('Delete this item? It disappears for everyone.')) return;
-    const items = parseAdMedia(ad.media_urls);
+    const items = parseAdItems(ad.media_urls);
     const next = items.filter((_, i) => i !== idx);
     try {
       const { supabase } = await import('@/lib/supabase');
@@ -119,12 +142,13 @@ function BusinessContent() {
     );
   }
 
-  const media = parseAdMedia(ad.media_urls).map((src, idx) => ({ src, idx }));
+  const media = parseAdItems(ad.media_urls).map((it, idx) => ({ ...it, idx }));
   const pinned = pinnedItem >= 0 && pinnedItem < media.length ? media[pinnedItem] : null;
   const rest = media.filter((m) => m.idx !== pinnedItem);
   const wa = waLink(ad.whatsapp || ad.contact);
   // The advertiser manages their own items; PayRound accounts can manage any ad
   const canManage = !!viewerEmail && (viewerEmail === (ad.submitter_email || '').toLowerCase() || MANAGER_EMAILS.includes(viewerEmail));
+  const ownerEmail = (ad.submitter_email || '').toLowerCase();
 
   const shareBizText = () => `🛍️ ${ad.business_name}\n${(ad.description || '').slice(0, 120)}\n\nSee all their items on PayRound: ${bizUrl(ad.id)}`;
   const shareItemText = (idx) => `🛍️ Check out this item from ${ad.business_name} on PayRound:\n${itemUrl(ad.id, idx)}\n\n💬 View all their items and chat with the business right there.`;
@@ -174,6 +198,12 @@ function BusinessContent() {
             <a href={waShare(shareBizText())} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 bg-[#25D366]/10 text-[#128C4A] border border-[#25D366]/40 text-sm font-semibold px-4 py-2.5 rounded-xl hover:bg-[#25D366]/20 transition-all">
               <HiShare className="w-5 h-5" /> Share Business
             </a>
+            {ownerEmail && ownerEmail !== 'visitor' && ownerEmail !== viewerEmail && (
+              <button onClick={() => router.push(`/messages?to=${encodeURIComponent(ownerEmail)}`)}
+                className="flex items-center gap-2 bg-gray-900 text-white text-sm font-semibold px-4 py-2.5 rounded-xl hover:bg-gray-800 transition-all">
+                <HiChatAlt2 className="w-5 h-5" /> Message
+              </button>
+            )}
             {ad.contact && (
               <a href={`tel:${ad.contact}`} className="flex items-center gap-2 bg-gray-100 text-gray-700 text-sm font-medium px-4 py-2.5 rounded-xl hover:bg-gray-200 transition-all">
                 <HiPhone className="w-4 h-4" /> {ad.contact}
@@ -196,10 +226,36 @@ function BusinessContent() {
               <label className={`inline-flex items-center gap-2 bg-emerald-600 text-white text-sm font-semibold px-4 py-2.5 rounded-xl cursor-pointer hover:bg-emerald-700 transition-colors ${adding ? 'opacity-60 pointer-events-none' : ''}`}>
                 <HiPlusCircle className="w-5 h-5" />
                 {adding ? 'Adding…' : 'Add Item (photo or video)'}
-                <input type="file" accept="image/*,video/*" className="hidden" disabled={adding} onChange={(e) => { addItem(e.target.files[0]); e.target.value = ''; }} />
+                <input type="file" accept="image/*,video/*" className="hidden" disabled={adding} onChange={(e) => { stageItem(e.target.files[0]); e.target.value = ''; }} />
               </label>
               <span className="text-[11px] text-emerald-700">{media.length}/{MAX_ITEMS} items live</span>
             </div>
+            {/* staged item — add name & price before it goes live */}
+            {draft && (
+              <div className="mt-3 bg-white border border-emerald-200 rounded-xl p-3">
+                <div className="flex items-start gap-3">
+                  {draft.isVideo ? (
+                    <video src={draft.src} muted className="w-20 h-20 object-cover rounded-lg bg-black shrink-0" />
+                  ) : (
+                    <img src={draft.src} alt="" className="w-20 h-20 object-cover rounded-lg shrink-0" />
+                  )}
+                  <div className="flex-1 space-y-2">
+                    <input type="text" value={itemName} onChange={e => setItemName(e.target.value)} placeholder="Item name (optional) e.g. Ankara bag" maxLength={60}
+                      className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500" />
+                    <div className="flex items-center border border-gray-200 rounded-lg overflow-hidden focus-within:ring-2 focus-within:ring-emerald-500">
+                      <span className="px-3 py-2 bg-gray-50 text-sm font-bold text-gray-500 border-r border-gray-200">₦</span>
+                      <input type="text" inputMode="numeric" value={itemPrice} onChange={e => setItemPrice(e.target.value.replace(/[^0-9.]/g, ''))} placeholder="Price (optional) e.g. 8500"
+                        className="flex-1 px-3 py-2 text-sm focus:outline-none" />
+                    </div>
+                    <div className="flex gap-2">
+                      <button onClick={postItem} disabled={adding} className="flex-1 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white text-xs font-bold py-2 rounded-lg transition-colors">{adding ? 'Posting…' : '✅ Post Item'}</button>
+                      <button onClick={() => setDraft(null)} className="px-3 py-2 text-xs font-semibold text-gray-500 border border-gray-200 rounded-lg hover:bg-gray-50">Cancel</button>
+                    </div>
+                  </div>
+                </div>
+                <p className="text-[10px] text-emerald-700 mt-2">💡 Items with clear prices get more messages from buyers.</p>
+              </div>
+            )}
           </div>
         )}
 
@@ -211,6 +267,12 @@ function BusinessContent() {
               <video src={pinned.src} controls autoPlay muted playsInline className="w-full max-h-[420px] rounded-xl bg-black" />
             ) : (
               <img src={pinned.src} alt="" className="w-full max-h-[420px] object-contain rounded-xl bg-gray-50" />
+            )}
+            {(pinned.name || priceOk(pinned)) && (
+              <div className="flex items-center gap-2 flex-wrap mt-3">
+                {pinned.name && <p className="text-sm font-bold text-gray-900">{pinned.name}</p>}
+                {priceOk(pinned) && <span className="bg-gold-500 text-gray-900 text-xs font-bold px-2.5 py-1 rounded-full">₦{Number(pinned.price).toLocaleString()}</span>}
+              </div>
             )}
             <div className="flex items-center gap-4 mt-3">
               <a href={waShare(shareItemText(pinned.idx))} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1.5 text-xs font-bold text-[#128C4A] hover:brightness-110">
@@ -233,14 +295,20 @@ function BusinessContent() {
           <div className="grid grid-cols-2 gap-3 mb-6">
             {rest.map((m) => (
               <div key={m.idx} className="bg-white rounded-2xl border border-gray-100 overflow-hidden">
-                {isVideoSrc(m.src) ? (
-                  <div className="relative">
-                    <video src={m.src} controls muted playsInline preload="metadata" className="w-full h-44 object-cover bg-black" />
-                    <span className="absolute top-2 right-2 bg-black/60 text-white rounded-full p-1"><HiPlay className="w-3.5 h-3.5" /></span>
-                  </div>
-                ) : (
-                  <img src={m.src} alt="" className="w-full h-44 object-cover" />
-                )}
+                <div className="relative">
+                  {isVideoSrc(m.src) ? (
+                    <>
+                      <video src={m.src} controls muted playsInline preload="metadata" className="w-full h-44 object-cover bg-black" />
+                      <span className="absolute top-2 right-2 bg-black/60 text-white rounded-full p-1"><HiPlay className="w-3.5 h-3.5" /></span>
+                    </>
+                  ) : (
+                    <img src={m.src} alt={m.name || ''} className="w-full h-44 object-cover" />
+                  )}
+                  {priceOk(m) && (
+                    <span className="absolute top-2 left-2 bg-gold-500 text-gray-900 text-[11px] font-bold px-2 py-0.5 rounded-full shadow">₦{Number(m.price).toLocaleString()}</span>
+                  )}
+                </div>
+                {m.name && <p className="px-3 pt-2 text-xs font-semibold text-gray-900 truncate">{m.name}</p>}
                 <div className="flex items-center gap-3 px-3 py-2">
                   <a href={waShare(shareItemText(m.idx))} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 text-[11px] font-bold text-[#128C4A] hover:brightness-110">
                     <HiShare className="w-3.5 h-3.5" /> Share

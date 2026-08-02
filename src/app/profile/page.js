@@ -27,6 +27,7 @@ export default function ProfilePage() {
   const [myBiz, setMyBiz] = useState([]); // my approved business profile(s)
   const [followersCount, setFollowersCount] = useState(0);
   const [showFollowers, setShowFollowers] = useState(false);
+  const [showStartBiz, setShowStartBiz] = useState(false); // business-profile popup when they have none
 
   useEffect(() => {
     const stored = localStorage.getItem('payround_user');
@@ -227,8 +228,8 @@ export default function ProfilePage() {
                   className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-full bg-white border border-gray-300 text-xs font-semibold text-gray-700 hover:border-gold-400 hover:text-gold-700 transition-colors">🏪 {b.business_name}</button>
               ))}
               {myBiz.length === 0 && (
-                <button onClick={() => router.push('/ads')}
-                  className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-full bg-white border border-dashed border-gray-300 text-xs font-semibold text-gray-500 hover:border-gold-400 hover:text-gold-700 transition-colors">+ Start a business profile</button>
+                <button onClick={() => setShowStartBiz(true)}
+                  className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-full bg-white border border-gray-300 text-xs font-semibold text-gray-700 hover:border-gold-400 hover:text-gold-700 transition-colors">🏪 Business profile</button>
               )}
             </div>
           </div>
@@ -431,6 +432,17 @@ export default function ProfilePage() {
       <Footer />
       {zoomPhoto && <ImageLightbox src={zoomPhoto} alt="profile photo" onClose={() => setZoomPhoto(null)} />}
       {showFollowers && <FollowersList userEmail={user.email} userName={account?.name || user.name} onClose={() => setShowFollowers(false)} />}
+      {showStartBiz && (
+        <div className="fixed inset-0 z-50 bg-black/60 flex items-end sm:items-center justify-center" onClick={() => setShowStartBiz(false)}>
+          <div className="bg-white w-full sm:max-w-sm sm:mx-4 rounded-t-2xl sm:rounded-2xl p-6 text-center" onClick={e => e.stopPropagation()}>
+            <div className="w-14 h-14 bg-gold-100 rounded-2xl flex items-center justify-center mx-auto mb-3"><span className="text-2xl">🏪</span></div>
+            <h3 className="font-bold text-gray-900 mb-1">No business profile yet</h3>
+            <p className="text-xs text-gray-500 mb-4">Create your free business profile — show your items with prices, receive messages from buyers, and share everything to WhatsApp with one tap.</p>
+            <button onClick={() => router.push('/ads')} className="w-full bg-gold-500 hover:bg-gold-400 text-gray-900 font-bold text-sm py-3 rounded-xl transition-colors">Start a Business Profile</button>
+            <button onClick={() => setShowStartBiz(false)} className="w-full text-xs text-gray-400 font-medium mt-3">Maybe later</button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
