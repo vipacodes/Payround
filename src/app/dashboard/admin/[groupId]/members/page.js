@@ -9,7 +9,7 @@ import toast from 'react-hot-toast';
 import {
   HiArrowLeft, HiUser, HiCheckCircle, HiClock,
   HiExclamation, HiSearch, HiPhone, HiMail,
-  HiLocationMarker, HiBriefcase, HiCurrencyDollar
+  HiLocationMarker, HiBriefcase, HiCurrencyDollar, HiUserGroup
 } from 'react-icons/hi';
 
 export default function AdminMembersPage() {
@@ -164,7 +164,20 @@ export default function AdminMembersPage() {
           <HiArrowLeft className="w-4 h-4" /> Back
         </button>
 
-        <h1 className="text-2xl font-bold text-gray-900 mb-2">Members - {group.name}</h1>
+        <div className="flex items-center gap-3 mb-2">
+          {group.avatar_url
+            ? <img src={group.avatar_url} alt={group.name} className="w-12 h-12 rounded-xl object-cover border border-gray-100 shrink-0" />
+            : <span className="w-12 h-12 bg-primary-100 rounded-xl flex items-center justify-center shrink-0"><HiUserGroup className="w-6 h-6 text-primary-600" /></span>}
+          <h1 className="text-2xl font-bold text-gray-900 truncate flex-1 min-w-0">Members - {group.name}</h1>
+          <button
+            onClick={() => router.push(`/group-chat?group=${group.id}`)}
+            title="Open group chat"
+            aria-label="Open group chat"
+            className="p-2.5 rounded-xl bg-primary-50 border border-primary-100 text-primary-600 hover:bg-primary-100 transition-colors shrink-0"
+          >
+            <HiUserGroup className="w-6 h-6" />
+          </button>
+        </div>
         <p className="text-gray-500 mb-6">{approvedMembers.length} approved member{approvedMembers.length === 1 ? '' : 's'} {joinRequests.length > 0 ? `• ${joinRequests.length} join request${joinRequests.length > 1 ? 's' : ''} waiting` : ''}</p>
 
         {/* Join Requests — real requests from the members table; preview profile before approving */}
