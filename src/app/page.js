@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import Header from '@/components/Header';
 import Footer from '@/components/Footer';
 import GroupCard from '@/components/GroupCard';
-import AdBanner from '@/components/AdBanner';
+import AdSlideshow from '@/components/AdSlideshow';
 import BroadcastAlert from '@/components/BroadcastAlert';
 import { groups, businessAds } from '@/lib/data';
 import {
@@ -240,11 +240,11 @@ export default function HomePage() {
             <p className="text-gray-600">Check out these trusted businesses recommended by the Payround community.</p>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-6">
-            {activeAds.length > 0 ? activeAds.map(ad => (
-              <AdBanner key={ad.id} ad={ad} />
-            )) : (
-              <div className="col-span-3 bg-gray-50 rounded-2xl border border-dashed p-12 text-center">
+          <div className="mb-6 max-w-3xl mx-auto">
+            {activeAds.length > 0 ? (
+              <AdSlideshow ads={activeAds} />
+            ) : (
+              <div className="bg-gray-50 rounded-2xl border border-dashed p-12 text-center">
                 <p className="font-semibold">No businesses yet</p>
                 <p className="text-sm text-gray-500 mt-1">Trusted businesses will appear here.</p>
               </div>

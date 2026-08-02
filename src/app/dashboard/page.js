@@ -6,7 +6,7 @@ import Header from '@/components/Header';
 import Footer from '@/components/Footer';
 import LoadingScreen from '@/components/LoadingScreen';
 import BroadcastAlert from '@/components/BroadcastAlert';
-import AdBanner from '@/components/AdBanner';
+import AdSlideshow from '@/components/AdSlideshow';
 import {
   HiUserGroup, HiUsers, HiCalendar, HiBadgeCheck, HiArrowRight, HiShieldCheck,
   HiSearch, HiPlusCircle, HiExclamation, HiCash, HiPhotograph, HiUser
@@ -335,13 +335,7 @@ export default function DashboardPage() {
           <button onClick={() => router.push('/ads')} className="text-[11px] font-medium text-primary-600">Advertise →</button>
         </div>
         {ads.length > 0 ? (
-          <div className="flex gap-3 overflow-x-auto pb-2 mb-5 -mx-1 px-1">
-            {ads.map(ad => (
-              <div key={ad.id} className="min-w-[300px] max-w-[300px] sm:min-w-[360px] sm:max-w-[360px] shrink-0">
-                <AdBanner ad={ad} big />
-              </div>
-            ))}
-          </div>
+          <AdSlideshow ads={ads} className="mb-5" />
         ) : (
           <button onClick={() => router.push('/ads')} className="w-full bg-white rounded-2xl border border-dashed border-gray-200 p-5 text-center mb-5 hover:border-primary-300 transition-colors">
             <p className="text-xs font-semibold text-gray-500">Your business could be here 📣</p>
