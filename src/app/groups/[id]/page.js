@@ -196,6 +196,11 @@ export default function GroupDetailsPage() {
       setMyOffer(null);
       setMyStatus('approved');
       toast.success(`You're in! You hold spot${wanted.length > 1 ? 's' : ''} #${wanted.join(', #')}. 🎉`);
+      // 🎉 If accepting that offer took the LAST open spot, everyone hears "savings start now!"
+      try {
+        const { notifyGroupFullIfFilled } = await import('@/lib/notifications');
+        await notifyGroupFullIfFilled(supabase, params.id);
+      } catch {}
     } catch (e) { toast.error(`Could not accept: ${e.message || 'try again'}`); }
     setOfferBusy(false);
   };

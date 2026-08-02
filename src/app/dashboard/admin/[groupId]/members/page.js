@@ -104,6 +104,13 @@ export default function AdminMembersPage() {
       toast.success(approve
         ? (assigned.length ? `Member approved — assigned spot${assigned.length > 1 ? 's' : ''} #${assigned.join(', #')}.` : 'Member approved (no free spots left to assign).')
         : 'Request declined.');
+      if (approve) {
+        // 🎉 If that approval took the LAST open spot, everyone hears "savings start now!"
+        try {
+          const { notifyGroupFullIfFilled } = await import('@/lib/notifications');
+          await notifyGroupFullIfFilled(supabase, params.groupId);
+        } catch {}
+      }
     } catch (e) { toast.error('Could not update request.'); }
     loadSupa();
   };

@@ -12,14 +12,14 @@ import { HiMegaphone } from 'react-icons/hi2';
 
 const typeStyle = (type = '') => {
   if (type.includes('declin') || type.includes('reject')) return 'bg-red-50 border-red-100 text-red-700';
-  if (type.includes('approve') || type.includes('verif') || type.includes('join_approved')) return 'bg-emerald-50 border-emerald-100 text-emerald-700';
+  if (type.includes('approve') || type.includes('verif') || type.includes('join_approved') || type.includes('group_full')) return 'bg-emerald-50 border-emerald-100 text-emerald-700';
   if (type.includes('referral') || type.includes('payment') || type.includes('payout')) return 'bg-yellow-50 border-yellow-100 text-yellow-700';
   if (type.includes('announce')) return 'bg-blue-50 border-blue-100 text-blue-700';
   return 'bg-primary-50 border-primary-100 text-primary-700';
 };
 
 const typeIcon = (type = '') => {
-  if (type.includes('join')) return <HiUserGroup className="w-5 h-5" />;
+  if (type.includes('join') || type.includes('group_full')) return <HiUserGroup className="w-5 h-5" />;
   if (type.includes('verif')) return <HiBadgeCheck className="w-5 h-5" />;
   if (type.includes('user')) return <HiUser className="w-5 h-5" />;
   if (type.includes('announce')) return <HiMegaphone className="w-5 h-5" />;
@@ -77,6 +77,7 @@ export default function NotificationsPage() {
       case 'join_approved':
       case 'join_declined':
       case 'spot_offer':
+      case 'group_full':         // 🎉 your group filled up — the group page shows the board + pay card
         return g || '/dashboard';
       case 'renewal_reminder':   // ⏰ your group plan renews soon → dashboard shows the renewal date on your group
         return '/dashboard';
