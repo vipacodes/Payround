@@ -5,18 +5,18 @@ import { useRouter } from 'next/navigation';
 import Header from '@/components/Header';
 import Footer from '@/components/Footer';
 import BroadcastAlert from '@/components/BroadcastAlert';
+import AdBanner from '@/components/AdBanner';
 import {
-  HiUserGroup, HiCurrencyDollar, HiCalendar, HiClipboardList,
-  HiCheckCircle, HiClock, HiBadgeCheck, HiArrowRight, HiShieldCheck,
-  HiGift, HiSearch, HiPlusCircle, HiExclamation, HiCash
+  HiUserGroup, HiUsers, HiCalendar, HiBadgeCheck, HiArrowRight, HiShieldCheck,
+  HiSearch, HiPlusCircle, HiExclamation, HiCash, HiPhotograph, HiUser
 } from 'react-icons/hi';
 import {
-  parseSpots, currentPeriod, cycleLength, periodLabel,
+  parseSpots, currentPeriod, cycleLength,
   buildSpotMap, nextDueForMember, nextCashOutForMember, nextPayoutForGroup
 } from '@/lib/payments';
 
 const badgeEmoji = { bronze: '🥉', silver: '🥈', gold: '🥇' };
-const fmtDate = (d) => d ? new Date(d).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' }) : '—';
+const fmtDate = (d) => d ? new Date(d).toLocaleDateString(undefined, { day: 'numeric', month: 'short' }) : '—';
 
 export default function DashboardPage() {
   const router = useRouter();
@@ -25,6 +25,15 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(true);
   const [joined, setJoined] = useState([]);   // [{ group, member, payments, payouts }]
   const [managed, setManaged] = useState([]); // [{ group, members, payments, payouts }]
+  const [ads, setAds] = useState([]);
+  const [activeTab, setActiveTab] = useState(null); // joined | manage | due | cash | browse | people
+  // browse + people panels
+  const [liveGroups, setLiveGroups] = useState([]);
+  const [groupCounts, setGroupCounts] = useState({});
+  const [groupQ, setGroupQ] = useState('');
+  const [peopleQ, setPeopleQ] = useState('');
+  const [people, setPeople] = useState([]);
+  const [peopleSearched, setPeopleSearched] = useState(false);
 
   useEffect(() => {
     const stored = localStorage.getItem('payround_user');
@@ -34,17 +43,17 @@ export default function DashboardPage() {
     setUser(parsed);
     (async () => {
       try {
-        const { supabase } = await import('@/lib/supabase');
+        const { supabase, getAdsFromSupabase } = await import('@/lib/supabase');
         const email = (parsed.email || '').toLowerCase();
 
-        const { data: acc } = await supabase
-          .from('users').select('name, is_verified, is_approved, approval_status, profile_pic')
+        getAdsFromSupabase().then(setAds).catch(() => {});
+
+        const { data: acc } = await supabase.from('users')
+          .select('name, is_verified, is_approved, approval_status, profile_pic, id')
           .eq('email', email).single();
         if (acc) setAccount(acc);
 
-        // --- Groups I JOINED (approved membership rows) ---
-        const { data: mine } = await supabase
-          .from('members').select('*')
+        const { data: mine } = await supabase.from('members').select('*')
           .eq('member_email', email).eq('status', 'approved');
         const joinedOut = [];
         for (const m of mine || []) {
@@ -56,9 +65,8 @@ export default function DashboardPage() {
         }
         setJoined(joinedOut);
 
-        // --- Groups I MANAGE (I am the admin) ---
-        const { data: myGroups } = await supabase
-          .from('groups').select('*').eq('admin_email', email).order('created_at', { ascending: false });
+        const { data: myGroups } = await supabase.from('groups').select('*')
+          .eq('admin_email', email).order('created_at', { ascending: false });
         const managedOut = [];
         for (const g of myGroups || []) {
           const { data: mems } = await supabase.from('members').select('*').eq('group_id', g.id).eq('status', 'approved');
@@ -67,13 +75,33 @@ export default function DashboardPage() {
           managedOut.push({ group: g, members: mems || [], payments: pays || [], payouts: outs || [] });
         }
         setManaged(managedOut);
+        setActiveTab(joinedOut.length > 0 ? 'joined' : 'browse');
       } catch (e) { console.log('Dashboard load:', e.message); }
       setLoading(false);
     })();
   }, [router]);
 
-  if (!user) return null;
+  // Lazy-load the browse-groups + people panels the first time they open
+  useEffect(() => {
+    if (activeTab !== 'browse' || liveGroups.length > 0) return;
+    (async () => {
+      try {
+        const { supabase } = await import('@/lib/supabase');
+        const { data: gs } = await supabase.from('groups')
+          .select('id, name, avatar_url, amount, frequency, max_members, admin_name, is_verified, badge_tier, created_at')
+          .in('status', ['active', 'approved']).order('created_at', { ascending: false }).limit(30);
+        setLiveGroups(gs || []);
+        const counts = {};
+        for (const g of gs || []) {
+          const { data: mems } = await supabase.from('members').select('id').eq('group_id', g.id).eq('status', 'approved');
+          counts[g.id] = (mems || []).length;
+        }
+        setGroupCounts(counts);
+      } catch {}
+    })();
+  }, [activeTab, liveGroups.length]);
 
+  if (!user) return null;
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
@@ -84,204 +112,253 @@ export default function DashboardPage() {
 
   const isAdmin = managed.length > 0;
 
-  // Next payment due — earliest across my joined groups (own contributions),
-  // or across managed groups when the user only manages
-  const dues = joined
-    .map(({ group, payments, member }) => {
-      const spots = parseSpots(member.spots);
-      const d = nextDueForMember(group, payments, spots);
-      return d ? { ...d, groupName: group.name } : null;
-    })
-    .filter(Boolean);
-  if (dues.length === 0 && isAdmin) {
-    managed.forEach(({ group, payments, members }) => {
-      const period = currentPeriod(group);
-      const anyOwed = members.some(m => parseSpots(m.spots).length > 0);
-      if (!anyOwed) return;
-      const start = new Date(group.start_date || group.created_at || Date.now()).getTime();
-      const pms = (String(group.frequency || 'weekly').toLowerCase().includes('month') ? 30 : String(group.frequency || '').toLowerCase().includes('bi') ? 14 : 7) * 86400000;
-      dues.push({ date: new Date(start + period * pms), dueNow: false, groupName: group.name });
-    });
-  }
-  dues.sort((a, b) => a.date - b.date);
-  const nextDue = dues[0] || null;
+  // ---- derived rows for the due / cash panels ----
+  const dueRows = joined.map(({ group, payments, member }) => {
+    const d = nextDueForMember(group, payments, parseSpots(member.spots));
+    return d ? { groupName: group.name, ...d } : null;
+  }).filter(Boolean).sort((a, b) => a.date - b.date);
+  const cashRows = joined.map(({ group, payouts, member }) => {
+    const d = nextCashOutForMember(group, payouts, parseSpots(member.spots));
+    return d ? { groupName: group.name, ...d } : null;
+  }).filter(Boolean).sort((a, b) => (a.dueNow === b.dueNow ? a.date - b.date : a.dueNow ? -1 : 1));
+  const payoutRows = managed.map(({ group, payouts, members }) => {
+    const d = nextPayoutForGroup(group, payouts, buildSpotMap(members));
+    return d ? { groupName: group.name, ...d } : null;
+  }).filter(Boolean).sort((a, b) => (a.dueNow === b.dueNow ? a.date - b.date : a.dueNow ? -1 : 1));
 
-  // Next cash out (member) / next payout (admin)
-  const cashOuts = joined
-    .map(({ group, payouts, member }) => {
-      const d = nextCashOutForMember(group, payouts, parseSpots(member.spots));
-      return d ? { ...d, groupName: group.name } : null;
-    })
-    .filter(Boolean)
-    .sort((a, b) => (a.dueNow === b.dueNow ? a.date - b.date : a.dueNow ? -1 : 1));
-  const payoutsNext = managed
-    .map(({ group, payouts, members }) => {
-      const d = nextPayoutForGroup(group, payouts, buildSpotMap(members));
-      return d ? { ...d, groupName: group.name } : null;
-    })
-    .filter(Boolean)
-    .sort((a, b) => (a.dueNow === b.dueNow ? a.date - b.date : a.dueNow ? -1 : 1));
-  const cashOrPayout = isAdmin ? (payoutsNext[0] || cashOuts[0] || null) : (cashOuts[0] || null);
+  const searchPeople = async () => {
+    try {
+      const { supabase } = await import('@/lib/supabase');
+      const { data } = await supabase.from('users')
+        .select('id, name, profile_pic, is_verified, role')
+        .eq('approval_status', 'approved').limit(200);
+      const q = peopleQ.trim().toLowerCase();
+      setPeople((data || []).filter(u => !q || (u.name || '').toLowerCase().includes(q) || String(u.id).toLowerCase().startsWith(q)));
+      setPeopleSearched(true);
+    } catch {}
+  };
+
+  const filteredGroups = liveGroups.filter(g => {
+    const q = groupQ.trim().toLowerCase();
+    if (!q) return true;
+    return (g.name || '').toLowerCase().includes(q) || String(g.id).toLowerCase() === q || (g.admin_name || '').toLowerCase().includes(q);
+  });
+
+  const Tab = ({ id, icon, label, badge }) => (
+    <button
+      onClick={() => setActiveTab(activeTab === id ? null : id)}
+      className={`shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[11px] font-semibold border transition-all ${activeTab === id ? 'bg-primary-600 text-white border-primary-600 shadow-md shadow-primary-200' : 'bg-white text-gray-600 border-gray-200 hover:border-primary-300'}`}
+    >
+      {icon}{label}{badge !== undefined && <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${activeTab === id ? 'bg-white/25 text-white' : 'bg-gray-100 text-gray-600'}`}>{badge}</span>}
+    </button>
+  );
 
   return (
     <div className="min-h-screen bg-gray-50">
       <Header />
       <BroadcastAlert />
 
-      <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-6 md:py-8">
-        {/* Welcome */}
-        <div className="flex items-center gap-4 mb-6">
+      <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-5 md:py-7">
+        {/* Compact welcome */}
+        <div className="flex items-center gap-3 mb-4">
           {account?.profile_pic
-            ? <img src={account.profile_pic} alt="" className="w-14 h-14 rounded-2xl object-cover border border-gray-100 shrink-0" />
-            : <div className="w-14 h-14 bg-primary-100 rounded-2xl flex items-center justify-center shrink-0"><span className="text-primary-700 font-bold text-xl">{(account?.name || user.name || 'U').charAt(0).toUpperCase()}</span></div>}
-          <div className="min-w-0">
-            <h1 className="text-xl md:text-2xl font-bold text-gray-900 flex items-center gap-2 truncate">
-              Welcome back, {(account?.name || user.name || 'there').split(' ')[0]} 👋
-              {account?.is_verified && <HiBadgeCheck className="w-7 h-7 text-blue-500 drop-shadow shrink-0" title="Verified by PayRound" />}
-            </h1>
-            <p className="text-sm text-gray-500">Here&apos;s what&apos;s happening with your savings groups.</p>
-          </div>
+            ? <img src={account.profile_pic} alt="" className="w-11 h-11 rounded-xl object-cover border border-gray-100 shrink-0" />
+            : <div className="w-11 h-11 bg-primary-100 rounded-xl flex items-center justify-center shrink-0"><span className="text-primary-700 font-bold">{(account?.name || user.name || 'U').charAt(0).toUpperCase()}</span></div>}
+          <h1 className="text-lg md:text-xl font-bold text-gray-900 flex items-center gap-1.5 truncate">
+            Welcome back, {(account?.name || user.name || 'there').split(' ')[0]} 👋
+            {account?.is_verified && <HiBadgeCheck className="w-6 h-6 text-blue-500 drop-shadow shrink-0" title="Verified by PayRound" />}
+          </h1>
         </div>
 
-        {/* Stats */}
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4 mb-8">
-          <div className="bg-white rounded-2xl border border-gray-100 p-4">
-            <HiUserGroup className="w-5 h-5 text-primary-600 mb-2" />
-            <p className="text-2xl font-bold text-gray-900">{joined.length}</p>
-            <p className="text-xs text-gray-500">Groups I Joined</p>
-          </div>
-          <div className="bg-white rounded-2xl border border-gray-100 p-4">
-            <HiShieldCheck className="w-5 h-5 text-purple-600 mb-2" />
-            <p className="text-2xl font-bold text-gray-900">{managed.length}</p>
-            <p className="text-xs text-gray-500">Groups I Manage</p>
-          </div>
-          <div className="bg-white rounded-2xl border border-gray-100 p-4">
-            <HiCalendar className="w-5 h-5 text-amber-500 mb-2" />
-            <p className="text-sm font-bold text-gray-900 leading-tight min-h-[2rem]">
-              {nextDue ? (nextDue.dueNow ? `Due now` : fmtDate(nextDue.date)) : '—'}
-            </p>
-            <p className="text-xs text-gray-500">Next Payment Due{nextDue ? ` • ${nextDue.groupName}` : ''}</p>
-          </div>
-          <div className="bg-white rounded-2xl border border-gray-100 p-4">
-            <HiCash className="w-5 h-5 text-emerald-600 mb-2" />
-            <p className="text-sm font-bold text-gray-900 leading-tight min-h-[2rem]">
-              {cashOrPayout ? (cashOrPayout.dueNow ? `Now (spot #${cashOrPayout.spot})` : `${fmtDate(cashOrPayout.date)} (spot #${cashOrPayout.spot})`) : '—'}
-            </p>
-            <p className="text-xs text-gray-500">{isAdmin ? 'Next Payout' : 'Next Cash Out'}{cashOrPayout ? ` • ${cashOrPayout.groupName}` : ''}</p>
-          </div>
+        {/* ===== small clickable tabs (keep everything above the fold) ===== */}
+        <div className="flex gap-2 overflow-x-auto pb-2 mb-1 -mx-1 px-1">
+          <Tab id="joined" icon={<HiUserGroup className="w-4 h-4" />} label="Groups I Joined" badge={joined.length} />
+          {isAdmin && <Tab id="manage" icon={<HiShieldCheck className="w-4 h-4" />} label="Groups I Manage" badge={managed.length} />}
+          <Tab id="due" icon={<HiCalendar className="w-4 h-4" />} label="Next Payment Due" badge={dueRows[0] ? (dueRows[0].dueNow ? 'now' : fmtDate(dueRows[0].date)) : '—'} />
+          <Tab id="cash" icon={<HiCash className="w-4 h-4" />} label={isAdmin ? 'Next Payout' : 'Next Cash Out'} badge={(isAdmin ? payoutRows : cashRows)[0] ? ((isAdmin ? payoutRows : cashRows)[0].dueNow ? 'now' : fmtDate((isAdmin ? payoutRows : cashRows)[0].date)) : '—'} />
+          <Tab id="browse" icon={<HiSearch className="w-4 h-4" />} label="Browse Groups" />
+          <Tab id="people" icon={<HiUsers className="w-4 h-4" />} label="Search Users" />
         </div>
 
-        {/* ============ GROUPS I JOINED (members AND admins) ============ */}
-        <div className="flex items-center justify-between mb-3">
-          <h2 className="text-lg font-bold text-gray-900 flex items-center gap-2"><HiUserGroup className="w-5 h-5 text-primary-600" /> Groups I Joined</h2>
-          <button onClick={() => router.push('/groups/search')} className="text-xs font-medium text-primary-600 flex items-center gap-1 hover:text-primary-700"><HiSearch className="w-4 h-4" /> Find groups</button>
-        </div>
-        {joined.length === 0 ? (
-          <div className="bg-white rounded-2xl border border-dashed border-gray-200 p-8 text-center mb-8">
-            <HiUserGroup className="w-10 h-10 text-gray-300 mx-auto mb-2" />
-            <p className="text-sm text-gray-500 mb-4">You haven&apos;t joined any group yet. Real, approved groups only.</p>
-            <button onClick={() => router.push('/groups/search')} className="bg-primary-600 text-white text-sm font-medium px-6 py-2.5 rounded-xl hover:bg-primary-700">Browse Groups</button>
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8">
-            {joined.map(({ group: g, member, payments, payouts }) => {
+        {/* ===== expandable tab panels ===== */}
+        {activeTab === 'joined' && (
+          <div className="bg-white rounded-2xl border border-gray-100 p-4 mb-4 max-h-80 overflow-y-auto">
+            {joined.length === 0 ? (
+              <div className="text-center py-6">
+                <p className="text-sm text-gray-500 mb-3">You haven&apos;t joined any group yet.</p>
+                <button onClick={() => setActiveTab('browse')} className="bg-primary-600 text-white text-xs font-semibold px-5 py-2 rounded-xl">Browse Groups</button>
+              </div>
+            ) : joined.map(({ group: g, member, payments, payouts }) => {
               const mySpots = parseSpots(member.spots);
               const due = nextDueForMember(g, payments, mySpots);
               const cash = nextCashOutForMember(g, payouts, mySpots);
               return (
-                <button key={g.id} onClick={() => router.push(`/groups/${g.id}`)} className="bg-white rounded-2xl border border-gray-100 p-5 text-left card-hover">
-                  <div className="flex items-center gap-3 mb-3">
-                    {g.avatar_url
-                      ? <img src={g.avatar_url} alt="" className="w-11 h-11 rounded-xl object-cover border border-gray-100 shrink-0" />
-                      : <div className="w-11 h-11 bg-primary-100 rounded-xl flex items-center justify-center shrink-0"><span className="text-primary-700 font-bold">{g.name?.charAt(0)}</span></div>}
-                    <div className="min-w-0 flex-1">
-                      <p className="font-semibold text-gray-900 flex items-center gap-1.5 min-w-0">
-                        <span className="truncate">{g.name}</span>
-                        {g.is_verified && <HiBadgeCheck className="w-5 h-5 text-blue-500 shrink-0" />}
-                        {g.badge_tier && <span className="text-[11px]">{badgeEmoji[g.badge_tier]}</span>}
-                      </p>
-                      <p className="text-xs text-gray-500">₦{Number(g.amount || 0).toLocaleString()} {g.frequency || 'weekly'}{mySpots.length ? ` • My spot${mySpots.length > 1 ? 's' : ''}: #${mySpots.join(', #')}` : ''}</p>
-                    </div>
-                    <HiArrowRight className="w-4 h-4 text-gray-300 shrink-0" />
+                <button key={g.id} onClick={() => router.push(`/groups/${g.id}`)} className="w-full flex items-center gap-3 py-3 border-b border-gray-50 last:border-0 text-left hover:bg-gray-50/60 rounded-xl px-2 transition-colors">
+                  {g.avatar_url
+                    ? <img src={g.avatar_url} alt="" className="w-10 h-10 rounded-xl object-cover border border-gray-100 shrink-0" />
+                    : <div className="w-10 h-10 bg-primary-100 rounded-xl flex items-center justify-center shrink-0"><span className="text-primary-700 font-bold text-sm">{g.name?.charAt(0)}</span></div>}
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-semibold text-gray-900 flex items-center gap-1 min-w-0">
+                      <span className="truncate">{g.name}</span>
+                      {g.is_verified && <HiBadgeCheck className="w-4 h-4 text-blue-500 shrink-0" />}
+                      {g.badge_tier && <span className="text-xs">{badgeEmoji[g.badge_tier]}</span>}
+                    </p>
+                    <p className="text-[11px] text-gray-500">{mySpots.length ? `My spot${mySpots.length > 1 ? 's' : ''}: #${mySpots.join(', #')} • ` : ''}₦{Number(g.amount || 0).toLocaleString()} {g.frequency || 'weekly'}</p>
+                    <p className="text-[11px] mt-0.5"><span className={due?.dueNow ? 'text-amber-600 font-semibold' : 'text-gray-500'}>{due ? (due.dueNow ? 'Payment due now ⚠️' : `Next due ${fmtDate(due.date)}`) : 'No spot yet'}</span>{cash ? <span className={cash.dueNow ? 'text-emerald-600 font-semibold' : 'text-gray-500'}> • Cash out {cash.dueNow ? 'NOW 💰' : `${fmtDate(cash.date)} (#${cash.spot})`}</span> : null}</p>
                   </div>
-                  <div className="grid grid-cols-2 gap-2 text-xs">
-                    <div className="bg-gray-50 rounded-lg p-2.5">
-                      <p className="text-gray-400 mb-0.5">Next payment due</p>
-                      <p className={`font-semibold ${due?.dueNow ? 'text-amber-600' : 'text-gray-800'}`}>{due ? (due.dueNow ? 'Due now ⚠️' : fmtDate(due.date)) : 'No spot yet'}</p>
-                    </div>
-                    <div className="bg-gray-50 rounded-lg p-2.5">
-                      <p className="text-gray-400 mb-0.5">Next cash out</p>
-                      <p className={`font-semibold ${cash?.dueNow ? 'text-emerald-600' : 'text-gray-800'}`}>{cash ? (cash.dueNow ? `Now — spot #${cash.spot} 💰` : `${fmtDate(cash.date)} — #${cash.spot}`) : 'All collected 🎉'}</p>
-                    </div>
-                  </div>
+                  <HiArrowRight className="w-4 h-4 text-gray-300 shrink-0" />
                 </button>
               );
             })}
           </div>
         )}
 
-        {/* ============ GROUPS I MANAGE (group admins only) ============ */}
-        {isAdmin && (
-          <>
-            <div className="flex items-center justify-between mb-3">
-              <h2 className="text-lg font-bold text-gray-900 flex items-center gap-2"><HiShieldCheck className="w-5 h-5 text-purple-600" /> Groups I Manage</h2>
-              <button onClick={() => router.push('/dashboard/admin')} className="text-xs font-medium text-primary-600 flex items-center gap-1 hover:text-primary-700"><HiClipboardList className="w-4 h-4" /> Admin dashboard</button>
-            </div>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8">
-              {managed.map(({ group: g, members, payments, payouts }) => {
-                const N = cycleLength(g);
-                const filled = members.reduce((sum, m) => sum + parseSpots(m.spots).length, 0);
-                const nextPay = nextPayoutForGroup(g, payouts, buildSpotMap(members));
-                const renewal = g.expiry_at ? new Date(g.expiry_at) : null;
-                const renewalSoon = renewal && (renewal - Date.now()) < 7 * 86400000;
-                return (
-                  <div key={g.id} className="bg-white rounded-2xl border border-gray-100 p-5">
-                    <div className="flex items-center gap-3 mb-3">
-                      {g.avatar_url
-                        ? <img src={g.avatar_url} alt="" className="w-11 h-11 rounded-xl object-cover border border-gray-100 shrink-0" />
-                        : <div className="w-11 h-11 bg-purple-100 rounded-xl flex items-center justify-center shrink-0"><span className="text-purple-700 font-bold">{g.name?.charAt(0)}</span></div>}
-                      <div className="min-w-0 flex-1">
-                        <p className="font-semibold text-gray-900 flex items-center gap-1.5 min-w-0">
-                          <span className="truncate">{g.name}</span>
-                          {g.is_verified && <HiBadgeCheck className="w-5 h-5 text-blue-500 shrink-0" />}
-                        </p>
-                        <p className="text-xs text-gray-500">{members.length} member{members.length === 1 ? '' : 's'} • {filled}/{N} spots filled</p>
-                      </div>
+        {activeTab === 'manage' && isAdmin && (
+          <div className="bg-white rounded-2xl border border-gray-100 p-4 mb-4 max-h-80 overflow-y-auto">
+            {managed.map(({ group: g, members, payments, payouts }) => {
+              const N = cycleLength(g);
+              const filled = members.reduce((sum, m) => sum + parseSpots(m.spots).length, 0);
+              const nextPay = nextPayoutForGroup(g, payouts, buildSpotMap(members));
+              const renewal = g.expiry_at ? new Date(g.expiry_at) : null;
+              const renewalSoon = renewal && (renewal - Date.now()) < 7 * 86400000;
+              return (
+                <div key={g.id} className="py-3 border-b border-gray-50 last:border-0">
+                  <div className="flex items-center gap-3">
+                    {g.avatar_url
+                      ? <img src={g.avatar_url} alt="" className="w-10 h-10 rounded-xl object-cover border border-gray-100 shrink-0" />
+                      : <div className="w-10 h-10 bg-purple-100 rounded-xl flex items-center justify-center shrink-0"><span className="text-purple-700 font-bold text-sm">{g.name?.charAt(0)}</span></div>}
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm font-semibold text-gray-900 flex items-center gap-1 min-w-0">
+                        <span className="truncate">{g.name}</span>
+                        {g.is_verified && <HiBadgeCheck className="w-4 h-4 text-blue-500 shrink-0" />}
+                      </p>
+                      <p className="text-[11px] text-gray-500">{members.length} members • {filled}/{N} spots{nextPay ? ` • Payout ${nextPay.dueNow ? 'due now' : fmtDate(nextPay.date)} (#${nextPay.spot})` : ''}</p>
+                      <p className={`text-[11px] flex items-center gap-1 ${renewalSoon ? 'text-amber-600 font-semibold' : 'text-gray-500'}`}>
+                        {renewalSoon && <HiExclamation className="w-3.5 h-3.5" />} Plan renewal: {renewal ? renewal.toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' }) : '—'}
+                      </p>
                     </div>
-                    <div className="space-y-2 text-xs mb-4">
-                      <div className="flex justify-between bg-gray-50 rounded-lg p-2.5">
-                        <span className="text-gray-400">Next payout</span>
-                        <span className={`font-semibold ${nextPay?.dueNow ? 'text-amber-600' : 'text-gray-800'}`}>{nextPay ? (nextPay.dueNow ? `Now — spot #${nextPay.spot}` : `${fmtDate(nextPay.date)} — #${nextPay.spot}`) : 'All collected 🎉'}</span>
-                      </div>
-                      <div className={`flex justify-between rounded-lg p-2.5 ${renewalSoon ? 'bg-amber-50 border border-amber-200' : 'bg-gray-50'}`}>
-                        <span className="text-gray-400 flex items-center gap-1">{renewalSoon && <HiExclamation className="w-3.5 h-3.5 text-amber-500" />} Group plan renewal</span>
-                        <span className={`font-semibold ${renewalSoon ? 'text-amber-700' : 'text-gray-800'}`}>{renewal ? fmtDate(renewal) : '—'}{renewalSoon ? ' — renew soon!' : ''}</span>
-                      </div>
-                    </div>
-                    <div className="grid grid-cols-2 gap-2">
-                      <button onClick={() => router.push(`/dashboard/admin/${g.id}/payments`)} className="bg-primary-600 hover:bg-primary-700 text-white text-xs font-semibold py-2.5 rounded-xl transition-all">Review Payments</button>
-                      <button onClick={() => router.push(`/groups/${g.id}`)} className="border border-gray-200 hover:bg-gray-50 text-gray-700 text-xs font-semibold py-2.5 rounded-xl transition-all">Open Group</button>
+                    <div className="flex gap-1.5 shrink-0">
+                      <button onClick={() => router.push(`/dashboard/admin/${g.id}/payments`)} className="bg-primary-600 text-white text-[10px] font-semibold px-3 py-1.5 rounded-lg">Payments</button>
+                      <button onClick={() => router.push(`/groups/${g.id}`)} className="border border-gray-200 text-gray-600 text-[10px] font-semibold px-3 py-1.5 rounded-lg">Open</button>
                     </div>
                   </div>
-                );
-              })}
-            </div>
-          </>
+                </div>
+              );
+            })}
+          </div>
         )}
 
-        {/* Quick actions */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-          <button onClick={() => router.push('/groups/search')} className="bg-white rounded-2xl border border-gray-100 p-4 card-hover flex flex-col items-center gap-1.5 text-center">
-            <HiSearch className="w-5 h-5 text-primary-600" /><span className="text-xs font-medium text-gray-700">Find Groups</span>
+        {activeTab === 'due' && (
+          <div className="bg-white rounded-2xl border border-gray-100 p-4 mb-4">
+            {dueRows.length === 0 ? <p className="text-sm text-gray-400 text-center py-4">No upcoming contributions — join a group first.</p>
+              : dueRows.map((r, i) => (
+                <div key={i} className="flex items-center justify-between py-2.5 border-b border-gray-50 last:border-0 text-sm">
+                  <span className="text-gray-700 font-medium">{r.groupName}</span>
+                  <span className={`text-xs font-semibold ${r.dueNow ? 'text-amber-600' : 'text-gray-600'}`}>{r.dueNow ? 'Due now ⚠️' : fmtDate(r.date)}</span>
+                </div>
+              ))}
+          </div>
+        )}
+
+        {activeTab === 'cash' && (
+          <div className="bg-white rounded-2xl border border-gray-100 p-4 mb-4">
+            {isAdmin && payoutRows.length > 0 && (
+              <p className="text-[11px] font-semibold text-purple-600 mb-1 uppercase">Next payouts in my groups</p>
+            )}
+            {isAdmin && payoutRows.map((r, i) => (
+              <div key={`p${i}`} className="flex items-center justify-between py-2.5 border-b border-gray-50 text-sm">
+                <span className="text-gray-700 font-medium">{r.groupName} — spot #{r.spot}</span>
+                <span className={`text-xs font-semibold ${r.dueNow ? 'text-amber-600' : 'text-gray-600'}`}>{r.dueNow ? 'Due now' : fmtDate(r.date)}</span>
+              </div>
+            ))}
+            {cashRows.length > 0 && <p className={`text-[11px] font-semibold text-emerald-600 mb-1 uppercase ${isAdmin ? 'mt-3' : ''}`}>My next cash outs</p>}
+            {cashRows.map((r, i) => (
+              <div key={`c${i}`} className="flex items-center justify-between py-2.5 border-b border-gray-50 last:border-0 text-sm">
+                <span className="text-gray-700 font-medium">{r.groupName} — my spot #{r.spot}</span>
+                <span className={`text-xs font-semibold ${r.dueNow ? 'text-emerald-600' : 'text-gray-600'}`}>{r.dueNow ? 'NOW 💰' : fmtDate(r.date)}</span>
+              </div>
+            ))}
+            {payoutRows.length === 0 && cashRows.length === 0 && <p className="text-sm text-gray-400 text-center py-4">Nothing scheduled yet — payouts appear here once spots are assigned.</p>}
+          </div>
+        )}
+
+        {activeTab === 'browse' && (
+          <div className="bg-white rounded-2xl border border-gray-100 p-4 mb-4 max-h-80 overflow-y-auto">
+            <div className="relative mb-3">
+              <HiSearch className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+              <input value={groupQ} onChange={e => setGroupQ(e.target.value)} placeholder="Search by group name, ID or admin…" className="w-full pl-9 pr-3 py-2 border border-gray-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-primary-500" />
+            </div>
+            {filteredGroups.length === 0 ? <p className="text-sm text-gray-400 text-center py-4">No live groups match.</p>
+              : filteredGroups.map(g => (
+                <button key={g.id} onClick={() => router.push(`/groups/${g.id}`)} className="w-full flex items-center gap-3 py-2.5 border-b border-gray-50 last:border-0 text-left hover:bg-gray-50/60 rounded-xl px-2">
+                  {g.avatar_url
+                    ? <img src={g.avatar_url} alt="" className="w-9 h-9 rounded-lg object-cover border border-gray-100 shrink-0" />
+                    : <div className="w-9 h-9 bg-primary-100 rounded-lg flex items-center justify-center shrink-0"><span className="text-primary-700 font-bold text-xs">{g.name?.charAt(0)}</span></div>}
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-semibold text-gray-900 flex items-center gap-1 min-w-0"><span className="truncate">{g.name}</span>{g.is_verified && <HiBadgeCheck className="w-4 h-4 text-blue-500 shrink-0" />}{g.badge_tier && <span className="text-xs">{badgeEmoji[g.badge_tier]}</span>}</p>
+                    <p className="text-[11px] text-gray-500">₦{Number(g.amount || 0).toLocaleString()} {g.frequency || 'weekly'} • {groupCounts[g.id] ?? '…'}{g.max_members ? `/${g.max_members}` : ''} members • by {g.admin_name || '—'}</p>
+                  </div>
+                  <span className="text-[11px] font-semibold text-primary-600 shrink-0">View & Join →</span>
+                </button>
+              ))}
+          </div>
+        )}
+
+        {activeTab === 'people' && (
+          <div className="bg-white rounded-2xl border border-gray-100 p-4 mb-4 max-h-80 overflow-y-auto">
+            <form onSubmit={e => { e.preventDefault(); searchPeople(); }} className="flex gap-2 mb-3">
+              <div className="relative flex-1">
+                <HiSearch className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                <input value={peopleQ} onChange={e => setPeopleQ(e.target.value)} placeholder="Search users by name or unique ID…" className="w-full pl-9 pr-3 py-2 border border-gray-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-primary-500" />
+              </div>
+              <button type="submit" className="bg-primary-600 text-white text-xs font-semibold px-4 rounded-xl">Search</button>
+            </form>
+            {!peopleSearched ? (
+              <p className="text-sm text-gray-400 text-center py-4">Find any user — including group admins — and view their public profile.</p>
+            ) : people.length === 0 ? (
+              <p className="text-sm text-gray-400 text-center py-4">No approved users match.</p>
+            ) : people.map(u => (
+              <button key={u.id} onClick={() => router.push(`/users/${u.id}`)} className="w-full flex items-center gap-3 py-2.5 border-b border-gray-50 last:border-0 text-left hover:bg-gray-50/60 rounded-xl px-2">
+                {u.profile_pic
+                  ? <img src={u.profile_pic} alt="" className="w-9 h-9 rounded-lg object-cover border border-gray-100 shrink-0" />
+                  : <div className="w-9 h-9 bg-primary-100 rounded-lg flex items-center justify-center shrink-0"><span className="text-primary-700 font-bold text-xs">{(u.name || 'U').charAt(0)}</span></div>}
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-semibold text-gray-900 flex items-center gap-1 min-w-0"><span className="truncate">{u.name || '—'}</span>{u.is_verified && <HiBadgeCheck className="w-4 h-4 text-blue-500 shrink-0" />}</p>
+                  <p className="text-[11px] text-gray-400 font-mono">ID: {String(u.id).slice(0, 8)} • {u.role || 'member'}</p>
+                </div>
+                <span className="text-[11px] font-semibold text-primary-600 shrink-0">View →</span>
+              </button>
+            ))}
+          </div>
+        )}
+
+        {/* ===== ADS — real approved ads, straight after the tabs ===== */}
+        <div className="flex items-center justify-between mb-2 mt-1">
+          <h2 className="text-sm font-bold text-gray-900 flex items-center gap-1.5"><HiPhotograph className="w-4 h-4 text-gold-500" /> Sponsored</h2>
+          <button onClick={() => router.push('/ads')} className="text-[11px] font-medium text-primary-600">Advertise →</button>
+        </div>
+        {ads.length > 0 ? (
+          <div className="flex gap-3 overflow-x-auto pb-2 mb-5 -mx-1 px-1">
+            {ads.map(ad => (
+              <div key={ad.id} className="min-w-[260px] max-w-[260px] shrink-0">
+                <AdBanner ad={ad} />
+              </div>
+            ))}
+          </div>
+        ) : (
+          <button onClick={() => router.push('/ads')} className="w-full bg-white rounded-2xl border border-dashed border-gray-200 p-5 text-center mb-5 hover:border-primary-300 transition-colors">
+            <p className="text-xs font-semibold text-gray-500">Your business could be here 📣</p>
+            <p className="text-[11px] text-gray-400 mt-0.5">Tap to advertise to thousands of savers</p>
           </button>
-          <button onClick={() => router.push('/groups/create')} className="bg-white rounded-2xl border border-gray-100 p-4 card-hover flex flex-col items-center gap-1.5 text-center">
-            <HiPlusCircle className="w-5 h-5 text-primary-600" /><span className="text-xs font-medium text-gray-700">Create Group</span>
+        )}
+
+        {/* ===== the only two actions below the ads ===== */}
+        <div className="grid grid-cols-2 gap-3">
+          <button onClick={() => router.push('/groups/create')} className="bg-primary-600 hover:bg-primary-700 text-white rounded-2xl p-4 flex flex-col items-center gap-1.5 shadow-lg shadow-primary-200 transition-all">
+            <HiPlusCircle className="w-6 h-6" /><span className="text-sm font-semibold">Create Group</span>
           </button>
-          <button onClick={() => router.push('/notifications')} className="bg-white rounded-2xl border border-gray-100 p-4 card-hover flex flex-col items-center gap-1.5 text-center">
-            <HiClock className="w-5 h-5 text-primary-600" /><span className="text-xs font-medium text-gray-700">Notifications</span>
-          </button>
-          <button onClick={() => router.push('/profile')} className="bg-white rounded-2xl border border-gray-100 p-4 card-hover flex flex-col items-center gap-1.5 text-center">
-            <HiGift className="w-5 h-5 text-primary-600" /><span className="text-xs font-medium text-gray-700">My Profile</span>
+          <button onClick={() => setActiveTab('browse')} className="bg-white hover:bg-gray-50 border-2 border-primary-200 text-primary-700 rounded-2xl p-4 flex flex-col items-center gap-1.5 transition-all">
+            <HiSearch className="w-6 h-6" /><span className="text-sm font-semibold">Join a Group</span>
           </button>
         </div>
       </div>

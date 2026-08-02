@@ -7,8 +7,9 @@ import Footer from '@/components/Footer';
 import ImageLightbox from '@/components/ImageLightbox';
 import {
   HiArrowLeft, HiBadgeCheck, HiUserGroup, HiCalendar,
-  HiShieldCheck, HiUser
+  HiShieldCheck, HiUser, HiCheck, HiUserAdd
 } from 'react-icons/hi';
+import toast from 'react-hot-toast';
 
 const badgeEmoji = { bronze: '🥉', silver: '🥈', gold: '🥇' };
 
@@ -21,6 +22,10 @@ export default function PublicUserProfilePage() {
   const [notFound, setNotFound] = useState(false);
   const [loading, setLoading] = useState(true);
   const [zoom, setZoom] = useState(false);
+  const [meEmail, setMeEmail] = useState('');
+  const [isFollowing, setIsFollowing] = useState(false);
+  const [followers, setFollowers] = useState(0);
+  const [busyFollow, setBusyFollow] = useState(false);
 
   useEffect(() => {
     let mounted = true;
@@ -42,6 +47,20 @@ export default function PublicUserProfilePage() {
         const { data: mems } = await supabase.from('members').select('group_id').eq('member_email', email).in('status', ['active', 'approved']);
         if (!mounted) return;
         setGroupsAdmin(ag || []);
+
+        // Follow stats — visible to the public
+        const { data: fols } = await supabase.from('follows').select('follower_email').eq('following_id', String(u.id));
+        if (mounted) setFollowers((fols || []).length);
+        try {
+          const stored = localStorage.getItem('payround_user');
+          if (stored) {
+            const e = (JSON.parse(stored).email || '').toLowerCase();
+            if (mounted) {
+              setMeEmail(e);
+              setIsFollowing((fols || []).some(f => (f.follower_email || '').toLowerCase() === e));
+            }
+          }
+        } catch {}
         if (mems && mems.length > 0) {
           const ids = mems.map(m => m.group_id);
           const { data: gs } = await supabase.from('groups').select('id, name, avatar_url, is_verified, badge_tier, amount, frequency').in('id', ids).in('status', ['active', 'approved']);
@@ -54,6 +73,32 @@ export default function PublicUserProfilePage() {
     })();
     return () => { mounted = false; };
   }, [params.id]);
+
+  const toggleFollow = async () => {
+    if (!meEmail) { toast.error('Log in to follow people.'); router.push('/login'); return; }
+    setBusyFollow(true);
+    try {
+      const { supabase } = await import('@/lib/supabase');
+      if (isFollowing) {
+        const { error } = await supabase.from('follows').delete().eq('follower_email', meEmail).eq('following_id', String(person.id));
+        if (error) throw error;
+        setIsFollowing(false); setFollowers(c => Math.max(0, c - 1));
+      } else {
+        const { error } = await supabase.from('follows').insert({
+          id: `fol-${Date.now()}`, follower_email: meEmail,
+          following_id: String(person.id), following_email: (person.email || '').toLowerCase(),
+        });
+        if (error) throw error;
+        setIsFollowing(true); setFollowers(c => c + 1);
+        await supabase.from('notifications').insert({
+          id: `foll-${Date.now()}`, type: 'new_follower', is_read: false,
+          user_email: (person.email || '').toLowerCase(),
+          message: `➕ Someone started following you on PayRound — your followers count is now visible on your profile.`,
+        });
+      }
+    } catch (e) { toast.error(`Could not update follow: ${e.message || 'try again'}`); }
+    setBusyFollow(false);
+  };
 
   if (loading) {
     return (
@@ -125,6 +170,18 @@ export default function PublicUserProfilePage() {
               <HiShieldCheck className="w-4 h-4" /> Verified by PayRound
             </p>
           )}
+          <div className="flex items-center justify-center gap-3 mt-4">
+            <span className="text-sm font-semibold text-gray-900">{followers} <span className="text-xs font-normal text-gray-500">Follower{followers === 1 ? '' : 's'}</span></span>
+            {(!meEmail || meEmail !== (person.email || '').toLowerCase()) && (
+              <button
+                onClick={toggleFollow}
+                disabled={busyFollow}
+                className={`flex items-center gap-1.5 text-sm font-semibold px-5 py-2 rounded-full transition-all disabled:opacity-50 ${isFollowing ? 'bg-gray-100 text-gray-600 border border-gray-200' : 'bg-primary-600 text-white hover:bg-primary-700 shadow-md shadow-primary-200'}`}
+              >
+                {isFollowing ? <><HiCheck className="w-4 h-4" /> Following</> : <><HiUserAdd className="w-4 h-4" /> Follow</>}
+              </button>
+            )}
+          </div>
           <div className="flex items-center justify-center gap-2 text-xs text-gray-400 mt-4">
             <HiCalendar className="w-4 h-4" />
             Member since {person.created_at ? new Date(person.created_at).toLocaleDateString('en-NG', { month: 'long', year: 'numeric' }) : '—'}

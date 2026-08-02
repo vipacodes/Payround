@@ -23,6 +23,7 @@ export default function GroupDetailsPage() {
   const [notFound, setNotFound] = useState(false);
   const [loading, setLoading] = useState(true);
   const [memberCount, setMemberCount] = useState(0);
+  const [adminProfile, setAdminProfile] = useState(null); // the admin's public user profile (for follow button)
   const [myStatus, setMyStatus] = useState(null); // null | 'pending' | 'approved'
   const [members, setMembers] = useState([]);
   const [payments, setPayments] = useState([]);
@@ -57,6 +58,12 @@ export default function GroupDetailsPage() {
         if (mounted) setPayments(pays || []);
         const { data: outs } = await supabase.from('payouts').select('*').eq('group_id', params.id);
         if (mounted) setPayouts(outs || []);
+
+        // Group admin's public profile — so members can open it and tap Follow
+        if (g.admin_email) {
+          const { data: adm } = await supabase.from('users').select('id').eq('email', g.admin_email.toLowerCase()).single();
+          if (mounted && adm) setAdminProfile(adm);
+        }
 
         if (user?.email) {
           const email = user.email.toLowerCase();
@@ -226,10 +233,14 @@ export default function GroupDetailsPage() {
             <div className="flex items-center gap-2 text-gray-500 text-xs mb-1"><HiUserGroup className="w-4 h-4 text-primary-500" /> Members</div>
             <p className="text-lg font-bold text-gray-900">{memberCount}{group.max_members ? ` / ${group.max_members}` : ''}</p>
           </div>
-          <div className="bg-white rounded-2xl border border-gray-100 p-4">
-            <div className="flex items-center gap-2 text-gray-500 text-xs mb-1"><HiUser className="w-4 h-4 text-primary-500" /> Group Admin</div>
+          <button
+            onClick={() => adminProfile && router.push(`/users/${adminProfile.id}`)}
+            title={adminProfile ? 'View admin profile — tap Follow there' : 'Group admin'}
+            className={`bg-white rounded-2xl border border-gray-100 p-4 text-left ${adminProfile ? 'card-hover cursor-pointer' : 'cursor-default'}`}
+          >
+            <div className="flex items-center gap-2 text-gray-500 text-xs mb-1"><HiUser className="w-4 h-4 text-primary-500" /> Group Admin {adminProfile && <span className="text-[10px] text-primary-600 font-semibold">• View profile</span>}</div>
             <p className="text-lg font-bold text-gray-900 truncate">{group.admin_name || '—'}</p>
-          </div>
+          </button>
         </div>
 
         {/* Group plan renewal — admins need to see when their group subscription renews */}

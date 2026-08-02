@@ -1,10 +1,9 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import Header from '@/components/Header';
 import Footer from '@/components/Footer';
 import AdBanner from '@/components/AdBanner';
-import { businessAds } from '@/lib/data';
 import { HiPhotograph, HiPhone, HiExternalLink, HiMail, HiCheckCircle } from 'react-icons/hi';
 import toast from 'react-hot-toast';
 
@@ -18,14 +17,47 @@ export default function AdsPage() {
     website: '',
   });
 
-  const activeAds = businessAds.filter(ad => ad.active);
+  const [activeAds, setActiveAds] = useState([]);
+  const [sending, setSending] = useState(false);
 
-  const handleSubmit = (e) => {
+  // Only ads the owner has approved are shown — to everyone (members and visitors)
+  useEffect(() => {
+    (async () => {
+      try {
+        const { getAdsFromSupabase } = await import('@/lib/supabase');
+        setActiveAds(await getAdsFromSupabase());
+      } catch {}
+    })();
+  }, []);
+
+  // Real submission — goes to the ads table for PayRound's review
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    toast.success('Ad request submitted! We will review and contact you.');
-    setSubmitted(true);
-    setFormData({ businessName: '', description: '', contact: '', website: '' });
-    setTimeout(() => setShowForm(false), 2000);
+    if (!formData.businessName.trim() || !formData.description.trim()) { toast.error('Business name and description are required.'); return; }
+    setSending(true);
+    try {
+      const { supabase } = await import('@/lib/supabase');
+      let email = '';
+      try { email = (JSON.parse(localStorage.getItem('payround_user') || '{}').email || '').toLowerCase(); } catch {}
+      const { error } = await supabase.from('ads').insert({
+        id: `ad-${Date.now()}`,
+        business_name: formData.businessName.trim(),
+        description: formData.description.trim(),
+        contact: formData.contact.trim(),
+        website: formData.website.trim() || null,
+        submitter_email: email || 'visitor',
+        status: 'pending',
+        submitted_at: new Date().toISOString(),
+      });
+      if (error) throw error;
+      toast.success('Ad request submitted! PayRound will review it shortly.');
+      setSubmitted(true);
+      setFormData({ businessName: '', description: '', contact: '', website: '' });
+      setTimeout(() => setShowForm(false), 2000);
+    } catch (err) {
+      toast.error(`Could not submit: ${err.message || 'try again'}`);
+    }
+    setSending(false);
   };
 
   return (
@@ -130,9 +162,10 @@ export default function AdsPage() {
                   </div>
                   <button
                     type="submit"
-                    className="w-full bg-primary-600 text-white font-semibold py-3.5 rounded-xl hover:bg-primary-700 transition-all shadow-lg shadow-primary-200"
+                    disabled={sending}
+                    className="w-full bg-primary-600 text-white font-semibold py-3.5 rounded-xl hover:bg-primary-700 transition-all shadow-lg shadow-primary-200 disabled:opacity-50"
                   >
-                    Submit for Review
+                    {sending ? 'Submitting…' : 'Submit for Review'}
                   </button>
                 </form>
               )}

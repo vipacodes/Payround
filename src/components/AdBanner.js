@@ -2,8 +2,18 @@
 
 import { HiExternalLink, HiPhone } from 'react-icons/hi';
 
-export default function AdBanner({ ad, variant = 'card' }) {
-  if (!ad || !ad.active) return null;
+export default function AdBanner({ ad: raw, variant = 'card' }) {
+  if (!raw) return null;
+  // Normalize: works with bundled demo ads AND real ads from the database
+  const ad = {
+    id: raw.id,
+    businessName: raw.businessName || raw.business_name || 'Business',
+    description: raw.description || '',
+    website: raw.website || null,
+    contact: raw.contact || raw.phone || '',
+    active: raw.active !== undefined ? raw.active : raw.status === 'approved',
+  };
+  if (!ad.active) return null;
 
   if (variant === 'banner') {
     return (

@@ -63,7 +63,17 @@ export default function HomePage() {
     return () => { mounted = false; clearInterval(t); };
   }, []);
 
-  const activeAds = businessAds.filter(ad => ad.active);
+  // Real, approved ads from the database — visible to visitors too
+  const [ads, setAds] = useState([]);
+  useEffect(() => {
+    (async () => {
+      try {
+        const { getAdsFromSupabase } = await import('@/lib/supabase');
+        setAds(await getAdsFromSupabase());
+      } catch {}
+    })();
+  }, []);
+  const activeAds = ads;
 
   const handleSearch = (e) => {
     e.preventDefault();
