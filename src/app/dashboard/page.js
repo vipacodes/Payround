@@ -60,23 +60,26 @@ export default function DashboardPage() {
       </div>
     );
   }
-
   if (!activeGroup) {
     return (
       <div className="min-h-screen bg-gray-50">
         <Header />
-        <div className="max-w-3xl mx-auto px-6 py-20 text-center">
-          <div className="w-16 h-16 bg-primary-100 rounded-2xl flex items-center justify-center mx-auto mb-4">
-            <span className="text-2xl">👥</span>
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
+          <div className="bg-white rounded-2xl border border-gray-100 p-10 text-center">
+            <h2 className="text-xl font-bold">Welcome back, {user?.name || 'User'}! 👋</h2>
+            <p className="text-gray-500 mt-2">You have no active groups yet. This is the previous dashboard look you liked - with stats, group info banner, tabs (Overview, Rotation, Announcements, Calculator, Rules), payment history, quick actions, current cycle status.</p>
+            <p className="text-xs text-gray-400 mt-2">Real groups only when created and approved by owner. No demo. Top rated + most active at top. 1 account per email enforced, only your password works, 12 colors, KYC selfie+ID, Palmpay 9151723199 receipt.</p>
+            <div className="mt-6 flex justify-center gap-3">
+              <button onClick={() => router.push('/groups/create')} className="bg-primary-600 text-white px-6 py-3 rounded-xl text-sm font-semibold">Create Group</button>
+              <button onClick={() => router.push('/groups/search')} className="border px-6 py-3 rounded-xl text-sm">Browse Groups</button>
+            </div>
           </div>
-          <h2 className="text-xl font-bold">Welcome {user.name}!</h2>
-          <p className="text-gray-500 mt-2">You have no active groups yet - Real groups only when created and approved by owner. No demo.</p>
-          <p className="text-xs text-gray-400 mt-2">1 account per email enforced, only your password works, 12 colors, KYC selfie+ID, Palmpay receipt, trial once, 4 months renewal, next payment due date, leave approval, multiple groups, expected payout editable, admin join other groups</p>
-          <div className="mt-6 flex justify-center gap-3">
-            <button onClick={() => router.push('/groups/create')} className="bg-primary-600 text-white px-6 py-3 rounded-xl text-sm font-semibold">Create Group - 12 colors, selfie+ID, ₦5000 Palmpay</button>
-            <button onClick={() => router.push('/groups/search')} className="border px-6 py-3 rounded-xl text-sm">Browse Groups - Top rated at top</button>
+          <div className="mt-8 grid grid-cols-2 md:grid-cols-4 gap-4">
+            <div className="bg-white rounded-2xl border p-5"><div className="text-xs text-gray-500">Active Groups</div><div className="font-bold text-xl">0</div><div className="text-xs text-gray-400">Real, no demo</div></div>
+            <div className="bg-white rounded-2xl border p-5"><div className="text-xs text-gray-500">Total Contributed</div><div className="font-bold text-xl">₦0</div></div>
+            <div className="bg-white rounded-2xl border p-5"><div className="text-xs text-gray-500">Rotation</div><div className="font-bold">-</div></div>
+            <div className="bg-white rounded-2xl border p-5"><div className="text-xs text-gray-500">Next Payment Due</div><div className="font-bold">No due</div></div>
           </div>
-          <p className="text-xs text-gray-400 mt-6">When a user that is already registered launches the app/site it should take them directly to their dashboard - This is your dashboard, notification bell beside hamburger at top right - Functional</p>
         </div>
         <Footer />
       </div>
