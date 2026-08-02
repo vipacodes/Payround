@@ -179,7 +179,7 @@ export default function DashboardPage() {
 
         {/* ===== expandable tab panels ===== */}
         {activeTab === 'joined' && (
-          <div className="bg-white rounded-2xl border border-gray-100 p-4 mb-4 max-h-80 overflow-y-auto">
+          <div className="bg-white rounded-2xl border border-gray-100 p-4 mb-4 max-h-[65vh] overflow-y-auto">
             {joined.length === 0 ? (
               <div className="text-center py-6">
                 <p className="text-sm text-gray-500 mb-3">You haven&apos;t joined any group yet.</p>
@@ -211,7 +211,7 @@ export default function DashboardPage() {
         )}
 
         {activeTab === 'manage' && isAdmin && (
-          <div className="bg-white rounded-2xl border border-gray-100 p-4 mb-4 max-h-80 overflow-y-auto">
+          <div className="bg-white rounded-2xl border border-gray-100 p-4 mb-4 max-h-[65vh] overflow-y-auto">
             {managed.map(({ group: g, members, payments, payouts }) => {
               const N = cycleLength(g);
               const filled = members.reduce((sum, m) => sum + parseSpots(m.spots).length, 0);
@@ -280,7 +280,7 @@ export default function DashboardPage() {
         )}
 
         {activeTab === 'browse' && (
-          <div className="bg-white rounded-2xl border border-gray-100 p-4 mb-4 max-h-80 overflow-y-auto">
+          <div className="bg-white rounded-2xl border border-gray-100 p-4 mb-4 max-h-[65vh] overflow-y-auto">
             <div className="relative mb-3">
               <HiSearch className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
               <input value={groupQ} onChange={e => setGroupQ(e.target.value)} placeholder="Search by group name, ID or admin…" className="w-full pl-9 pr-3 py-2 border border-gray-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-primary-500" />
@@ -302,7 +302,7 @@ export default function DashboardPage() {
         )}
 
         {activeTab === 'people' && (
-          <div className="bg-white rounded-2xl border border-gray-100 p-4 mb-4 max-h-80 overflow-y-auto">
+          <div className="bg-white rounded-2xl border border-gray-100 p-4 mb-4 max-h-[65vh] overflow-y-auto">
             <form onSubmit={e => { e.preventDefault(); searchPeople(); }} className="flex gap-2 mb-3">
               <div className="relative flex-1">
                 <HiSearch className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />

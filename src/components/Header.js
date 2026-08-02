@@ -34,6 +34,14 @@ export default function Header() {
     const loadUnread = async () => {
       let email = '';
       if (stored) { try { email = (JSON.parse(stored).email || '').toLowerCase(); } catch {} }
+      // Unread direct messages (🟢 dot on the 💬 icon) — checked FIRST so it can never be skipped
+      try {
+        if (email) {
+          const { supabase } = await import('@/lib/supabase');
+          const { data: ms } = await supabase.from('messages').select('id').eq('to_email', email).eq('read', false).limit(100);
+          if (mounted) setUnreadMsgs((ms || []).length);
+        }
+      } catch { if (mounted) setUnreadMsgs(0); }
       try {
         const { supabase } = await import('@/lib/supabase');
         const { isVisibleTo, getMyGroupIds } = await import('@/lib/notifications');
@@ -45,14 +53,6 @@ export default function Header() {
         }
       } catch {}
       if (mounted) setUnreadCount(0);
-      // Unread direct messages badge (💬 icon beside the bell)
-      try {
-        if (email) {
-          const { supabase } = await import('@/lib/supabase');
-          const { data: ms } = await supabase.from('messages').select('id').eq('to_email', email).eq('read', false).limit(100);
-          if (mounted) setUnreadMsgs((ms || []).length);
-        }
-      } catch { if (mounted) setUnreadMsgs(0); }
     };
     loadUnread();
     const t = setInterval(loadUnread, 15000);
@@ -167,7 +167,7 @@ export default function Header() {
                   className="relative p-2 text-gray-500 hover:text-primary-600 transition-colors"
                 >
                   <HiChatAlt2 className="w-6 h-6" />
-                  {unreadMsgs > 0 && <span className="msg-dot absolute top-1 right-1 w-2.5 h-2.5 bg-green-500 rounded-full" title="New message" />}
+                  {unreadMsgs > 0 && <span className="msg-dot absolute top-1 right-1 w-2.5 h-2.5 bg-green-500 rounded-full" title="You have new messages" />}
                 </button>
 
                 <div className="flex items-center gap-3 pl-4 border-l border-gray-200">
@@ -233,7 +233,7 @@ export default function Header() {
                 className="relative p-2 text-gray-600 hover:text-primary-600 transition-colors"
               >
                 <HiChatAlt2 className="w-6 h-6" />
-                {unreadMsgs > 0 && <span className="msg-dot absolute top-1 right-1 w-2.5 h-2.5 bg-green-500 rounded-full" title="New message" />}
+                {unreadMsgs > 0 && <span className="msg-dot absolute top-1 right-1 w-2.5 h-2.5 bg-green-500 rounded-full" title="You have new messages" />}
               </button>
             )}
             <button
