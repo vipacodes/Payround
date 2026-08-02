@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Header from '@/components/Header';
 import Footer from '@/components/Footer';
+import LoadingScreen from '@/components/LoadingScreen';
 import BroadcastAlert from '@/components/BroadcastAlert';
 import AdBanner from '@/components/AdBanner';
 import {
@@ -103,11 +104,7 @@ export default function DashboardPage() {
 
   if (!user) return null;
   if (loading) {
-    return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600"></div>
-      </div>
-    );
+    return <LoadingScreen label="Loading your dashboard…" />;
   }
 
   const isAdmin = managed.length > 0;
@@ -147,7 +144,7 @@ export default function DashboardPage() {
   const Tab = ({ id, icon, label, badge }) => (
     <button
       onClick={() => setActiveTab(activeTab === id ? null : id)}
-      className={`shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[11px] font-semibold border transition-all ${activeTab === id ? 'bg-primary-600 text-white border-primary-600 shadow-md shadow-primary-200' : 'bg-white text-gray-600 border-gray-200 hover:border-primary-300'}`}
+      className={`shrink-0 flex items-center gap-1.5 px-4 py-2 rounded-full text-xs font-semibold border transition-all ${activeTab === id ? 'bg-primary-600 text-white border-primary-600 shadow-md shadow-primary-200' : 'bg-white text-gray-600 border-gray-200 hover:border-primary-300'}`}
     >
       {icon}{label}{badge !== undefined && <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${activeTab === id ? 'bg-white/25 text-white' : 'bg-gray-100 text-gray-600'}`}>{badge}</span>}
     </button>
@@ -334,14 +331,14 @@ export default function DashboardPage() {
 
         {/* ===== ADS — real approved ads, straight after the tabs ===== */}
         <div className="flex items-center justify-between mb-2 mt-1">
-          <h2 className="text-sm font-bold text-gray-900 flex items-center gap-1.5"><HiPhotograph className="w-4 h-4 text-gold-500" /> Sponsored</h2>
+          <h2 className="text-base font-bold text-gray-900 flex items-center gap-1.5"><HiPhotograph className="w-5 h-5 text-gold-500" /> Sponsored</h2>
           <button onClick={() => router.push('/ads')} className="text-[11px] font-medium text-primary-600">Advertise →</button>
         </div>
         {ads.length > 0 ? (
           <div className="flex gap-3 overflow-x-auto pb-2 mb-5 -mx-1 px-1">
             {ads.map(ad => (
-              <div key={ad.id} className="min-w-[260px] max-w-[260px] shrink-0">
-                <AdBanner ad={ad} />
+              <div key={ad.id} className="min-w-[300px] max-w-[300px] sm:min-w-[360px] sm:max-w-[360px] shrink-0">
+                <AdBanner ad={ad} big />
               </div>
             ))}
           </div>
@@ -353,12 +350,12 @@ export default function DashboardPage() {
         )}
 
         {/* ===== the only two actions below the ads ===== */}
-        <div className="grid grid-cols-2 gap-3">
-          <button onClick={() => router.push('/groups/create')} className="bg-primary-600 hover:bg-primary-700 text-white rounded-2xl p-4 flex flex-col items-center gap-1.5 shadow-lg shadow-primary-200 transition-all">
-            <HiPlusCircle className="w-6 h-6" /><span className="text-sm font-semibold">Create Group</span>
+        <div className="grid grid-cols-2 gap-2.5">
+          <button onClick={() => router.push('/groups/create')} className="bg-primary-600 hover:bg-primary-700 text-white rounded-xl px-3 py-2.5 flex items-center justify-center gap-1.5 shadow-md shadow-primary-200 transition-all">
+            <HiPlusCircle className="w-5 h-5" /><span className="text-xs font-semibold">Create Group</span>
           </button>
-          <button onClick={() => setActiveTab('browse')} className="bg-white hover:bg-gray-50 border-2 border-primary-200 text-primary-700 rounded-2xl p-4 flex flex-col items-center gap-1.5 transition-all">
-            <HiSearch className="w-6 h-6" /><span className="text-sm font-semibold">Join a Group</span>
+          <button onClick={() => router.push('/groups/search')} className="bg-white hover:bg-primary-50 border-2 border-primary-300 text-primary-700 rounded-xl px-3 py-2.5 flex items-center justify-center gap-1.5 transition-all">
+            <HiSearch className="w-5 h-5" /><span className="text-xs font-semibold">Join a Group</span>
           </button>
         </div>
       </div>

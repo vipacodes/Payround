@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import Header from '@/components/Header';
 import Footer from '@/components/Footer';
+import LoadingScreen from '@/components/LoadingScreen';
 import {
   HiUserGroup, HiCalendar, HiCurrencyDollar,
   HiUser, HiCheckCircle, HiClock, HiBadgeCheck, HiArrowLeft,
@@ -89,11 +90,7 @@ export default function GroupDetailsPage() {
   }, [params.id]);
 
   if (loading) {
-    return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600"></div>
-      </div>
-    );
+    return <LoadingScreen label="Loading group…" />;
   }
 
   if (notFound || !group) {

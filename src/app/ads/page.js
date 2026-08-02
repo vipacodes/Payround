@@ -14,8 +14,31 @@ export default function AdsPage() {
     businessName: '',
     description: '',
     contact: '',
+    whatsapp: '',
     website: '',
   });
+  const [mediaFiles, setMediaFiles] = useState([]); // business photos/videos (slideshow on the ad)
+  const [mediaError, setMediaError] = useState('');
+
+  const pickMedia = async (files) => {
+    setMediaError('');
+    const list = [];
+    for (const file of Array.from(files || [])) {
+      const isVideo = file.type.startsWith('video/');
+      if (!isVideo && !file.type.startsWith('image/')) { setMediaError('Only images and videos are allowed.'); continue; }
+      if (isVideo && file.size > 6 * 1024 * 1024) { setMediaError(`"${file.name}" is over 6MB — videos must be 6MB or less.`); continue; }
+      try {
+        if (isVideo) {
+          const dataUrl = await new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(r.result); r.onerror = rej; r.readAsDataURL(file); });
+          list.push(dataUrl);
+        } else {
+          const { compressImage } = await import('@/lib/image');
+          list.push(await compressImage(file, 1000, 0.82));
+        }
+      } catch { setMediaError('One file could not be read — try another.'); }
+    }
+    setMediaFiles(prev => [...prev, ...list].slice(0, 6));
+  };
 
   const [activeAds, setActiveAds] = useState([]);
   const [sending, setSending] = useState(false);
@@ -44,7 +67,9 @@ export default function AdsPage() {
         business_name: formData.businessName.trim(),
         description: formData.description.trim(),
         contact: formData.contact.trim(),
+        whatsapp: formData.whatsapp.trim() || formData.contact.trim(),
         website: formData.website.trim() || null,
+        media_urls: mediaFiles.length > 0 ? JSON.stringify(mediaFiles) : null,
         submitter_email: email || 'visitor',
         status: 'pending',
         submitted_at: new Date().toISOString(),
@@ -52,7 +77,8 @@ export default function AdsPage() {
       if (error) throw error;
       toast.success('Ad request submitted! PayRound will review it shortly.');
       setSubmitted(true);
-      setFormData({ businessName: '', description: '', contact: '', website: '' });
+      setFormData({ businessName: '', description: '', contact: '', whatsapp: '', website: '' });
+      setMediaFiles([]);
       setTimeout(() => setShowForm(false), 2000);
     } catch (err) {
       toast.error(`Could not submit: ${err.message || 'try again'}`);
@@ -151,6 +177,17 @@ export default function AdsPage() {
                     />
                   </div>
                   <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1.5">WhatsApp Number *</label>
+                    <input
+                      type="tel"
+                      value={formData.whatsapp}
+                      onChange={(e) => setFormData(prev => ({ ...prev, whatsapp: e.target.value }))}
+                      placeholder="e.g. 09151723199 — customers can chat you on WhatsApp"
+                      required
+                      className="w-full px-4 py-3 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+                    />
+                  </div>
+                  <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1.5">Website (optional)</label>
                     <input
                       type="url"
@@ -159,6 +196,27 @@ export default function AdsPage() {
                       placeholder="https://yourbusiness.com"
                       className="w-full px-4 py-3 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
                     />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1.5">Business Photos / Videos (slideshow — up to 6)</label>
+                    <label className="w-full border-2 border-dashed border-gray-200 rounded-xl p-4 flex flex-col items-center gap-1 cursor-pointer hover:border-primary-300 hover:bg-primary-50/40 transition-all">
+                      <input type="file" accept="image/*,video/*" multiple className="hidden" onChange={e => pickMedia(e.target.files)} />
+                      <HiPhotograph className="w-6 h-6 text-gray-400" />
+                      <span className="text-xs text-gray-500">Tap to add photos or short videos (images auto-compressed, videos ≤ 6MB)</span>
+                    </label>
+                    {mediaError && <p className="text-xs text-red-500 mt-1">{mediaError}</p>}
+                    {mediaFiles.length > 0 && (
+                      <div className="flex gap-2 mt-2 flex-wrap">
+                        {mediaFiles.map((m, i) => (
+                          <div key={i} className="relative w-16 h-16">
+                            {m.startsWith('data:video')
+                              ? <video src={m} muted playsInline className="w-16 h-16 rounded-lg object-cover border bg-black" />
+                              : <img src={m} alt="" className="w-16 h-16 rounded-lg object-cover border" />}
+                            <button type="button" onClick={() => setMediaFiles(prev => prev.filter((_, x) => x !== i))} className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-red-500 text-white rounded-full text-[10px] shadow">✕</button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
                   <button
                     type="submit"

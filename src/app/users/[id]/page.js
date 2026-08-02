@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import Header from '@/components/Header';
 import Footer from '@/components/Footer';
+import LoadingScreen from '@/components/LoadingScreen';
 import ImageLightbox from '@/components/ImageLightbox';
 import {
   HiArrowLeft, HiBadgeCheck, HiUserGroup, HiCalendar,
@@ -101,11 +102,7 @@ export default function PublicUserProfilePage() {
   };
 
   if (loading) {
-    return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600"></div>
-      </div>
-    );
+    return <LoadingScreen label="Loading profile…" />;
   }
 
   if (notFound || !person) {
