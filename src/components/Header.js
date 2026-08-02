@@ -42,17 +42,21 @@ export default function Header() {
           if (mounted) setUnreadMsgs((ms || []).length);
         }
       } catch { if (mounted) setUnreadMsgs(0); }
+      // Unread notifications (🟢 dot on the bell) — simple rules, no silent failures
       try {
         const { supabase } = await import('@/lib/supabase');
-        const { isVisibleTo, getMyGroupIds } = await import('@/lib/notifications');
-        const gids = await getMyGroupIds(supabase, email);
-        const { data, error } = await supabase.from('notifications').select('id, user_email, group_id, is_read').eq('is_read', false).order('created_at', { ascending: false }).limit(100);
-        if (!error && data && mounted) {
-          setUnreadCount(data.filter(n => isVisibleTo(n, email, gids)).length);
-          return;
+        let gids = [];
+        try { const { getMyGroupIds } = await import('@/lib/notifications'); gids = await getMyGroupIds(supabase, email); } catch { gids = []; }
+        const { data } = await supabase.from('notifications').select('id, user_email, group_id, is_read').eq('is_read', false).limit(100);
+        if (data && mounted) {
+          setUnreadCount(data.filter(n => {
+            const rowEm = (n.user_email || '').toLowerCase();
+            if (rowEm) return !!email && rowEm === email;
+            if (n.group_id) return gids.includes(n.group_id);
+            return true; // broadcast to everyone
+          }).length);
         }
-      } catch {}
-      if (mounted) setUnreadCount(0);
+      } catch { if (mounted) setUnreadCount(0); }
     };
     loadUnread();
     const t = setInterval(loadUnread, 15000);
@@ -150,14 +154,12 @@ export default function Header() {
 
                 <button
                   onClick={() => router.push('/notifications')}
+                  aria-label="Notifications"
+                  title="Notifications"
                   className="relative p-2 text-gray-500 hover:text-primary-600 transition-colors"
                 >
                   <HiBell className="w-6 h-6" />
-                  {unreadCount > 0 && (
-                    <span className="absolute -top-0.5 -right-0.5 w-4.5 h-4.5 bg-red-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center shadow-lg shadow-red-200">
-                      {unreadCount > 9 ? '9+' : unreadCount}
-                    </span>
-                  )}
+                  {unreadCount > 0 && <span className="msg-dot absolute top-1 right-1 w-2.5 h-2.5 bg-green-500 rounded-full" title="You have new notifications" />}
                 </button>
 
                 <button
@@ -219,11 +221,7 @@ export default function Header() {
                 className="relative p-2 text-gray-600 hover:text-primary-600 transition-colors"
               >
                 <HiBell className="w-6 h-6" />
-                {unreadCount > 0 && (
-                  <span className="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] px-1 bg-red-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center shadow-lg shadow-red-200">
-                    {unreadCount > 9 ? '9+' : unreadCount}
-                  </span>
-                )}
+                {unreadCount > 0 && <span className="msg-dot absolute top-1 right-1 w-2.5 h-2.5 bg-green-500 rounded-full" title="You have new notifications" />}
               </button>
             )}
             {isLoggedIn && (
