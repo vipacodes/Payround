@@ -140,6 +140,7 @@ export default function AdsPage() {
                   </div>
                   <h4 className="font-semibold text-gray-900 mb-1">Request Submitted! 🎉</h4>
                   <p className="text-sm text-gray-500">We&apos;ll review and contact you within 48 hours.</p>
+                  <p className="text-xs text-gray-400 mt-1">After approval you can add more items anytime from your business profile — and share each one to WhatsApp with one tap. 📤</p>
                 </div>
               ) : (
                 <form onSubmit={handleSubmit} className="space-y-4">
