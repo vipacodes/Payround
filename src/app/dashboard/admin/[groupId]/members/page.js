@@ -256,7 +256,15 @@ export default function AdminMembersPage() {
                   </div>
                   <div className="flex gap-2 flex-wrap">
                     <button onClick={() => handleJoinRequest(req, true)} className="bg-primary-600 hover:bg-primary-700 text-white px-3 py-1.5 rounded-lg text-xs font-medium">Approve → Add Member</button>
-                    <button onClick={() => { setOfferFor(offerFor === req.id ? null : req.id); setOfferSpots(freeSpotNums.slice(0, Math.max(1, parseInt(req.spots_requested, 10) || 1))); }} className="bg-amber-50 text-amber-700 border border-amber-200 hover:bg-amber-100 px-3 py-1.5 rounded-lg text-xs font-medium">🪑 Suggest spot(s)</button>
+                    <button onClick={() => {
+                      setOfferFor(offerFor === req.id ? null : req.id);
+                      // Start from THEIR wishlist spots that are still free, topped up with the next free spots
+                      const need = Math.max(1, parseInt(req.spots_requested, 10) || 1);
+                      const wished = parseSpotsLite(req.desired_spots).filter(w => freeSpotNums.includes(w));
+                      const pre = [...wished];
+                      for (const sp of freeSpotNums) { if (pre.length >= Math.max(need, wished.length)) break; if (!pre.includes(sp)) pre.push(sp); }
+                      setOfferSpots(pre.sort((a, b) => a - b));
+                    }} className="bg-amber-50 text-amber-700 border border-amber-200 hover:bg-amber-100 px-3 py-1.5 rounded-lg text-xs font-medium">🪑 Suggest spot(s)</button>
                     <button onClick={() => handleJoinRequest(req, false)} className="bg-red-50 text-red-600 border border-red-200 hover:bg-red-100 px-3 py-1.5 rounded-lg text-xs font-medium">Decline</button>
                   </div>
                 </div>
@@ -274,7 +282,10 @@ export default function AdminMembersPage() {
                 {offerFor === req.id && (
                   <div className="mt-3 bg-amber-50 border border-amber-200 rounded-xl p-3">
                     <p className="text-xs font-bold text-amber-800 mb-1">🪑 Offer alternative spot(s)</p>
-                    <p className="text-[11px] text-gray-600 mb-2">Pick the spot(s) you offer {req.member_name || 'them'} — they must <b>ACCEPT</b> to join or <b>DECLINE</b> to stay out. You both get a notification.</p>
+                    <p className="text-[11px] text-gray-600 mb-2">
+                      Pick the spot(s) you offer {req.member_name || 'them'} — they must <b>ACCEPT</b> to join or <b>DECLINE</b> to stay out. You both get a notification.
+                      {parseSpotsLite(req.desired_spots).length > 0 && <> Their wishlist <b>#{parseSpotsLite(req.desired_spots).join(', #')}</b> is pre-picked for you where still free — adjust anything before sending.</>}
+                    </p>
                     <div className="flex flex-wrap gap-1.5 mb-3">
                       {freeSpotNums.length === 0 && <span className="text-[11px] text-red-600 font-semibold">No free spots left in this group right now.</span>}
                       {freeSpotNums.map(sp => {
