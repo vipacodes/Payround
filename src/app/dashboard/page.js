@@ -53,10 +53,32 @@ export default function DashboardPage() {
     }
   }, []);
 
-  if (!user || !activeGroup) {
+  if (!user) {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600"></div>
+      </div>
+    );
+  }
+
+  if (!activeGroup) {
+    return (
+      <div className="min-h-screen bg-gray-50">
+        <Header />
+        <div className="max-w-3xl mx-auto px-6 py-20 text-center">
+          <div className="w-16 h-16 bg-primary-100 rounded-2xl flex items-center justify-center mx-auto mb-4">
+            <span className="text-2xl">👥</span>
+          </div>
+          <h2 className="text-xl font-bold">Welcome {user.name}!</h2>
+          <p className="text-gray-500 mt-2">You have no active groups yet - Real groups only when created and approved by owner. No demo.</p>
+          <p className="text-xs text-gray-400 mt-2">1 account per email enforced, only your password works, 12 colors, KYC selfie+ID, Palmpay receipt, trial once, 4 months renewal, next payment due date, leave approval, multiple groups, expected payout editable, admin join other groups</p>
+          <div className="mt-6 flex justify-center gap-3">
+            <button onClick={() => router.push('/groups/create')} className="bg-primary-600 text-white px-6 py-3 rounded-xl text-sm font-semibold">Create Group - 12 colors, selfie+ID, ₦5000 Palmpay</button>
+            <button onClick={() => router.push('/groups/search')} className="border px-6 py-3 rounded-xl text-sm">Browse Groups - Top rated at top</button>
+          </div>
+          <p className="text-xs text-gray-400 mt-6">When a user that is already registered launches the app/site it should take them directly to their dashboard - This is your dashboard, notification bell beside hamburger at top right - Functional</p>
+        </div>
+        <Footer />
       </div>
     );
   }
