@@ -6,7 +6,7 @@ import Link from 'next/link';
 import Header from '@/components/Header';
 import Footer from '@/components/Footer';
 import { signupUser, users, storeUserDocuments } from '@/lib/data';
-import { HiUser, HiMail, HiPhone, HiLockClosed, HiCamera, HiLocationMarker, HiPhotograph, HiIdentification, HiCheckCircle } from 'react-icons/hi';
+import { HiUser, HiMail, HiPhone, HiLockClosed, HiCamera, HiLocationMarker, HiCheckCircle } from 'react-icons/hi';
 import toast from 'react-hot-toast';
 
 const STORAGE_KEY = 'payround_signup_form';
@@ -16,15 +16,9 @@ export default function SignUpPage() {
   const [submitting, setSubmitting] = useState(false);
   const [profilePic, setProfilePic] = useState(null);
   const [profilePicPreview, setProfilePicPreview] = useState(null);
-  const [idFront, setIdFront] = useState(null);
-  const [idFrontPreview, setIdFrontPreview] = useState(null);
-  const [idBack, setIdBack] = useState(null);
-  const [idBackPreview, setIdBackPreview] = useState(null);
   const [step, setStep] = useState('form'); // form | success
 
   const profilePicRef = useRef(null);
-  const idFrontRef = useRef(null);
-  const idBackRef = useRef(null);
 
   const [formData, setFormData] = useState({
     name: '',
@@ -86,8 +80,6 @@ export default function SignUpPage() {
     else if (formData.password.length < 6) newErrors.password = 'At least 6 characters';
     if (formData.password !== formData.confirmPassword) newErrors.confirmPassword = 'Passwords do not match';
     if (!profilePic) newErrors.profilePic = 'Profile picture is required';
-    if (!idFront) newErrors.idFront = 'ID front is required';
-    if (!idBack) newErrors.idBack = 'ID back is required';
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
   };
@@ -128,8 +120,6 @@ export default function SignUpPage() {
         is_verified: false,
         referred_by: formData.referredBy?.trim() || null,
         profile_pic: profilePic || null,
-        id_front_url: idFront || null,
-        id_back_url: idBack || null,
       });
       if (error) {
         // Safety net: retry with core columns only so signup always works even if a migration hasn't been run yet
@@ -172,8 +162,6 @@ export default function SignUpPage() {
     if (result.success) {
       storeUserDocuments(result.user.id, result.user.email, result.user.name, {
         profilePic,
-        idFront,
-        idBack,
       });
 
       localStorage.setItem('payround_user', JSON.stringify({
@@ -181,7 +169,7 @@ export default function SignUpPage() {
         phone: result.user.phone, address: result.user.address,
         role: result.user.role, faceVerified: false,
       }));
-      toast.success('Account created! Admin will review your documents.');
+      toast.success('Account created! Welcome to PayRound 🎉');
       sessionStorage.removeItem(STORAGE_KEY);
       setStep('success');
     } else {
@@ -204,8 +192,8 @@ export default function SignUpPage() {
             <HiCheckCircle className="w-12 h-12 text-emerald-500" />
           </div>
           <h2 className="text-xl font-bold text-gray-900 mb-2">Account Created! 🎉</h2>
-          <p className="text-gray-500 mb-2">Your documents have been submitted for review.</p>
-          <p className="text-sm text-gray-400 mb-6">An admin will verify your ID and profile picture before you can join groups.</p>
+          <p className="text-gray-500 mb-2">Your account is in — welcome to PayRound! 🎊</p>
+          <p className="text-sm text-gray-400 mb-6">PayRound will review your profile picture shortly — you can already explore groups.</p>
           <button onClick={() => router.push(redirectPath || '/dashboard')} className="w-full bg-primary-600 text-white font-semibold py-3.5 rounded-xl hover:bg-primary-700 transition-all shadow-lg shadow-primary-200">
             {redirectPath ? 'Continue →' : 'Go to Dashboard'}
           </button>
@@ -295,7 +283,7 @@ export default function SignUpPage() {
 
             {/* Profile Picture */}
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">Profile Picture <span className="text-red-500">*</span></label>
+              <label className="block text-sm font-medium text-gray-700 mb-1.5">Selfie <span className="text-red-500">*</span> <span className="text-gray-400 text-xs font-normal">(the only photo needed to sign up — used as your profile picture)</span></label>
               <input type="file" ref={profilePicRef} accept="image/*,image/heic,image/heif,video/*,application/pdf,.pdf" onChange={e => handleFile(e.target.files[0], setProfilePicPreview, setProfilePic)} className="hidden" />
               {profilePicPreview ? (
                 <div className="relative w-24 h-24">
@@ -310,51 +298,6 @@ export default function SignUpPage() {
                 </div>
               )}
               {errors.profilePic && <p className="text-xs text-red-500 mt-1">{errors.profilePic}</p>}
-            </div>
-
-            {/* ID Document */}
-            <div className="p-4 bg-amber-50 border border-amber-200 rounded-xl">
-              <div className="flex items-center gap-2 mb-3">
-                <HiIdentification className="w-5 h-5 text-amber-600" />
-                <span className="text-sm font-medium text-amber-800">ID Document Verification</span>
-              </div>
-              <p className="text-xs text-amber-700 mb-3">Upload your government-issued ID (National ID, Voter's Card, Driver's License, International Passport). Admin will match your face with your ID.</p>
-
-              {/* ID Front */}
-              <div className="mb-3">
-                <label className="block text-xs font-medium text-amber-800 mb-1">Front of ID <span className="text-red-500">*</span></label>
-                <input type="file" ref={idFrontRef} accept="image/*,image/heic,image/heif,application/pdf,.pdf,video/*" onChange={e => handleFile(e.target.files[0], setIdFrontPreview, setIdFront)} className="hidden" />
-                {idFrontPreview ? (
-                  <div className="relative">
-                    <img src={idFrontPreview} alt="ID Front" className="w-full max-h-32 rounded-xl object-cover border border-amber-300" />
-                    <button type="button" onClick={() => idFrontRef.current?.click()} className="absolute top-1 right-1 w-6 h-6 bg-gray-900/50 text-white rounded-full text-xs flex items-center justify-center">✕</button>
-                  </div>
-                ) : (
-                  <div onClick={() => idFrontRef.current?.click()} className="border-2 border-dashed border-amber-300 rounded-xl p-4 text-center cursor-pointer hover:border-amber-500 hover:bg-amber-50/50 transition-all">
-                    <HiPhotograph className="w-6 h-6 text-amber-400 mx-auto mb-1" />
-                    <p className="text-xs text-amber-600">Upload front of ID</p>
-                  </div>
-                )}
-                {errors.idFront && <p className="text-xs text-red-500 mt-1">{errors.idFront}</p>}
-              </div>
-
-              {/* ID Back */}
-              <div>
-                <label className="block text-xs font-medium text-amber-800 mb-1">Back of ID <span className="text-red-500">*</span></label>
-                <input type="file" ref={idBackRef} accept="image/*,image/heic,image/heif,application/pdf,.pdf,video/*" onChange={e => handleFile(e.target.files[0], setIdBackPreview, setIdBack)} className="hidden" />
-                {idBackPreview ? (
-                  <div className="relative">
-                    <img src={idBackPreview} alt="ID Back" className="w-full max-h-32 rounded-xl object-cover border border-amber-300" />
-                    <button type="button" onClick={() => idBackRef.current?.click()} className="absolute top-1 right-1 w-6 h-6 bg-gray-900/50 text-white rounded-full text-xs flex items-center justify-center">✕</button>
-                  </div>
-                ) : (
-                  <div onClick={() => idBackRef.current?.click()} className="border-2 border-dashed border-amber-300 rounded-xl p-4 text-center cursor-pointer hover:border-amber-500 hover:bg-amber-50/50 transition-all">
-                    <HiPhotograph className="w-6 h-6 text-amber-400 mx-auto mb-1" />
-                    <p className="text-xs text-amber-600">Upload back of ID</p>
-                  </div>
-                )}
-                {errors.idBack && <p className="text-xs text-red-500 mt-1">{errors.idBack}</p>}
-              </div>
             </div>
 
             <button type="submit" disabled={submitting} className="w-full bg-primary-600 text-white font-semibold py-3.5 rounded-xl hover:bg-primary-700 transition-all shadow-lg shadow-primary-200 disabled:opacity-50">

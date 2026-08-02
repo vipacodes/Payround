@@ -22,8 +22,6 @@ export default function CreateGroupPage() {
   const [step, setStep] = useState(1);
   const [paid, setPaid] = useState(false);
   const [startedTrial, setStartedTrial] = useState(false);
-  const [logoPreview, setLogoPreview] = useState(null);
-  const fileInputRef = useRef(null);
   const fileSelfieRef = useRef(null);
   const fileIdRef = useRef(null);
   const fileReceiptRef = useRef(null);
@@ -71,6 +69,7 @@ export default function CreateGroupPage() {
       if (!formData.name || !formData.description) { toast.error('Group name and description required'); return; }
       if (!selfieFile) { toast.error('Clear selfie is mandatory for KYC'); return; }
       if (!idFile) { toast.error('Valid ID (NIN/Voter/Driver/Passport) is mandatory'); return; }
+      if (!avatarPreview) { toast.error('Group logo is required — upload it in step 1'); return; }
     }
     if (step < 5) setStep(step + 1);
     window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -81,22 +80,11 @@ export default function CreateGroupPage() {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
-  const handleLogoUpload = (e) => {
-    const file = e.target.files[0];
-    if (file) {
-      const reader = new FileReader();
-      reader.onload = (ev) => setLogoPreview(ev.target.result);
-      reader.readAsDataURL(file);
-    }
-  };
-  const handleRemoveLogo = () => {
-    setLogoPreview(null);
-    if (fileInputRef.current) fileInputRef.current.value = '';
-  };
 
   const handleStartTrial = () => {
     if (trialUsed) { toast.error('You have already used your one-time 7-day trial. Payment required.'); return; }
     if (!selfieFile || !idFile) { toast.error('Selfie + ID mandatory before trial'); return; }
+    if (!avatarPreview) { toast.error('Group logo is required'); return; }
     toast.success('🎉 7-day trial started!');
     setStartedTrial(true);
     const storedUser = localStorage.getItem('payround_user');
@@ -116,6 +104,7 @@ export default function CreateGroupPage() {
 
   const handlePay = () => {
     if (!selfieFile || !idFile) { toast.error('Selfie + ID mandatory'); return; }
+    if (!avatarPreview) { toast.error('Group logo is required'); return; }
     if (!receiptFile) { toast.error(`Upload receipt of ₦${planPrice.toLocaleString()} to Palmpay 9151723199 Basikoro James Okeroghene`); return; }
     toast.success('Payment receipt uploaded - pending PayRound approval.');
     setPaid(true);
@@ -192,7 +181,7 @@ export default function CreateGroupPage() {
             <HiLightningBolt className="w-8 h-8 text-white" />
           </div>
           <h1 className="text-2xl font-bold text-gray-900">Create an Ajo Group</h1>
-          <p className="text-gray-500 mt-1">Set up your group in 5 steps - Selfie + ID mandatory, Color picker 12 options</p>
+          <p className="text-gray-500 mt-1">Set up your group in 5 steps - Selfie + Valid ID + Group Logo required, Color picker 12 options</p>
         </div>
 
         <div className="flex items-center justify-between mb-8 px-2">
@@ -214,12 +203,12 @@ export default function CreateGroupPage() {
               <div><label className="block text-sm font-medium mb-1.5">Description *</label><textarea value={formData.description} onChange={(e)=>updateField('description', e.target.value)} placeholder="Describe purpose..." rows={3} className="w-full px-4 py-3 border rounded-xl text-sm focus:ring-2 focus:ring-primary-500 resize-none outline-none" /></div>
 
               <div>
-                <label className="block text-sm font-medium mb-1.5">Group Picture <span className="text-gray-400 text-xs font-normal">(optional — shown on the group profile)</span></label>
-                <input type="file" ref={fileAvatarRef} accept="image/*" className="hidden" onChange={(e)=>{const f=e.target.files[0]; if(f){ if(f.size>5*1024*1024){toast.error('Max 5MB'); return;} const r=new FileReader(); r.onload=(ev)=>setAvatarPreview(ev.target.result); r.readAsDataURL(f);}}} />
+                <label className="block text-sm font-medium mb-1.5">Group Logo * <span className="text-gray-400 text-xs font-normal">(required — shown as the group's picture everywhere)</span></label>
+                <input type="file" ref={fileAvatarRef} accept="image/*" className="hidden" onChange={async (e)=>{const f=e.target.files[0]; if(f){ if(f.size>8*1024*1024){toast.error('Max 8MB'); return;} try { const { compressImage } = await import('@/lib/image'); setAvatarPreview(await compressImage(f, 512, 0.85)); } catch { toast.error('Could not read that image'); } }}} />
                 {avatarPreview ? (
                   <div className="relative w-24 h-24"><img src={avatarPreview} className="w-24 h-24 rounded-2xl object-cover border" /><button type="button" onClick={()=>setAvatarPreview(null)} className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full w-6 h-6 flex items-center justify-center">×</button></div>
                 ) : (
-                  <div onClick={()=>fileAvatarRef.current?.click()} className="border-2 border-dashed rounded-xl p-4 text-center cursor-pointer bg-white hover:border-primary-400 w-fit"><HiPhotograph className="w-6 h-6 mx-auto text-gray-400"/><p className="text-xs mt-1">Upload Group Picture</p></div>
+                  <div onClick={()=>fileAvatarRef.current?.click()} className="border-2 border-dashed rounded-xl p-4 text-center cursor-pointer bg-white hover:border-primary-400 w-fit"><HiPhotograph className="w-6 h-6 mx-auto text-gray-400"/><p className="text-xs mt-1">Upload Group Logo *</p></div>
                 )}
               </div>
               
@@ -234,7 +223,7 @@ export default function CreateGroupPage() {
               </div>
 
               <div className="bg-amber-50 border border-amber-200 rounded-xl p-4">
-                <h4 className="font-bold text-sm text-amber-800">KYC Required - Selfie + Valid ID *</h4>
+                <h4 className="font-bold text-sm text-amber-800">KYC Required - Selfie + Valid ID * (ID replaces signup ID — profile signup only needs a selfie)</h4>
                 <div className="grid md:grid-cols-2 gap-4 mt-3">
                   <div>
                     <label className="block text-xs font-medium mb-1">Clear Selfie *</label>
@@ -250,11 +239,6 @@ export default function CreateGroupPage() {
                 </div>
               </div>
 
-              <div>
-                <label className="block text-sm font-medium mb-1.5">Group Logo (optional)</label>
-                <input type="file" ref={fileInputRef} accept="image/*,image/heic,image/heif" onChange={(e)=>{const file=e.target.files[0]; if(file){const reader=new FileReader(); reader.onload=(ev)=>setLogoPreview(ev.target.result); reader.readAsDataURL(file);}}} className="hidden" />
-                {logoPreview ? (<div className="relative"><img src={logoPreview} alt="Logo" className="w-32 h-32 object-cover rounded-2xl border" /><button onClick={()=>{setLogoPreview(null); if(fileInputRef.current) fileInputRef.current.value='';}} className="absolute -top-2 -right-2 w-7 h-7 bg-red-500 text-white rounded-full flex items-center justify-center"><HiTrash className="w-3.5 h-3.5" /></button></div>) : (<div onClick={()=>fileInputRef.current?.click()} className="border-2 border-dashed border-gray-300 rounded-2xl p-8 text-center cursor-pointer hover:border-primary-400"><HiUserGroup className="w-8 h-8 text-gray-400 mx-auto mb-2" /><p className="text-sm text-gray-500">Upload logo</p></div>)}
-              </div>
             </div>
           )}
 
