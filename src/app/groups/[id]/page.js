@@ -13,7 +13,7 @@ import {
 import ImageLightbox from '@/components/ImageLightbox';
 import GroupBadge from '@/components/GroupBadge';
 import { remindRenewalIfSoon } from '@/lib/renewal';
-import { parseSpots, formatSpots, currentPeriod, cycleLength, periodLabel, periodDays, paidWeeksForSpot, isSpotCurrent, buildSpotMap, payoutForSpot } from '@/lib/payments';
+import { parseSpots, formatSpots, currentPeriod, cycleLength, periodLabel, periodDays, paidWeeksForSpot, isSpotCurrent, buildSpotMap, payoutForSpot, withRotationClock } from '@/lib/payments';
 import { compressImage } from '@/lib/image';
 import toast from 'react-hot-toast';
 
@@ -292,7 +292,9 @@ export default function GroupDetailsPage() {
 
   const isAdmin = me?.email && group.admin_email && me.email.toLowerCase() === group.admin_email.toLowerCase();
   const isMember = myStatus === 'approved' || isAdmin;
-  const period = currentPeriod(group);
+  // 🏁 Nothing is due before the group is FULL — the rotation clock starts then
+  const clockGroup = withRotationClock(group, members);
+  const period = clockGroup ? currentPeriod(clockGroup) : 0;
   const N = cycleLength(group);
   const label = periodLabel(group.frequency);
   const spotMap = buildSpotMap(members);
@@ -611,10 +613,13 @@ export default function GroupDetailsPage() {
             {/* Rotation & payout board */}
             <div className="bg-white rounded-2xl border border-gray-100 p-6 mt-6">
               <h2 className="font-bold text-gray-900 mb-1 flex items-center gap-2"><HiCurrencyDollar className="w-5 h-5 text-primary-600" /> Rotation & Payout Board</h2>
-              <p className="text-xs text-gray-500 mb-4">
-                All members can see this board. Spot #k collects the pot at {label} k • Current {label}: <strong>{Math.min(period, N)} of {N}</strong>.
-                A member holding several spots collects several payouts.
+              <p className="text-xs text-gray-500 mb-1">
+                All members can see this board. Spot #k collects the pot at {label} k — every spot pays its <strong>own</strong> contribution each {label},
+                so a member holding several spots pays for each of them and collects several payouts.
               </p>
+              {clockGroup
+                ? <p className="text-xs text-gray-500 mb-4">Current {label}: <strong>{Math.min(period, N)} of {N}</strong> (the clock started when the group became full)</p>
+                : <p className="text-[11px] text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-2.5 py-1.5 font-semibold mb-4 mt-1.5">⏳ Nothing is due yet — the {label}ly clock starts automatically when all {N} spots are filled ({Object.keys(spotMap).length}/{N} taken so far).</p>}
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead>
@@ -639,9 +644,11 @@ export default function GroupDetailsPage() {
                           <td className="py-2.5 pr-3 text-gray-600">{paid}/{N}</td>
                           <td className="py-2.5 pr-3">
                             {holder
-                              ? (isSpotCurrent(paid, Math.min(period, N))
-                                  ? <span className="text-emerald-600 text-xs font-semibold flex items-center gap-1"><HiCheckCircle className="w-4 h-4" /> Paid</span>
-                                  : <span className="text-amber-600 text-xs font-semibold flex items-center gap-1"><HiClock className="w-4 h-4" /> Due</span>)
+                              ? (!clockGroup
+                                  ? <span className="text-gray-400 text-xs">⏳ soon</span>
+                                  : isSpotCurrent(paid, Math.min(period, N))
+                                    ? <span className="text-emerald-600 text-xs font-semibold flex items-center gap-1"><HiCheckCircle className="w-4 h-4" /> Paid</span>
+                                    : <span className="text-amber-600 text-xs font-semibold flex items-center gap-1"><HiClock className="w-4 h-4" /> Due</span>)
                               : <span className="text-gray-300 text-xs">—</span>}
                           </td>
                           <td className="py-2.5">

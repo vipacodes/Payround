@@ -9,7 +9,7 @@ import {
   HiUserGroup, HiCurrencyDollar, HiCheckCircle,
   HiExclamation, HiClock, HiShieldCheck, HiBadgeCheck
 } from 'react-icons/hi';
-import { parseSpots, currentPeriod, cycleLength, paidWeeksForSpot } from '@/lib/payments';
+import { parseSpots, currentPeriod, cycleLength, paidWeeksForSpot , withRotationClock } from '@/lib/payments';
 
 export default function AdminDashboardPage() {
   const router = useRouter();
@@ -84,12 +84,13 @@ export default function AdminDashboardPage() {
 
         {adminGroups.map(({ group: g, members, pendingJoins, pendingPayments, payments }) => {
           const N = cycleLength(g);
-          const period = Math.min(currentPeriod(g), N);
+          const clockG = withRotationClock(g, members);
+          const period = clockG ? Math.min(currentPeriod(clockG), N) : 0; // 0 = starts when the group is full
           const filledSpots = members.reduce((sum, m) => sum + parseSpots(m.spots).length, 0);
           const approvedPays = payments.filter(p => p.status === 'approved');
           const totalCollected = approvedPays.reduce((sum, p) => sum + Number(p.amount || 0), 0);
-          const spotsCurrent = Array.from({ length: N }, (_, i) => i + 1)
-            .filter(spot => paidWeeksForSpot(approvedPays, spot) >= period).length;
+          const spotsCurrent = clockG ? Array.from({ length: N }, (_, i) => i + 1)
+            .filter(spot => paidWeeksForSpot(approvedPays, spot) >= period).length : 0;
           return (
             <div key={g.id} className="bg-white rounded-2xl border border-gray-100 p-5 mb-5">
               <div className="flex items-start justify-between gap-3 flex-wrap mb-4">
@@ -103,7 +104,7 @@ export default function AdminDashboardPage() {
                       {g.is_verified && <HiBadgeCheck className="w-5 h-5 text-blue-500 shrink-0 badge-emboss" />}
                     </h3>
                     <p className="text-[11px] text-gray-400 font-mono">ID: {g.id}</p>
-                    <p className="text-xs text-gray-500 mt-0.5">₦{Number(g.amount || 0).toLocaleString()} {g.frequency || 'weekly'} • Period {period} of {N} • Status: {g.status}</p>
+                    <p className="text-xs text-gray-500 mt-0.5">₦{Number(g.amount || 0).toLocaleString()} {g.frequency || 'weekly'} • {clockG ? `Period ${period} of ${N}` : '⏳ savings start when the group is full'} • Status: {g.status}</p>
                   </div>
                 </div>
                 {pendingPayments > 0 && (

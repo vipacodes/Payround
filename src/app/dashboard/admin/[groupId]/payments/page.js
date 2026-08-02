@@ -12,7 +12,7 @@ import {
 } from 'react-icons/hi';
 import toast from 'react-hot-toast';
 import {
-  parseSpots, currentPeriod, cycleLength, periodLabel,
+  parseSpots, currentPeriod, cycleLength, periodLabel, withRotationClock,
   paidWeeksForSpot, isSpotCurrent, buildSpotMap, payoutForSpot
 } from '@/lib/payments';
 
@@ -157,7 +157,8 @@ export default function AdminPaymentsPage() {
     );
   }
 
-  const period = currentPeriod(group);
+  const clockGroup = withRotationClock(group, members);
+  const period = clockGroup ? currentPeriod(clockGroup) : 0; // 0 = savings haven't started (group not full yet)
   const N = cycleLength(group);
   const spotMap = buildSpotMap(members);
   const label = periodLabel(group.frequency);
@@ -178,7 +179,7 @@ export default function AdminPaymentsPage() {
           <div>
             <h1 className="text-2xl font-bold text-gray-900">Payments — {group.name}</h1>
             <p className="text-sm text-gray-500">
-              ₦{Number(group.amount || 0).toLocaleString()} per {label} per spot • Cycle: {N} {label}s • Current {label}: <strong>{Math.min(period, N)} of {N}</strong>
+              ₦{Number(group.amount || 0).toLocaleString()} per {label} per spot • Cycle: {N} {label}s • {clockGroup ? <>Current {label}: <strong>{Math.min(period, N)} of {N}</strong></> : <span className="text-amber-600 font-semibold">⏳ savings start when the group is full</span>}
             </p>
           </div>
           <button onClick={() => { setLoading(true); loadAll(); }} className="flex items-center gap-1.5 text-xs font-medium text-gray-500 border rounded-lg px-3 py-2 hover:bg-gray-50">
@@ -278,9 +279,11 @@ export default function AdminPaymentsPage() {
                       <td className="py-2.5 pr-3 text-gray-600">{paid}/{N}</td>
                       <td className="py-2.5 pr-3">
                         {holder
-                          ? (isSpotCurrent(paid, Math.min(period, N))
-                              ? <span className="text-emerald-600 text-xs font-semibold flex items-center gap-1"><HiCheckCircle className="w-4 h-4" /> Paid</span>
-                              : <span className="text-amber-600 text-xs font-semibold flex items-center gap-1"><HiClock className="w-4 h-4" /> Due</span>)
+                          ? (!clockGroup
+                              ? <span className="text-gray-400 text-xs">⏳ soon</span>
+                              : isSpotCurrent(paid, Math.min(period, N))
+                                ? <span className="text-emerald-600 text-xs font-semibold flex items-center gap-1"><HiCheckCircle className="w-4 h-4" /> Paid</span>
+                                : <span className="text-amber-600 text-xs font-semibold flex items-center gap-1"><HiClock className="w-4 h-4" /> Due</span>)
                           : <span className="text-gray-300 text-xs">—</span>}
                       </td>
                       <td className="py-2.5">

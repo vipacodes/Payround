@@ -139,3 +139,30 @@ export function nextPayoutForGroup(group, payouts, spotMap) {
   if (held.length > 0) return { spot: held[0], date: periodStartDate(group, held[0]), dueNow: true };
   return { spot: open[0], date: periodStartDate(group, open[0]), dueNow: false };
 }
+
+// ---------------------------------------------------------------------------
+// 🏁 BUSINESS RULE: savings start when the group is FULL.
+// The rotation clock begins the moment the LAST spot is taken (the newest
+// approved member), unless an explicit start_date is set on the group.
+// Returns the start timestamp (ms), or null while the group isn't full yet.
+export function savingsStartMs(group, members) {
+  if (group?.start_date) {
+    const t = new Date(group.start_date).getTime();
+    if (Number.isFinite(t)) return t;
+  }
+  const N = cycleLength(group);
+  const holders = (members || []).filter(m => m.status === 'approved' && parseSpots(m.spots).length > 0);
+  const taken = new Set(holders.flatMap(m => parseSpots(m.spots)));
+  if (taken.size < N) return null;
+  const stamps = holders.map(m => new Date(m.approved_at || 0).getTime()).filter(Number.isFinite);
+  const latest = stamps.length ? Math.max(...stamps) : 0;
+  return latest > 0 ? latest : new Date(group?.created_at || Date.now()).getTime();
+}
+
+// Returns a copy of the group whose start_date is the TRUE savings start, so every
+// rotation helper (currentPeriod, nextDue, nextCashOut, nextPayout) runs on the
+// right clock. Returns null while the group isn't full — show "starts when full".
+export function withRotationClock(group, members) {
+  const start = savingsStartMs(group, members);
+  return start ? { ...group, start_date: new Date(start).toISOString() } : null;
+}

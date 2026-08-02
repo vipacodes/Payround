@@ -14,7 +14,7 @@ import {
 } from 'react-icons/hi';
 import {
   parseSpots, currentPeriod, cycleLength,
-  buildSpotMap, nextDueForMember, nextCashOutForMember, nextPayoutForGroup
+  buildSpotMap, nextDueForMember, nextCashOutForMember, nextPayoutForGroup, withRotationClock
 } from '@/lib/payments';
 import { remindRenewalIfSoon } from '@/lib/renewal';
 
@@ -64,7 +64,8 @@ export default function DashboardPage() {
           if (!g) continue;
           const { data: pays } = await supabase.from('payments').select('*').eq('group_id', m.group_id);
           const { data: outs } = await supabase.from('payouts').select('*').eq('group_id', m.group_id);
-          joinedOut.push({ group: g, member: m, payments: pays || [], payouts: outs || [] });
+          const { data: memsAll } = await supabase.from('members').select('spots, status, approved_at').eq('group_id', m.group_id).eq('status', 'approved');
+          joinedOut.push({ group: g, member: m, members: memsAll || [], payments: pays || [], payouts: outs || [] });
         }
         setJoined(joinedOut);
 
@@ -113,16 +114,24 @@ export default function DashboardPage() {
   const isAdmin = managed.length > 0;
 
   // ---- derived rows for the due / cash panels ----
-  const dueRows = joined.map(({ group, payments, member }) => {
-    const d = nextDueForMember(group, payments, parseSpots(member.spots));
+  const FAR_FUTURE = new Date(8640000000000000); // sorts pending rows to the bottom
+  const dueRows = joined.map(({ group, payments, member, members }) => {
+    if (!parseSpots(member.spots).length) return null;
+    const cg = withRotationClock(group, members);
+    if (!cg) return { groupName: group.name, pending: true, date: FAR_FUTURE }; // ⏳ starts when the group is full
+    const d = nextDueForMember(cg, payments, parseSpots(member.spots));
     return d ? { groupName: group.name, ...d } : null;
   }).filter(Boolean).sort((a, b) => a.date - b.date);
-  const cashRows = joined.map(({ group, payouts, member }) => {
-    const d = nextCashOutForMember(group, payouts, parseSpots(member.spots));
+  const cashRows = joined.map(({ group, payouts, member, members }) => {
+    if (!parseSpots(member.spots).length) return null;
+    const cg = withRotationClock(group, members);
+    if (!cg) return { groupName: group.name, pending: true, date: FAR_FUTURE };
+    const d = nextCashOutForMember(cg, payouts, parseSpots(member.spots));
     return d ? { groupName: group.name, ...d } : null;
   }).filter(Boolean).sort((a, b) => (a.dueNow === b.dueNow ? a.date - b.date : a.dueNow ? -1 : 1));
   const payoutRows = managed.map(({ group, payouts, members }) => {
-    const d = nextPayoutForGroup(group, payouts, buildSpotMap(members));
+    const cg = withRotationClock(group, members);
+    const d = cg ? nextPayoutForGroup(cg, payouts, buildSpotMap(members)) : null;
     return d ? { groupName: group.name, ...d } : null;
   }).filter(Boolean).sort((a, b) => (a.dueNow === b.dueNow ? a.date - b.date : a.dueNow ? -1 : 1));
 
@@ -188,10 +197,11 @@ export default function DashboardPage() {
                 <p className="text-sm text-gray-500 mb-3">You haven&apos;t joined any group yet.</p>
                 <button onClick={() => setActiveTab('browse')} className="bg-primary-600 text-white text-xs font-semibold px-5 py-2 rounded-xl">Browse Groups</button>
               </div>
-            ) : joined.map(({ group: g, member, payments, payouts }) => {
+            ) : joined.map(({ group: g, member, members, payments, payouts }) => {
               const mySpots = parseSpots(member.spots);
-              const due = nextDueForMember(g, payments, mySpots);
-              const cash = nextCashOutForMember(g, payouts, mySpots);
+              const cg = withRotationClock(g, members);
+              const due = cg ? nextDueForMember(cg, payments, mySpots) : null;
+              const cash = cg ? nextCashOutForMember(cg, payouts, mySpots) : null;
               return (
                 <button key={g.id} onClick={() => router.push(`/groups/${g.id}`)} className="w-full flex items-center gap-3 py-3 border-b border-gray-50 last:border-0 text-left hover:bg-gray-50/60 rounded-xl px-2 transition-colors">
                   {g.avatar_url
@@ -203,7 +213,9 @@ export default function DashboardPage() {
                       <GroupBadge verified={g.is_verified} tier={g.badge_tier} />
                     </p>
                     <p className="text-[11px] text-gray-500">{mySpots.length ? `My spot${mySpots.length > 1 ? 's' : ''}: #${mySpots.join(', #')} • ` : ''}₦{Number(g.amount || 0).toLocaleString()} {g.frequency || 'weekly'}</p>
-                    <p className="text-[11px] mt-0.5"><span className={due?.dueNow ? 'text-amber-600 font-semibold' : 'text-gray-500'}>{due ? (due.dueNow ? 'Payment due now ⚠️' : `Next due ${fmtDate(due.date)}`) : 'No spot yet'}</span>{cash ? <span className={cash.dueNow ? 'text-emerald-600 font-semibold' : 'text-gray-500'}> • Cash out {cash.dueNow ? 'NOW 💰' : `${fmtDate(cash.date)} (#${cash.spot})`}</span> : null}</p>
+                    <p className="text-[11px] mt-0.5">{!cg && mySpots.length > 0
+                      ? <span className="text-gray-400">⏳ Savings start when the group is full — nothing due yet</span>
+                      : <><span className={due?.dueNow ? 'text-amber-600 font-semibold' : 'text-gray-500'}>{due ? (due.dueNow ? 'Payment due now ⚠️' : `Next due ${fmtDate(due.date)}`) : 'No spot yet'}</span>{cash ? <span className={cash.dueNow ? 'text-emerald-600 font-semibold' : 'text-gray-500'}> • Cash out {cash.dueNow ? 'NOW 💰' : `${fmtDate(cash.date)} (#${cash.spot})`}</span> : null}</>}</p>
                   </div>
                   <HiArrowRight className="w-4 h-4 text-gray-300 shrink-0" />
                 </button>
@@ -217,7 +229,8 @@ export default function DashboardPage() {
             {managed.map(({ group: g, members, payments, payouts }) => {
               const N = cycleLength(g);
               const filled = members.reduce((sum, m) => sum + parseSpots(m.spots).length, 0);
-              const nextPay = nextPayoutForGroup(g, payouts, buildSpotMap(members));
+              const cg = withRotationClock(g, members);
+              const nextPay = cg ? nextPayoutForGroup(cg, payouts, buildSpotMap(members)) : null;
               const renewal = g.expiry_at ? new Date(g.expiry_at) : null;
               const renewalSoon = renewal && (renewal - Date.now()) < 7 * 86400000;
               return (
@@ -231,7 +244,7 @@ export default function DashboardPage() {
                         <span className="truncate">{g.name}</span>
                         <GroupBadge verified={g.is_verified} tier={g.badge_tier} />
                       </p>
-                      <p className="text-[11px] text-gray-500">{members.length} members • {filled}/{N} spots{nextPay ? ` • Payout ${nextPay.dueNow ? 'due now' : fmtDate(nextPay.date)} (#${nextPay.spot})` : ''}</p>
+                      <p className="text-[11px] text-gray-500">{members.length} members • {filled}/{N} spots{cg ? (nextPay ? ` • Payout ${nextPay.dueNow ? 'due now' : fmtDate(nextPay.date)} (#${nextPay.spot})` : '') : ' • ⏳ savings start when full'}</p>
                       <p className={`text-[11px] flex items-center gap-1 ${renewalSoon ? 'text-amber-600 font-semibold' : 'text-gray-500'}`}>
                         {renewalSoon && <HiExclamation className="w-3.5 h-3.5" />} Plan renewal: {renewal ? renewal.toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' }) : '—'}
                       </p>
@@ -253,7 +266,7 @@ export default function DashboardPage() {
               : dueRows.map((r, i) => (
                 <div key={i} className="flex items-center justify-between py-2.5 border-b border-gray-50 last:border-0 text-sm">
                   <span className="text-gray-700 font-medium">{r.groupName}</span>
-                  <span className={`text-xs font-semibold ${r.dueNow ? 'text-amber-600' : 'text-gray-600'}`}>{r.dueNow ? 'Due now ⚠️' : fmtDate(r.date)}</span>
+                  <span className={`text-xs font-semibold ${r.pending ? 'text-gray-400' : r.dueNow ? 'text-amber-600' : 'text-gray-600'}`}>{r.pending ? '⏳ starts when the group is full' : r.dueNow ? 'Due now ⚠️' : fmtDate(r.date)}</span>
                 </div>
               ))}
           </div>
@@ -274,7 +287,7 @@ export default function DashboardPage() {
             {cashRows.map((r, i) => (
               <div key={`c${i}`} className="flex items-center justify-between py-2.5 border-b border-gray-50 last:border-0 text-sm">
                 <span className="text-gray-700 font-medium">{r.groupName} — my spot #{r.spot}</span>
-                <span className={`text-xs font-semibold ${r.dueNow ? 'text-emerald-600' : 'text-gray-600'}`}>{r.dueNow ? 'NOW 💰' : fmtDate(r.date)}</span>
+                <span className={`text-xs font-semibold ${r.pending ? 'text-gray-400' : r.dueNow ? 'text-emerald-600' : 'text-gray-600'}`}>{r.pending ? '⏳ starts when the group is full' : r.dueNow ? 'NOW 💰' : fmtDate(r.date)}</span>
               </div>
             ))}
             {payoutRows.length === 0 && cashRows.length === 0 && <p className="text-sm text-gray-400 text-center py-4">Nothing scheduled yet — payouts appear here once spots are assigned.</p>}
