@@ -39,7 +39,7 @@ export default function PublicUserProfilePage() {
         const { supabase } = await import('@/lib/supabase');
         const { data: u, error } = await supabase
           .from('users')
-          .select('id, name, email, phone, profile_pic, is_verified, role, created_at')
+          .select('id, name, email, phone, profile_pic, is_verified, role, created_at, bank_name, account_number, account_name')
           .eq('id', params.id)
           .single();
         if (!mounted) return;
@@ -213,6 +213,28 @@ export default function PublicUserProfilePage() {
             Member since {person.created_at ? new Date(person.created_at).toLocaleDateString('en-NG', { month: 'long', year: 'numeric' }) : '—'}
           </div>
         </div>
+
+        {/* Their bank details — so members can pay them (and admins can pay payouts) */}
+        {(person.bank_name || person.account_number || person.account_name) && (
+          <div className="bg-white rounded-2xl border border-gray-100 p-4 mb-6">
+            <p className="text-xs font-bold text-gray-500 mb-2">🏦 BANK DETAILS</p>
+            <div className="space-y-1.5 text-sm">
+              {person.bank_name && <p className="text-gray-900"><span className="text-gray-400 text-xs">Bank:</span> <b>{person.bank_name}</b></p>}
+              {person.account_number && (
+                <p className="text-gray-900 flex items-center gap-2">
+                  <span className="text-gray-400 text-xs">Account No:</span>
+                  <b className="font-mono tracking-wide">{person.account_number}</b>
+                  <button
+                    onClick={() => { try { navigator.clipboard.writeText(person.account_number); toast.success('Account number copied!'); } catch {} }}
+                    className="text-[10px] font-semibold text-primary-600 border border-primary-100 bg-primary-50 px-2 py-0.5 rounded-full hover:bg-primary-100"
+                  >Copy</button>
+                </p>
+              )}
+              {person.account_name && <p className="text-gray-900"><span className="text-gray-400 text-xs">Account Name:</span> <b>{person.account_name}</b></p>}
+            </div>
+            <p className="text-[10px] text-gray-400 mt-2">Use these details to send them group contributions or payouts.</p>
+          </div>
+        )}
 
         {/* Their business profile(s) — personal profile shows first, business one tap away */}
         {bizAds.length > 0 && (

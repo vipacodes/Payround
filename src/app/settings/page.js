@@ -9,7 +9,7 @@ import { logoutUser } from '@/lib/data';
 import {
   HiMail, HiSun, HiMoon, HiLogout, HiChevronRight,
   HiShieldExclamation, HiBadgeCheck, HiEye, HiEyeOff,
-  HiLockClosed, HiUser, HiBell
+  HiLockClosed, HiUser, HiBell, HiCreditCard
 } from 'react-icons/hi';
 import toast from 'react-hot-toast';
 
@@ -43,6 +43,11 @@ export default function SettingsPage() {
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
   const [zoomPhoto, setZoomPhoto] = useState(null); // expanded photo src
   const photoRef = useRef(null);
+  // Bank account details — editable here, shown on your profile (+ top of your group if you admin one)
+  const [bankName, setBankName] = useState('');
+  const [accountNumber, setAccountNumber] = useState('');
+  const [accountName, setAccountName] = useState('');
+  const [bankSaving, setBankSaving] = useState(false);
 
   useEffect(() => {
     const stored = localStorage.getItem('payround_user');
@@ -56,7 +61,12 @@ export default function SettingsPage() {
     (async () => {
       try {
         const { supabase } = await import('@/lib/supabase');
-        const { data } = await supabase.from('users').select('profile_pic, pending_profile_pic').eq('email', user.email.toLowerCase()).single();
+        const { data } = await supabase.from('users').select('profile_pic, pending_profile_pic, bank_name, account_number, account_name').eq('email', user.email.toLowerCase()).single();
+        if (data) {
+          setBankName(data.bank_name || '');
+          setAccountNumber(data.account_number || '');
+          setAccountName(data.account_name || '');
+        }
         if (data?.profile_pic) setPhoto(data.profile_pic);
         if (data?.pending_profile_pic) setPendingPhoto(data.pending_profile_pic);
       } catch {}
@@ -82,6 +92,21 @@ export default function SettingsPage() {
       toast.error(`Could not send photo: ${err.message || 'please try again'}`);
     }
     setUploadingPhoto(false);
+  };
+
+  const saveBank = async () => {
+    if (!user?.email) return;
+    const acct = accountNumber.trim().replace(/\s+/g, '');
+    if (acct && !/^\d{8,15}$/.test(acct)) { toast.error('Account number should be 8–15 digits (e.g. 10 digits for NUBAN).'); return; }
+    setBankSaving(true);
+    try {
+      const { supabase } = await import('@/lib/supabase');
+      const row = { bank_name: bankName.trim() || null, account_number: acct || null, account_name: accountName.trim() || null };
+      const { error } = await supabase.from('users').update(row).eq('email', user.email.toLowerCase());
+      if (error) throw error;
+      toast.success('🏦 Bank details saved — they now show on your profile.');
+    } catch (e) { toast.error(`Could not save bank details: ${e.message || 'try again'}`); }
+    setBankSaving(false);
   };
 
   const applyTheme = (t) => {
@@ -163,6 +188,31 @@ export default function SettingsPage() {
                 <p className="text-[11px] text-amber-800 font-medium">⏳ New photo awaiting PayRound approval. Your current photo stays until it&apos;s approved.</p>
               </div>
             )}
+          </div>
+        </div>
+
+        {/* Bank Account */}
+        <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2 ml-1">Bank Account</p>
+        <div className="bg-white rounded-2xl border border-gray-100 mb-6 p-4">
+          <div className="flex items-center gap-3 mb-3">
+            <span className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0 bg-gray-100 text-gray-600"><HiCreditCard className="w-5 h-5" /></span>
+            <span className="flex-1 min-w-0">
+              <span className="block text-sm font-medium text-gray-900">Your Bank Details</span>
+              <span className="block text-xs text-gray-500 mt-0.5">Visible on your profile — and pinned at the top of any group you admin, so members know where to pay.</span>
+            </span>
+          </div>
+          <div className="space-y-3">
+            <input type="text" value={bankName} onChange={e => setBankName(e.target.value)} placeholder="Bank name — e.g. Palmpay, OPay, GTBank" maxLength={60}
+              className="w-full px-4 py-3 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary-500" />
+            <input type="text" inputMode="numeric" value={accountNumber} onChange={e => setAccountNumber(e.target.value.replace(/[^\d ]/g, ''))} placeholder="Account number — e.g. 9151723199" maxLength={19}
+              className="w-full px-4 py-3 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary-500" />
+            <input type="text" value={accountName} onChange={e => setAccountName(e.target.value)} placeholder="Account name — e.g. Basikoro James Okeroghene" maxLength={80}
+              className="w-full px-4 py-3 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary-500" />
+            <button onClick={saveBank} disabled={bankSaving || !user?.email}
+              className="w-full bg-primary-600 text-white text-sm font-semibold py-3 rounded-xl hover:bg-primary-700 transition-all disabled:opacity-50">
+              {bankSaving ? 'Saving…' : 'Save Bank Details'}
+            </button>
+            <p className="text-[11px] text-gray-400">Tip: leave a field empty and save to clear it.</p>
           </div>
         </div>
 

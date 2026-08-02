@@ -64,7 +64,7 @@ export default function GroupDetailsPage() {
 
         // Group admin's public profile — so members can open it and tap Follow
         if (g.admin_email) {
-          const { data: adm } = await supabase.from('users').select('id, name, phone, profile_pic').eq('email', g.admin_email.toLowerCase()).single();
+          const { data: adm } = await supabase.from('users').select('id, name, phone, profile_pic, bank_name, account_number, account_name').eq('email', g.admin_email.toLowerCase()).single();
           if (mounted && adm) setAdminProfile(adm);
         }
 
@@ -233,6 +233,34 @@ export default function GroupDetailsPage() {
             <div className="mt-4 bg-amber-50 border border-amber-200 rounded-xl p-3 text-xs text-amber-800 flex items-center gap-2">
               <HiClock className="w-4 h-4 shrink-0" /> This group is still under PayRound review — joining opens once it goes live.
             </div>
+          )}
+        </div>
+
+        {/* 🏦 Where members pay — the group admin's bank, always pinned at the top of the group */}
+        <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4 mb-6">
+          <p className="text-xs font-bold text-emerald-800 mb-1">🏦 ADMIN BANK — send your contribution here</p>
+          {adminProfile && (adminProfile.bank_name || adminProfile.account_number || adminProfile.account_name) ? (
+            <div className="text-sm text-gray-900 space-y-0.5">
+              {adminProfile.bank_name && <p><span className="text-gray-500 text-xs">Bank:</span> <b>{adminProfile.bank_name}</b></p>}
+              {adminProfile.account_number && (
+                <p className="flex items-center gap-2">
+                  <span className="text-gray-500 text-xs">Account No:</span>
+                  <b className="font-mono text-base tracking-wide">{adminProfile.account_number}</b>
+                  <button
+                    onClick={() => { try { navigator.clipboard.writeText(adminProfile.account_number); toast.success('Account number copied!'); } catch {} }}
+                    className="text-[10px] font-semibold text-emerald-700 border border-emerald-200 bg-white px-2 py-0.5 rounded-full hover:bg-emerald-100"
+                  >Copy</button>
+                </p>
+              )}
+              {adminProfile.account_name && <p><span className="text-gray-500 text-xs">Account Name:</span> <b>{adminProfile.account_name}</b></p>}
+            </div>
+          ) : isAdmin ? (
+            <p className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-xl p-2.5 flex items-center gap-2">
+              ⚠️ You haven&apos;t added your bank details — members need them to pay you.
+              <button onClick={() => router.push('/settings')} className="font-bold underline whitespace-nowrap">Add in Settings →</button>
+            </p>
+          ) : (
+            <p className="text-xs text-gray-600">The admin hasn&apos;t added their bank details yet — please ask them to add it in their Settings.</p>
           )}
         </div>
 
@@ -456,10 +484,15 @@ export default function GroupDetailsPage() {
             {myMember && (
               <div className="bg-white rounded-2xl border border-gray-100 p-6 mt-6">
                 <h2 className="font-bold text-gray-900 mb-1 flex items-center gap-2"><HiUpload className="w-5 h-5 text-primary-600" /> Pay Your Contribution</h2>
-                <p className="text-xs text-gray-500 mb-4">
+                <p className="text-xs text-gray-500 mb-3">
                   Choose the spot(s) you are paying for and how many {label}s the payment covers — paying for several {label}s upfront is allowed.
                   The admin reviews your receipt and marks you paid.
                 </p>
+                {adminProfile && (adminProfile.bank_name || adminProfile.account_number) && (
+                  <p className="text-xs bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-xl p-2.5 mb-4">
+                    🏦 Pay to: <b>{adminProfile.bank_name || '—'}</b> • <b className="font-mono">{adminProfile.account_number || '—'}</b> • {adminProfile.account_name || adminProfile.name}
+                  </p>
+                )}
                 {mySpots.length === 0 ? (
                   <p className="text-xs bg-amber-50 border border-amber-200 text-amber-800 rounded-xl p-3 flex items-center gap-2">
                     <HiExclamation className="w-4 h-4 shrink-0" /> No spot assigned to you yet — please ask your group admin to assign your spot before paying.

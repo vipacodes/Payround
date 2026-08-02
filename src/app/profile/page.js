@@ -41,7 +41,7 @@ export default function ProfilePage() {
         const { supabase } = await import('@/lib/supabase');
         const { data } = await supabase
           .from('users')
-          .select('name, email, phone, role, profile_pic, pending_profile_pic, is_verified, is_approved, approval_status, referral_earnings, referred_by, created_at, gender, dob, address, occupation, bio')
+          .select('name, email, phone, role, profile_pic, pending_profile_pic, is_verified, is_approved, approval_status, referral_earnings, referred_by, created_at, gender, dob, address, occupation, bio, bank_name, account_number, account_name')
           .eq('email', (parsed.email || '').toLowerCase())
           .single();
         if (data) {
@@ -416,6 +416,17 @@ export default function ProfilePage() {
               <div className="flex items-center justify-between p-4 bg-gray-50 rounded-xl"><div><p className="text-xs text-gray-500">Full Name</p><p className="text-sm font-medium text-gray-900">{account?.name || user.name}</p></div><HiUser className="w-5 h-5 text-gray-400" /></div>
               <div className="flex items-center justify-between p-4 bg-gray-50 rounded-xl"><div><p className="text-xs text-gray-500">Email</p><p className="text-sm font-medium text-gray-900">{user.email}</p></div><HiMail className="w-5 h-5 text-gray-400" /></div>
               <div className="flex items-center justify-between p-4 bg-gray-50 rounded-xl"><div><p className="text-xs text-gray-500">Phone</p><p className="text-sm font-medium text-gray-900">{account?.phone || user.phone || '—'}</p></div><HiPhone className="w-5 h-5 text-gray-400" /></div>
+              <button onClick={() => router.push('/settings')} className="flex items-center justify-between p-4 bg-emerald-50 border border-emerald-100 rounded-xl w-full text-left hover:bg-emerald-100/60 transition-colors">
+                <div>
+                  <p className="text-xs text-gray-500">🏦 Bank details (visible on your profile)</p>
+                  <p className="text-sm font-medium text-gray-900">
+                    {(account?.bank_name || account?.account_number || account?.account_name)
+                      ? <>{account.bank_name || '—'} • <span className="font-mono">{account.account_number || '—'}</span> • {account.account_name || '—'}</>
+                      : 'Not added yet — tap to add in Settings'}
+                  </p>
+                </div>
+                <span className="text-xs font-semibold text-primary-600 shrink-0 ml-2">Edit →</span>
+              </button>
               <div className="flex items-center justify-between p-4 bg-gray-50 rounded-xl"><div><p className="text-xs text-gray-500">Gender</p><p className="text-sm font-medium text-gray-900">{account?.gender || (extrasUnlocked ? '—' : 'Unlocks after approval')}</p></div><HiIdentification className="w-5 h-5 text-gray-400" /></div>
               <div className="flex items-center justify-between p-4 bg-gray-50 rounded-xl"><div><p className="text-xs text-gray-500">Date of Birth</p><p className="text-sm font-medium text-gray-900">{account?.dob || '—'}</p></div><HiCalendar className="w-5 h-5 text-gray-400" /></div>
               <div className="flex items-center justify-between p-4 bg-gray-50 rounded-xl"><div><p className="text-xs text-gray-500">Address</p><p className="text-sm font-medium text-gray-900">{account?.address || '—'}</p></div><HiLocationMarker className="w-5 h-5 text-gray-400" /></div>
