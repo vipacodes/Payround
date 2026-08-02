@@ -116,6 +116,18 @@ export default function GroupDetailsPage() {
     return () => { mounted = false; };
   }, [params.id]);
 
+  // 📤 Opened from the chat's "Upload payment receipt" shortcut? Glide straight to the Pay card.
+  useEffect(() => {
+    if (loading || !myMember) return;
+    const want = typeof window !== 'undefined' && (window.location.hash === '#pay' || new URLSearchParams(window.location.search).get('pay') === '1');
+    if (!want) return;
+    const t = setTimeout(() => {
+      document.getElementById('pay-card')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      toast.success('Upload your receipt right here 👇');
+    }, 350);
+    return () => clearTimeout(t);
+  }, [loading, myMember]);
+
   if (loading) {
     return <LoadingScreen label="Loading group…" />;
   }
@@ -702,7 +714,7 @@ export default function GroupDetailsPage() {
 
             {/* Upload receipt */}
             {myMember && (
-              <div className="bg-white rounded-2xl border border-gray-100 p-6 mt-6">
+              <div id="pay-card" className="bg-white rounded-2xl border border-gray-100 p-6 mt-6 scroll-mt-24">
                 <h2 className="font-bold text-gray-900 mb-1 flex items-center gap-2"><HiUpload className="w-5 h-5 text-primary-600" /> Pay Your Contribution</h2>
                 <p className="text-xs text-gray-500 mb-3">
                   Choose the spot(s) you are paying for and how many {label}s the payment covers — paying for several {label}s upfront is allowed.

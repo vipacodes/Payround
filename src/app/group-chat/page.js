@@ -285,7 +285,7 @@ function GroupChatInner() {
                 {memberLocked ? (
                   <div className="px-4 py-4 border-t border-gray-100 bg-gray-50">
                     <p className="text-xs text-gray-600 text-center mb-2.5">🔒 Only the group admin can type here right now — you can read everything.<br />To make a payment, upload your receipt from the group page:</p>
-                    <button onClick={() => router.push(`/groups/${activeId}`)} className="w-full bg-primary-600 text-white text-sm font-semibold py-2.5 rounded-xl hover:bg-primary-700 transition-colors">📤 Upload payment receipt (choose spots & weeks) →</button>
+                    <button onClick={() => router.push(`/groups/${activeId}#pay`)} className="w-full bg-primary-600 text-white text-sm font-semibold py-2.5 rounded-xl hover:bg-primary-700 transition-colors">📤 Upload payment receipt (choose spots & weeks) →</button>
                   </div>
                 ) : (
                 <form onSubmit={send} className="flex items-center gap-2 px-3 py-3 border-t border-gray-100">
