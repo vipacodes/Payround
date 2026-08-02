@@ -59,7 +59,7 @@ function GroupChatInner() {
       const { getMyGroupIds } = await import('@/lib/notifications');
       const ids = await getMyGroupIds(supabase, email);
       if (!ids.length) { setRows([]); return; }
-      const { data: gs } = await supabase.from('groups').select('id, name, avatar_url, admin_email, admin_name, is_verified, badge_tier').in('id', ids);
+      const { data: gs } = await supabase.from('groups').select('id, name, avatar_url, admin_email, admin_name, is_verified, badge_tier, chat_open').in('id', ids);
       const { data: gm } = await supabase.from('group_messages').select('*').in('group_id', ids).order('created_at', { ascending: false }).limit(500);
       const byG = new Map();
       (gm || []).forEach(m => { if (!byG.has(m.group_id)) byG.set(m.group_id, m); }); // newest first
@@ -96,6 +96,10 @@ function GroupChatInner() {
       try {
         const { data } = await supa.from('group_messages').select('*').eq('group_id', activeId).order('created_at', { ascending: true }).limit(500);
         if (!alive) return;
+        // keep the admin lock state fresh (members see typing open/close live)
+        supa.from('groups').select('id, chat_open').eq('id', activeId).single().then(({ data: gr }) => {
+          if (alive && gr) setG(prev => prev ? { ...prev, chat_open: gr.chat_open } : prev);
+        });
         if (firstOpen.current || nearBottom.current) scrollToEnd();
         firstOpen.current = false;
         setMsgs(data || []);
@@ -126,10 +130,28 @@ function GroupChatInner() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeId, me]);
 
+  const isRoomAdmin = !!g && (g.admin_email || '').toLowerCase() === me;
+  const memberLocked = !!g && !g.chat_open && !isRoomAdmin;
+
+  // Admin only: open the room so members can type, or lock it back (members still read everything
+  // and pay via receipt upload on the group page)
+  const toggleLock = async () => {
+    if (!g || !isRoomAdmin) return;
+    const next = !g.chat_open;
+    try {
+      const { supabase } = await import('@/lib/supabase');
+      const { error } = await supabase.from('groups').update({ chat_open: next }).eq('id', activeId);
+      if (error) throw error;
+      setG(prev => ({ ...prev, chat_open: next }));
+      toast.success(next ? '🔓 Chat opened — members can now type.' : '🔒 Chat locked — only you can type. Members can still upload receipts from the group page.');
+    } catch (err) { toast.error(`Could not change chat lock: ${err.message || 'try again'}`); }
+  };
+
   const send = async (e) => {
     e?.preventDefault();
     const text = body.trim();
     if (!text || sending || !activeId) return;
+    if (memberLocked) { toast.error('Only the group admin can type here right now.'); return; }
     setSending(true);
     try {
       const { supabase } = await import('@/lib/supabase');
@@ -192,6 +214,15 @@ function GroupChatInner() {
                 </p>
                 <button onClick={() => router.push(`/groups/${activeId}`)} className="text-[11px] text-primary-600 font-medium hover:text-primary-700">View group →</button>
               </div>
+              {isRoomAdmin && (
+                <button
+                  onClick={toggleLock}
+                  title={g?.chat_open ? 'Members can type — tap to lock (admin only)' : 'Locked: only you can type — tap to open for members'}
+                  className={`shrink-0 text-[11px] font-semibold px-3 py-1.5 rounded-full border transition-colors ${g?.chat_open ? 'bg-emerald-50 border-emerald-200 text-emerald-700' : 'bg-gray-50 border-gray-200 text-gray-600'}`}
+                >
+                  {g?.chat_open ? '🔓 Open' : '🔒 Locked'}
+                </button>
+              )}
             </div>
 
             {/* access answer */}
@@ -250,7 +281,13 @@ function GroupChatInner() {
                   })}
                 </div>
 
-                {/* composer */}
+                {/* composer — admin always types; members type only while the admin has opened the chat */}
+                {memberLocked ? (
+                  <div className="px-4 py-4 border-t border-gray-100 bg-gray-50">
+                    <p className="text-xs text-gray-600 text-center mb-2.5">🔒 Only the group admin can type here right now — you can read everything.<br />To make a payment, upload your receipt from the group page:</p>
+                    <button onClick={() => router.push(`/groups/${activeId}`)} className="w-full bg-primary-600 text-white text-sm font-semibold py-2.5 rounded-xl hover:bg-primary-700 transition-colors">📤 Upload payment receipt (choose spots & weeks) →</button>
+                  </div>
+                ) : (
                 <form onSubmit={send} className="flex items-center gap-2 px-3 py-3 border-t border-gray-100">
                   <input
                     type="text"
@@ -265,6 +302,7 @@ function GroupChatInner() {
                     <HiPaperAirplane className="w-5 h-5 rotate-90" />
                   </button>
                 </form>
+                )}
               </>
             )}
           </div>
@@ -303,6 +341,7 @@ function GroupChatInner() {
                 <span className="flex-1 min-w-0">
                   <span className="flex items-center gap-1 text-sm font-bold text-gray-900">
                     <span className="truncate">{r.group.name}</span>
+                    {r.group.chat_open === false && <span className="text-[10px] shrink-0" title="Locked — only the admin can type">🔒</span>}
                     <GroupBadge verified={r.group.is_verified} tier={r.group.badge_tier} />
                     <span className="ml-auto text-[10px] font-normal text-gray-400 shrink-0">{r.last ? dateOf(r.last.created_at) : ''}</span>
                   </span>

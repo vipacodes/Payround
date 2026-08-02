@@ -156,6 +156,10 @@ export default function GroupDetailsPage() {
   const label = periodLabel(group.frequency);
   const spotMap = buildSpotMap(members);
   const mySpots = myMember ? parseSpots(myMember.spots) : [];
+  // Members sorted by the spots they hold — used by the checkbox payment tracker
+  const payingMembers = (members || [])
+    .filter(m => parseSpots(m.spots).length > 0)
+    .sort((a, b) => Math.min(...parseSpots(a.spots)) - Math.min(...parseSpots(b.spots)));
   const myPayments = me?.email ? payments.filter(p => (p.user_email || '').toLowerCase() === me.email.toLowerCase()) : [];
   const receiptAmount = (group.amount || 0) * Math.max(1, paySpots.length) * payWeeks;
 
@@ -393,6 +397,59 @@ export default function GroupDetailsPage() {
                   </tbody>
                 </table>
               </div>
+            </div>
+
+            {/* ✅ Payment Tracker — members listed by their spots; every admin approval ticks the next box green */}
+            <div className="bg-white rounded-2xl border border-gray-100 p-6 mt-6">
+              <h2 className="font-bold text-gray-900 mb-1 flex items-center gap-2"><HiCheckCircle className="w-5 h-5 text-emerald-500" /> Payment Tracker</h2>
+              <p className="text-xs text-gray-500 mb-4">
+                Members are listed by the spots they hold. Each spot must pay <strong>{N} times</strong> (one per {label}), so it shows <strong>{N} boxes</strong>.
+                Every time the admin approves a receipt, the next box(es) turn <span className="text-emerald-600 font-semibold">green ✓</span> automatically —
+                paying several {label}s upfront ticks several boxes at once. Only people in this group can see this.
+              </p>
+              {payingMembers.length === 0 ? (
+                <p className="text-xs text-gray-400 border border-dashed border-gray-200 rounded-xl p-4 text-center">No spots assigned yet — once the admin assigns spots, the tracker appears here.</p>
+              ) : (
+                <div className="space-y-4">
+                  {payingMembers.map(m => {
+                    const spots = parseSpots(m.spots);
+                    const itsMe = !!myMember && m.id === myMember.id;
+                    return (
+                      <div key={m.id} className={`rounded-xl border p-3 ${itsMe ? 'border-primary-200 bg-primary-50/40' : 'border-gray-100'}`}>
+                        <p className="text-sm font-semibold text-gray-900 flex items-center gap-2 min-w-0">
+                          <span className="truncate">{m.member_name || 'Member'}</span>
+                          {itsMe && <span className="text-[10px] text-primary-600 font-bold shrink-0">YOU</span>}
+                          <span className="text-[10px] font-normal text-gray-400 shrink-0">{spots.length === 1 ? '1 spot' : `${spots.length} spots`}</span>
+                        </p>
+                        <div className="mt-2 space-y-2.5">
+                          {spots.map(spot => {
+                            const paid = Math.min(N, paidWeeksForSpot(payments, spot));
+                            return (
+                              <div key={spot}>
+                                <p className="text-[11px] font-semibold text-gray-600 mb-1">
+                                  Spot #{spot} · ₦{Number(group.amount || 0).toLocaleString()} × {N} {label}s ·{' '}
+                                  <span className={paid >= N ? 'text-emerald-600' : 'text-gray-400'}>{paid}/{N} paid{paid >= N ? ' ✅' : ''}</span>
+                                </p>
+                                <div className="flex flex-wrap gap-1">
+                                  {Array.from({ length: N }, (_, i) => (
+                                    <span
+                                      key={i}
+                                      title={`${label} ${i + 1} — ${i < paid ? 'paid (admin approved)' : 'not paid yet'}`}
+                                      className={`w-6 h-6 rounded-md flex items-center justify-center text-[11px] font-bold ${i < paid ? 'bg-emerald-500 text-white badge-emboss' : 'bg-white border border-gray-200 text-gray-300'}`}
+                                    >
+                                      {i < paid ? '✓' : i + 1}
+                                    </span>
+                                  ))}
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
             </div>
 
             {/* Upload receipt */}
