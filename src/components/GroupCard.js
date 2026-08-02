@@ -29,9 +29,9 @@ export default function GroupCard({ group, compact = false }) {
             </div>
           </div>
           {group.adminVerified && (
-            <div className="flex items-center gap-1 bg-primary-50 text-primary-700 text-xs font-medium px-2.5 py-1 rounded-full">
-              <HiShieldCheck className="w-3.5 h-3.5" />
-              Verified
+            <div className="flex items-center gap-1.5 bg-primary-100 text-primary-800 text-sm font-bold px-3 py-1.5 rounded-full border border-primary-200 shadow-sm">
+              <HiShieldCheck className="w-5 h-5" />
+              Verified by Payround
             </div>
           )}
         </div>

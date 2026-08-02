@@ -161,15 +161,47 @@ export default function Header() {
             )}
           </nav>
 
-          {/* Mobile Menu Button */}
-          <button
-            onClick={() => setIsMenuOpen(!isMenuOpen)}
-            className="md:hidden p-2 text-gray-600 hover:text-gray-900"
-          >
-            {isMenuOpen ? <HiX className="w-6 h-6" /> : <HiMenu className="w-6 h-6" />}
-          </button>
+          {/* Mobile Menu Button + Notification Bell directly beside hamburger at top right */}
+          <div className="flex items-center gap-2 md:hidden">
+            {isLoggedIn && (
+              <button
+                onClick={() => router.push('/notifications')}
+                className="relative p-2 text-gray-600 hover:text-gray-900"
+              >
+                <HiBell className="w-6 h-6" />
+                {unreadCount > 0 && (
+                  <span className="absolute -top-0.5 -right-0.5 w-4 h-4 bg-red-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center">
+                    {unreadCount > 9 ? '9+' : unreadCount}
+                  </span>
+                )}
+              </button>
+            )}
+            <button
+              onClick={() => setIsMenuOpen(!isMenuOpen)}
+              className="p-2 text-gray-600 hover:text-gray-900"
+            >
+              {isMenuOpen ? <HiX className="w-6 h-6" /> : <HiMenu className="w-6 h-6" />}
+            </button>
+          </div>
         </div>
       </div>
+
+      {/* Desktop: Notification bell directly beside hamburger - hidden on mobile because we have separate mobile bell+hamburger above, visible on desktop as well beside profile */}
+      {isLoggedIn && (
+        <div className="hidden md:flex fixed top-4 right-20 z-50">
+          <button
+            onClick={() => router.push('/notifications')}
+            className="relative p-2 bg-white rounded-full shadow-lg border text-gray-600 hover:text-primary-600"
+          >
+            <HiBell className="w-5 h-5" />
+            {unreadCount > 0 && (
+              <span className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center">
+                {unreadCount > 9 ? '9+' : unreadCount}
+              </span>
+            )}
+          </button>
+        </div>
+      )}
 
       {/* Mobile Menu */}
       {isMenuOpen && (

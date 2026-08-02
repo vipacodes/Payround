@@ -35,7 +35,25 @@ export default function NotificationsPage() {
   const [filter, setFilter] = useState('all'); // all | unread
 
   useEffect(() => {
-    setNotifications(allNotifications);
+    try {
+      const stored = localStorage.getItem('payround_user');
+      if (stored) {
+        const user = JSON.parse(stored);
+        // Each user's notification should not be about another account e.g finding James notification in Margaret's notification is wrong - per-user filtering
+        const userGroups = [...(user.memberGroups||[]), ...(user.adminGroups||[])];
+        const filteredForUser = allNotifications.filter(n => {
+          // Only show notifications for groups user is member of, or personal notifications
+          if (!n.groupId) return true; // general notifications
+          return userGroups.includes(n.groupId) || n.message?.toLowerCase().includes(user.name?.toLowerCase()) || n.message?.toLowerCase().includes(user.email?.split('@')[0]);
+        });
+        // If no user-specific notifications, show only general, not other users' notifications
+        setNotifications(filteredForUser.length > 0 ? filteredForUser : allNotifications.filter(n => n.type === 'payment_reminder' || n.type === 'announcement').slice(0,2));
+      } else {
+        setNotifications(allNotifications.slice(0,2));
+      }
+    } catch {
+      setNotifications(allNotifications.slice(0,2));
+    }
   }, []);
 
   const filtered = filter === 'unread' 

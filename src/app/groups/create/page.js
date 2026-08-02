@@ -114,7 +114,7 @@ export default function CreateGroupPage() {
   const handlePay = () => {
     if (!selfieFile || !idFile) { toast.error('Selfie + ID mandatory'); return; }
     if (!receiptFile) { toast.error('Upload receipt of ₦5000 to Palmpay 9151723199 Basikoro James Okeroghene'); return; }
-    toast.success('Payment receipt uploaded - pending Owner approval.');
+    toast.success('Payment receipt uploaded - pending Payround approval.');
     setPaid(true);
     setTimeout(() => {
       const groupId = 'PR' + Math.floor(10000 + Math.random() * 90000);
@@ -124,7 +124,7 @@ export default function CreateGroupPage() {
       const waMsg = `New Group Request: ${formData.name} by user, ₦5000 paid to Palmpay 9151723199, needs approval. Selfie+ID attached.`;
       const waLink = `https://wa.me/2349151723199?text=${encodeURIComponent(waMsg)}`;
       window.open(waLink, '_blank');
-      toast.success(`Group ${groupId} saved pending owner approval`);
+      toast.success(`Group ${groupId} saved pending Payround approval`);
       router.push(`/`);
     }, 1500);
   };
@@ -234,10 +234,10 @@ export default function CreateGroupPage() {
 
           {step === 5 && (
             <div className="space-y-6">
-              <div className="flex items-center gap-2 mb-2"><HiShieldCheck className="w-6 h-6 text-primary-600" /><h2 className="text-lg font-semibold">Review & Pay to Owner</h2></div>
+              <div className="flex items-center gap-2 mb-2"><HiShieldCheck className="w-6 h-6 text-primary-600" /><h2 className="text-lg font-semibold">Review & Pay to Payround</h2></div>
               
               <div className="p-4 bg-amber-50 border border-amber-200 rounded-xl">
-                <div className="font-bold text-sm">Pay to Owner</div>
+                <div className="font-bold text-sm">Pay to Payround</div>
                 <div className="text-xs mt-1">Bank: Palmpay | Acct: 9151723199 | Name: Basikoro James Okeroghene</div>
               </div>
 
@@ -264,7 +264,7 @@ export default function CreateGroupPage() {
                   <div className="flex items-center gap-3"><div className="flex-1 h-px bg-gray-200"/><span className="text-sm text-gray-400">OR</span><div className="flex-1 h-px bg-gray-200"/></div>
 
                   <div className="p-5 bg-gold-50 rounded-2xl border border-gold-100">
-                    <div className="flex justify-between mb-2"><span className="text-sm font-medium">Pay ₦5000 to Owner Now</span><span className="text-2xl font-bold">₦{creationFee.toLocaleString()}</span></div>
+                    <div className="flex justify-between mb-2"><span className="text-sm font-medium">Pay ₦5000 Now</span><span className="text-2xl font-bold">₦{creationFee.toLocaleString()}</span></div>
                     <p className="text-xs text-gray-500 mb-3">Upload receipt of ₦5000 payment to Palmpay account above.</p>
                     
                     <div className="border-2 border-dashed rounded-xl p-4 bg-white mb-3">
@@ -279,8 +279,8 @@ export default function CreateGroupPage() {
               ) : (
                 <div className="text-center py-6">
                   <div className="w-16 h-16 bg-emerald-50 rounded-full flex items-center justify-center mx-auto mb-4"><HiCheckCircle className="w-10 h-10 text-emerald-500" /></div>
-                  <p className="text-lg font-semibold">{startedTrial ? '🎉 Trial Started!' : 'Pending Owner Approval'}</p>
-                  <p className="text-sm text-gray-500">{startedTrial ? 'Your trial has begun.' : 'Receipt uploaded. Owner will review and approve.'}</p>
+                  <p className="text-lg font-semibold">{startedTrial ? '🎉 Trial Started!' : 'Pending Verification'}</p>
+                  <p className="text-sm text-gray-500">{startedTrial ? 'Your trial has begun.' : 'Receipt uploaded. Payround will review and approve.'}</p>
                 </div>
               )}
             </div>

@@ -21,6 +21,19 @@ export default function HomePage() {
   const [searchResults, setSearchResults] = useState([]);
   const [showSearchResults, setShowSearchResults] = useState(false);
 
+  useEffect(() => {
+    // When a user that is already registered launches the app/site it should take them directly to their dashboard
+    try {
+      const stored = localStorage.getItem('payround_user');
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        if (parsed && parsed.email) {
+          router.push('/dashboard');
+        }
+      }
+    } catch {}
+  }, [router]);
+
   const activeAds = businessAds.filter(ad => ad.active);
 
   const handleSearch = (e) => {

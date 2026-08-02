@@ -5,8 +5,8 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import Header from '@/components/Header';
 import Footer from '@/components/Footer';
 import GroupCard from '@/components/GroupCard';
-import { groups, searchGroups } from '@/lib/data';
-import { HiSearch } from 'react-icons/hi';
+import { groups, searchGroups, users } from '@/lib/data';
+import { HiSearch, HiUser, HiShieldCheck } from 'react-icons/hi';
 
 function SearchContent() {
   const router = useRouter();
@@ -14,15 +14,19 @@ function SearchContent() {
   const initialQuery = searchParams.get('q') || '';
   const [query, setQuery] = useState(initialQuery);
   const [results, setResults] = useState(initialQuery ? searchGroups(initialQuery) : groups);
+  const [userResults, setUserResults] = useState([]);
   const [searched, setSearched] = useState(!!initialQuery);
 
   const handleSearch = (e) => {
     e.preventDefault();
     if (query.trim()) {
       setResults(searchGroups(query.trim()));
+      const uResults = users.filter(u => u.name.toLowerCase().includes(query.toLowerCase()) || u.email.toLowerCase().includes(query.toLowerCase()));
+      setUserResults(uResults);
       setSearched(true);
     } else {
       setResults(groups);
+      setUserResults([]);
       setSearched(false);
     }
   };
