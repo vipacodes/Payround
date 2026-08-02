@@ -11,6 +11,7 @@ import {
   HiShieldCheck, HiUser, HiCheck, HiUserAdd, HiPhone
 } from 'react-icons/hi';
 import toast from 'react-hot-toast';
+import FollowersList from '@/components/FollowersList';
 
 const badgeEmoji = { bronze: '🥉', silver: '🥈', gold: '🥇' };
 
@@ -28,6 +29,7 @@ export default function PublicUserProfilePage() {
   const [followers, setFollowers] = useState(0);
   const [busyFollow, setBusyFollow] = useState(false);
   const [bizAds, setBizAds] = useState([]); // approved businesses this person runs on PayRound
+  const [showFollowers, setShowFollowers] = useState(false);
 
   useEffect(() => {
     let mounted = true;
@@ -183,7 +185,10 @@ export default function PublicUserProfilePage() {
             </a>
           )}
           <div className="flex items-center justify-center gap-3 mt-4">
-            <span className="text-sm font-semibold text-gray-900">{followers} <span className="text-xs font-normal text-gray-500">Follower{followers === 1 ? '' : 's'}</span></span>
+            <button onClick={() => setShowFollowers(true)} title="See who follows them"
+              className="text-sm font-semibold text-gray-900 hover:text-primary-600 transition-colors">
+              {followers} <span className="text-xs font-normal text-gray-500">Follower{followers === 1 ? '' : 's'}</span>
+            </button>
             {(!meEmail || meEmail !== (person.email || '').toLowerCase()) && (
               <button
                 onClick={toggleFollow}
@@ -236,6 +241,7 @@ export default function PublicUserProfilePage() {
 
       <Footer />
       {zoom && person.profile_pic && <ImageLightbox src={person.profile_pic} alt={person.name} onClose={() => setZoom(false)} />}
+      {showFollowers && <FollowersList userEmail={person.email} userName={person.name} onClose={() => setShowFollowers(false)} />}
     </div>
   );
 }

@@ -7,6 +7,7 @@ import Footer from '@/components/Footer';
 import ImageLightbox from '@/components/ImageLightbox';
 import { HiUser, HiMail, HiPhone, HiCamera, HiPencil, HiSave, HiBadgeCheck, HiClock, HiGift, HiLockClosed, HiLocationMarker, HiBriefcase, HiCalendar, HiIdentification } from 'react-icons/hi';
 import toast from 'react-hot-toast';
+import FollowersList from '@/components/FollowersList';
 
 export default function ProfilePage() {
   const router = useRouter();
@@ -24,6 +25,8 @@ export default function ProfilePage() {
   const [idBack, setIdBack] = useState('');
   const [applying, setApplying] = useState(false);
   const [myBiz, setMyBiz] = useState([]); // my approved business profile(s)
+  const [followersCount, setFollowersCount] = useState(0);
+  const [showFollowers, setShowFollowers] = useState(false);
 
   useEffect(() => {
     const stored = localStorage.getItem('payround_user');
@@ -54,6 +57,10 @@ export default function ProfilePage() {
             .eq('submitter_email', (parsed.email || '').toLowerCase())
             .eq('status', 'approved');
           setMyBiz(biz || []);
+        } catch {}
+        try {
+          const { data: fols } = await supabase.from('follows').select('follower_email').eq('following_email', (parsed.email || '').toLowerCase());
+          setFollowersCount((fols || []).length);
         } catch {}
         try {
           const { data: reqs } = await supabase.from('verification_requests')
@@ -203,6 +210,10 @@ export default function ProfilePage() {
               </h2>
               <p className="text-sm text-gray-500 capitalize">{account?.role || user.role || 'member'}</p>
               {account?.approval_status === 'approved' && <p className="text-[11px] text-green-700 bg-green-50 border border-green-200 rounded-full px-2 py-0.5 mt-1 inline-block">✅ Account approved</p>}
+              <button onClick={() => setShowFollowers(true)} title="See your followers"
+                className="inline-flex items-center gap-1.5 bg-gray-100 hover:bg-gray-200 border border-gray-200 rounded-full px-3 py-1 mt-2 text-[11px] font-semibold text-gray-700 transition-colors">
+                👥 {followersCount} Follower{followersCount === 1 ? '' : 's'} · view
+              </button>
             </div>
           </div>
 
@@ -419,6 +430,7 @@ export default function ProfilePage() {
       </div>
       <Footer />
       {zoomPhoto && <ImageLightbox src={zoomPhoto} alt="profile photo" onClose={() => setZoomPhoto(null)} />}
+      {showFollowers && <FollowersList userEmail={user.email} userName={account?.name || user.name} onClose={() => setShowFollowers(false)} />}
     </div>
   );
 }
