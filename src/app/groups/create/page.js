@@ -223,7 +223,7 @@ export default function CreateGroupPage() {
               </div>
 
               <div className="bg-amber-50 border border-amber-200 rounded-xl p-4">
-                <h4 className="font-bold text-sm text-amber-800">KYC Required - Selfie + Valid ID * (ID replaces signup ID — profile signup only needs a selfie)</h4>
+                <h4 className="font-bold text-sm text-amber-800">KYC Required - Selfie + Valid ID *</h4>
                 <div className="grid md:grid-cols-2 gap-4 mt-3">
                   <div>
                     <label className="block text-xs font-medium mb-1">Clear Selfie *</label>

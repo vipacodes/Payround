@@ -126,6 +126,9 @@ export default function GroupDetailsPage() {
   };
 
   const isAdmin = me?.email && group.admin_email && me.email.toLowerCase() === group.admin_email.toLowerCase();
+  const renewal = group.expiry_at ? new Date(group.expiry_at) : null;
+  const renewalSoon = renewal && (renewal.getTime() - Date.now()) < 7 * 86400000;
+  const renewalPassed = renewal && renewal.getTime() <= Date.now();
   const isMember = myStatus === 'approved' || isAdmin;
   const period = currentPeriod(group);
   const N = cycleLength(group);
@@ -228,6 +231,19 @@ export default function GroupDetailsPage() {
             <p className="text-lg font-bold text-gray-900 truncate">{group.admin_name || '—'}</p>
           </div>
         </div>
+
+        {/* Group plan renewal — admins need to see when their group subscription renews */}
+        {isAdmin && renewal && (
+          <div className={`rounded-2xl border p-4 mb-6 flex items-center gap-3 ${renewalPassed ? 'bg-red-50 border-red-200' : renewalSoon ? 'bg-amber-50 border-amber-200' : 'bg-emerald-50 border-emerald-200'}`}>
+            <HiCalendar className={`w-5 h-5 shrink-0 ${renewalPassed ? 'text-red-500' : renewalSoon ? 'text-amber-500' : 'text-emerald-600'}`} />
+            <p className="text-xs">
+              <span className={`font-semibold ${renewalPassed ? 'text-red-700' : renewalSoon ? 'text-amber-700' : 'text-emerald-700'}`}>
+                {renewalPassed ? 'Group plan has expired' : `Next group payment (plan renewal) due ${renewal.toLocaleDateString(undefined, { day: 'numeric', month: 'long', year: 'numeric' })}`}
+              </span>
+              <span className="text-gray-500"> — pay via Palmpay 9151723199 (Basikoro James Okeroghene) and create a renewal receipt through PayRound to extend your plan.</span>
+            </p>
+          </div>
+        )}
 
         {/* Join CTA — respects account & membership state */}
         <div className="bg-white rounded-2xl border border-gray-100 p-6">

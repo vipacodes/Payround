@@ -24,7 +24,6 @@ export default function SignUpPage() {
     name: '',
     email: '',
     phone: '',
-    address: '',
     referredBy: '',
     password: '',
     confirmPassword: '',
@@ -75,7 +74,6 @@ export default function SignUpPage() {
     }
     if (!formData.phone.trim()) newErrors.phone = 'Phone is required';
     else if (!/^0\d{10}$/.test(formData.phone)) newErrors.phone = 'Valid Nigerian phone required (e.g., 08031234567)';
-    if (!formData.address.trim()) newErrors.address = 'Address is required';
     if (!formData.password) newErrors.password = 'Password is required';
     else if (formData.password.length < 6) newErrors.password = 'At least 6 characters';
     if (formData.password !== formData.confirmPassword) newErrors.confirmPassword = 'Passwords do not match';
@@ -166,7 +164,7 @@ export default function SignUpPage() {
 
       localStorage.setItem('payround_user', JSON.stringify({
         id: result.user.id, name: result.user.name, email: result.user.email,
-        phone: result.user.phone, address: result.user.address,
+        phone: result.user.phone,
         role: result.user.role, faceVerified: false,
       }));
       toast.success('Account created! Welcome to PayRound 🎉');
@@ -244,22 +242,23 @@ export default function SignUpPage() {
               {errors.phone && <p className="text-xs text-red-500 mt-1">{errors.phone}</p>}
             </div>
 
+            {/* Profile Picture */}
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">Residential Address <span className="text-red-500">*</span></label>
-              <div className="relative">
-                <HiLocationMarker className="absolute left-3.5 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
-                <input type="text" value={formData.address} onChange={e => updateField('address', e.target.value)} placeholder="Your home address" className={`w-full pl-11 pr-4 py-3 border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 ${errors.address ? 'border-red-300' : 'border-gray-200'}`} />
-              </div>
-              {errors.address && <p className="text-xs text-red-500 mt-1">{errors.address}</p>}
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">Referred by (unique ID) <span className="text-gray-400 text-xs font-normal">— optional</span></label>
-              <div className="relative">
-                <HiUser className="absolute left-3.5 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
-                <input type="text" value={formData.referredBy} onChange={e => updateField('referredBy', e.target.value)} placeholder="Unique ID of who referred you" className="w-full pl-11 pr-4 py-3 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary-500" />
-              </div>
-              <p className="text-xs text-gray-400 mt-1">Auto-filled when you open someone's referral link. The referrer earns ₦200.</p>
+              <label className="block text-sm font-medium text-gray-700 mb-1.5">Selfie <span className="text-red-500">*</span> <span className="text-gray-400 text-xs font-normal">(the only photo needed to sign up — used as your profile picture)</span></label>
+              <input type="file" ref={profilePicRef} accept="image/*,image/heic,image/heif,video/*,application/pdf,.pdf" onChange={e => handleFile(e.target.files[0], setProfilePicPreview, setProfilePic)} className="hidden" />
+              {profilePicPreview ? (
+                <div className="relative w-24 h-24">
+                  <img src={profilePicPreview} alt="Profile" className="w-24 h-24 rounded-2xl object-cover border-2 border-primary-200" />
+                  <button type="button" onClick={() => profilePicRef.current?.click()} className="absolute -top-2 -right-2 w-6 h-6 bg-primary-600 text-white rounded-full text-xs flex items-center justify-center shadow">✕</button>
+                </div>
+              ) : (
+                <div onClick={() => profilePicRef.current?.click()} className="border-2 border-dashed border-gray-300 rounded-2xl p-6 text-center cursor-pointer hover:border-primary-400 hover:bg-primary-50/30 transition-all">
+                  <HiCamera className="w-8 h-8 text-gray-400 mx-auto mb-1" />
+                  <p className="text-sm text-gray-500">Tap to take a selfie</p>
+                  <p className="text-xs text-gray-400">This will be your profile picture</p>
+                </div>
+              )}
+              {errors.profilePic && <p className="text-xs text-red-500 mt-1">{errors.profilePic}</p>}
             </div>
 
             <div className="grid grid-cols-2 gap-4">
@@ -281,23 +280,13 @@ export default function SignUpPage() {
               </div>
             </div>
 
-            {/* Profile Picture */}
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">Selfie <span className="text-red-500">*</span> <span className="text-gray-400 text-xs font-normal">(the only photo needed to sign up — used as your profile picture)</span></label>
-              <input type="file" ref={profilePicRef} accept="image/*,image/heic,image/heif,video/*,application/pdf,.pdf" onChange={e => handleFile(e.target.files[0], setProfilePicPreview, setProfilePic)} className="hidden" />
-              {profilePicPreview ? (
-                <div className="relative w-24 h-24">
-                  <img src={profilePicPreview} alt="Profile" className="w-24 h-24 rounded-2xl object-cover border-2 border-primary-200" />
-                  <button type="button" onClick={() => profilePicRef.current?.click()} className="absolute -top-2 -right-2 w-6 h-6 bg-primary-600 text-white rounded-full text-xs flex items-center justify-center shadow">✕</button>
-                </div>
-              ) : (
-                <div onClick={() => profilePicRef.current?.click()} className="border-2 border-dashed border-gray-300 rounded-2xl p-6 text-center cursor-pointer hover:border-primary-400 hover:bg-primary-50/30 transition-all">
-                  <HiCamera className="w-8 h-8 text-gray-400 mx-auto mb-1" />
-                  <p className="text-sm text-gray-500">Tap to take a selfie</p>
-                  <p className="text-xs text-gray-400">This will be your profile picture</p>
-                </div>
-              )}
-              {errors.profilePic && <p className="text-xs text-red-500 mt-1">{errors.profilePic}</p>}
+              <label className="block text-sm font-medium text-gray-700 mb-1.5">Referred by (unique ID) <span className="text-gray-400 text-xs font-normal">— optional</span></label>
+              <div className="relative">
+                <HiUser className="absolute left-3.5 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+                <input type="text" value={formData.referredBy} onChange={e => updateField('referredBy', e.target.value)} placeholder="Unique ID of who referred you" className="w-full pl-11 pr-4 py-3 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary-500" />
+              </div>
+              <p className="text-xs text-gray-400 mt-1">Auto-filled when you open someone's referral link. The referrer earns ₦200.</p>
             </div>
 
             <button type="submit" disabled={submitting} className="w-full bg-primary-600 text-white font-semibold py-3.5 rounded-xl hover:bg-primary-700 transition-all shadow-lg shadow-primary-200 disabled:opacity-50">

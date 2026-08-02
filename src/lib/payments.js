@@ -78,3 +78,64 @@ export function nextFreeSpots(taken, max, count) {
 export function payoutForSpot(payouts, spot) {
   return (payouts || []).find(p => parseInt(p.spot, 10) === spot && p.status === 'collected') || null;
 }
+
+// ---- Dates --------------------------------------------------------------
+// Period k runs [start + (k-1)*periodMs, start + k*periodMs). Your contribution
+// for period k is due at the START of that period. Spot #k's payout lands at
+// the start of period k too.
+
+export function periodMsOf(group) {
+  return periodDays(group?.frequency) * 86400000;
+}
+
+export function groupStartMs(group) {
+  return new Date(group?.start_date || group?.created_at || Date.now()).getTime();
+}
+
+export function periodStartDate(group, period) {
+  return new Date(groupStartMs(group) + (Math.max(1, period) - 1) * periodMsOf(group));
+}
+
+// Next contribution due date for a member holding `spots` (paid weeks tracked per spot).
+// Returns { date, dueNow:boolean } or null when the member holds no spots.
+export function nextDueForMember(group, payments, spots) {
+  if (!spots || spots.length === 0) return null;
+  const period = currentPeriod(group);
+  // The member's payment covers ALL their spots — use the least-paid spot
+  const minPaid = Math.min(...spots.map(s => paidWeeksForSpot(payments, s)));
+  if (minPaid >= period) {
+    return { date: periodStartDate(group, period + 1), dueNow: false };
+  }
+  return { date: periodStartDate(group, period), dueNow: true };
+}
+
+// Next cash-out for a member: earliest uncollected payout among their spots.
+export function nextCashOutForMember(group, payouts, spots) {
+  if (!spots || spots.length === 0) return null;
+  const period = currentPeriod(group);
+  const pending = (spots || [])
+    .filter(s => !payoutForSpot(payouts, s))
+    .sort((a, b) => a - b);
+  if (pending.length === 0) return null;
+  const dueNow = pending.find(s => s <= period);
+  if (dueNow !== undefined) return { spot: dueNow, date: periodStartDate(group, dueNow), dueNow: true };
+  const next = pending[0];
+  return { spot: next, date: periodStartDate(group, next), dueNow: false };
+}
+
+// Next payout to be collected for a managed group (admin view): earliest
+// uncollected spot that has a holder.
+export function nextPayoutForGroup(group, payouts, spotMap) {
+  const period = currentPeriod(group);
+  const N = cycleLength(group);
+  const open = [];
+  for (let s = 1; s <= N; s++) {
+    if (!spotMap[s]) continue; // no holder yet
+    if (payoutForSpot(payouts, s)) continue; // already collected
+    open.push(s);
+  }
+  if (open.length === 0) return null;
+  const held = open.filter(s => s <= period);
+  if (held.length > 0) return { spot: held[0], date: periodStartDate(group, held[0]), dueNow: true };
+  return { spot: open[0], date: periodStartDate(group, open[0]), dueNow: false };
+}

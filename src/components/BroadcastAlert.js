@@ -54,7 +54,7 @@ export default function BroadcastAlert() {
 
   return (
     <div className="fixed top-3 left-1/2 -translate-x-1/2 z-[80] w-[calc(100%-1.5rem)] max-w-md animate-slide-down">
-      <div className="bg-white rounded-2xl shadow-2xl border-2 border-primary-500 overflow-hidden">
+      <div className="broadcast-card rounded-2xl shadow-2xl border-2 border-primary-500 overflow-hidden">
         <div className="bg-primary-600 px-4 py-2 flex items-center justify-between">
           <div className="flex items-center space-x-2 text-white">
             <HiSpeakerphone className="w-5 h-5" />
@@ -70,10 +70,10 @@ export default function BroadcastAlert() {
         </div>
         <div className="p-4">
           {announcement.announcement_text && (
-            <p className="text-sm text-gray-800 whitespace-pre-line">{announcement.announcement_text}</p>
+            <p className="text-sm broadcast-text whitespace-pre-line">{announcement.announcement_text}</p>
           )}
           {media && (
-            <div className="mt-3 rounded-xl overflow-hidden bg-gray-50 border">
+            <div className="mt-3 rounded-xl overflow-hidden broadcast-media border">
               {isVideo ? (
                 <video src={media} controls autoPlay muted playsInline className="w-full max-h-64 object-contain" />
               ) : (
@@ -82,7 +82,7 @@ export default function BroadcastAlert() {
             </div>
           )}
         </div>
-        <div className="h-1 bg-gray-100">
+        <div className="h-1 broadcast-track">
           <div className="h-1 bg-primary-500 transition-all duration-100" style={{ width: `${progress}%` }}></div>
         </div>
       </div>

@@ -78,6 +78,19 @@ body {
   animation: slideDown 0.3s ease-out both;
 }
 
+/* Broadcast popup — explicit colors for both themes
+   (bg-white/text-gray-800 get remapped differently in .dark and the text became invisible) */
+.broadcast-card { background: #ffffff; color: #1f2937; }
+.broadcast-text { color: #1f2937; }
+.broadcast-sub { color: #64748b; }
+.broadcast-track { background: #f1f5f9; }
+.broadcast-media { background: #f8fafc; border-color: #e2e8f0; }
+.dark .broadcast-card { background: #131b31; color: #e5e7eb; }
+.dark .broadcast-text { color: #e5e7eb; }
+.dark .broadcast-sub { color: #98a3b7; }
+.dark .broadcast-track { background: #1a2440; }
+.dark .broadcast-media { background: #0f1a33; border-color: #2a3a5e; }
+
 /* Glass effect */
 .glass {
   background: rgba(255, 255, 255, 0.7);

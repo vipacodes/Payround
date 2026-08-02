@@ -4,392 +4,286 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Header from '@/components/Header';
 import Footer from '@/components/Footer';
-import DashboardCard from '@/components/DashboardCard';
-import RotationTable from '@/components/RotationTable';
-import ProgressBar from '@/components/ProgressBar';
-import AnnouncementCard from '@/components/AnnouncementCard';
 import BroadcastAlert from '@/components/BroadcastAlert';
-import Calculator from '@/components/Calculator';
-import { groups, getGroupById, getGroupStats } from '@/lib/data';
 import {
-  HiUserGroup, HiCurrencyDollar, HiCalendar, HiBell,
-  HiChartBar, HiCheckCircle, HiClock, HiExclamation,
-  HiArrowRight, HiUser, HiCalculator, HiDocumentText
+  HiUserGroup, HiCurrencyDollar, HiCalendar, HiClipboardList,
+  HiCheckCircle, HiClock, HiBadgeCheck, HiArrowRight, HiShieldCheck,
+  HiGift, HiSearch, HiPlusCircle, HiExclamation, HiCash
 } from 'react-icons/hi';
-import { HiOutlineArrowRight } from 'react-icons/hi2';
-import toast from 'react-hot-toast';
+import {
+  parseSpots, currentPeriod, cycleLength, periodLabel,
+  buildSpotMap, nextDueForMember, nextCashOutForMember, nextPayoutForGroup
+} from '@/lib/payments';
+
+const badgeEmoji = { bronze: '🥉', silver: '🥈', gold: '🥇' };
+const fmtDate = (d) => d ? new Date(d).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' }) : '—';
 
 export default function DashboardPage() {
   const router = useRouter();
   const [user, setUser] = useState(null);
-  const [activeGroup, setActiveGroup] = useState(null);
-  const [memberData, setMemberData] = useState(null);
-  const [showCalculator, setShowCalculator] = useState(false);
-  const [stats, setStats] = useState(null);
-  const [activeTab, setActiveTab] = useState('overview');
+  const [account, setAccount] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [joined, setJoined] = useState([]);   // [{ group, member, payments, payouts }]
+  const [managed, setManaged] = useState([]); // [{ group, members, payments, payouts }]
 
   useEffect(() => {
-    try {
-      const stored = localStorage.getItem('payround_user');
-      if (!stored) {
-        router.push('/login');
-        return;
-      }
-      const parsed = JSON.parse(stored);
-      setUser(parsed);
+    const stored = localStorage.getItem('payround_user');
+    if (!stored) { router.push('/login'); return; }
+    let parsed;
+    try { parsed = JSON.parse(stored); } catch { router.push('/login'); return; }
+    setUser(parsed);
+    (async () => {
+      try {
+        const { supabase } = await import('@/lib/supabase');
+        const email = (parsed.email || '').toLowerCase();
 
-      // Load demo data - first group
-      const group = groups[0];
-      if (group) {
-        setActiveGroup(group);
-        setStats(getGroupStats(group.id));
-        
-        // Find member data or use first member as sample
-        const member = group.members?.find(m => m.id === 'member2') || group.members?.[0] || null;
-        setMemberData(member);
-      }
-    } catch (e) {
-      console.error('Dashboard error:', e);
-      router.push('/login');
-    }
-  }, []);
+        const { data: acc } = await supabase
+          .from('users').select('name, is_verified, is_approved, approval_status, profile_pic')
+          .eq('email', email).single();
+        if (acc) setAccount(acc);
 
-  if (!user) {
+        // --- Groups I JOINED (approved membership rows) ---
+        const { data: mine } = await supabase
+          .from('members').select('*')
+          .eq('member_email', email).eq('status', 'approved');
+        const joinedOut = [];
+        for (const m of mine || []) {
+          const { data: g } = await supabase.from('groups').select('*').eq('id', m.group_id).single();
+          if (!g) continue;
+          const { data: pays } = await supabase.from('payments').select('*').eq('group_id', m.group_id);
+          const { data: outs } = await supabase.from('payouts').select('*').eq('group_id', m.group_id);
+          joinedOut.push({ group: g, member: m, payments: pays || [], payouts: outs || [] });
+        }
+        setJoined(joinedOut);
+
+        // --- Groups I MANAGE (I am the admin) ---
+        const { data: myGroups } = await supabase
+          .from('groups').select('*').eq('admin_email', email).order('created_at', { ascending: false });
+        const managedOut = [];
+        for (const g of myGroups || []) {
+          const { data: mems } = await supabase.from('members').select('*').eq('group_id', g.id).eq('status', 'approved');
+          const { data: pays } = await supabase.from('payments').select('spots, weeks, status').eq('group_id', g.id);
+          const { data: outs } = await supabase.from('payouts').select('*').eq('group_id', g.id);
+          managedOut.push({ group: g, members: mems || [], payments: pays || [], payouts: outs || [] });
+        }
+        setManaged(managedOut);
+      } catch (e) { console.log('Dashboard load:', e.message); }
+      setLoading(false);
+    })();
+  }, [router]);
+
+  if (!user) return null;
+
+  if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600"></div>
       </div>
     );
   }
-  if (!activeGroup) {
-    return (
-      <div className="min-h-screen bg-gray-50">
-        <Header />
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
-          <div className="bg-white rounded-2xl border border-gray-100 p-10 text-center">
-            <h2 className="text-xl font-bold">Welcome back, {user?.name || 'User'}! 👋</h2>
-            <p className="text-gray-500 mt-2">You have no active groups yet. This is the previous dashboard look you liked - with stats, group info banner, tabs (Overview, Rotation, Announcements, Calculator, Rules), payment history, quick actions, current cycle status.</p>
-            <p className="text-xs text-gray-400 mt-2">Real groups only when created and approved by owner. No demo. Top rated + most active at top. 1 account per email enforced, only your password works, 12 colors, KYC selfie+ID, Palmpay 9151723199 receipt.</p>
-            <div className="mt-6 flex justify-center gap-3">
-              <button onClick={() => router.push('/groups/create')} className="bg-primary-600 text-white px-6 py-3 rounded-xl text-sm font-semibold">Create Group</button>
-              <button onClick={() => router.push('/groups/search')} className="border px-6 py-3 rounded-xl text-sm">Browse Groups</button>
-            </div>
-          </div>
-          <div className="mt-8 grid grid-cols-2 md:grid-cols-4 gap-4">
-            <div className="bg-white rounded-2xl border p-5"><div className="text-xs text-gray-500">Active Groups</div><div className="font-bold text-xl">0</div><div className="text-xs text-gray-400">Real, no demo</div></div>
-            <div className="bg-white rounded-2xl border p-5"><div className="text-xs text-gray-500">Total Contributed</div><div className="font-bold text-xl">₦0</div></div>
-            <div className="bg-white rounded-2xl border p-5"><div className="text-xs text-gray-500">Rotation</div><div className="font-bold">-</div></div>
-            <div className="bg-white rounded-2xl border p-5"><div className="text-xs text-gray-500">Next Payment Due</div><div className="font-bold">No due</div></div>
-          </div>
-        </div>
-        <Footer />
-      </div>
-    );
+
+  const isAdmin = managed.length > 0;
+
+  // Next payment due — earliest across my joined groups (own contributions),
+  // or across managed groups when the user only manages
+  const dues = joined
+    .map(({ group, payments, member }) => {
+      const spots = parseSpots(member.spots);
+      const d = nextDueForMember(group, payments, spots);
+      return d ? { ...d, groupName: group.name } : null;
+    })
+    .filter(Boolean);
+  if (dues.length === 0 && isAdmin) {
+    managed.forEach(({ group, payments, members }) => {
+      const period = currentPeriod(group);
+      const anyOwed = members.some(m => parseSpots(m.spots).length > 0);
+      if (!anyOwed) return;
+      const start = new Date(group.start_date || group.created_at || Date.now()).getTime();
+      const pms = (String(group.frequency || 'weekly').toLowerCase().includes('month') ? 30 : String(group.frequency || '').toLowerCase().includes('bi') ? 14 : 7) * 86400000;
+      dues.push({ date: new Date(start + period * pms), dueNow: false, groupName: group.name });
+    });
   }
+  dues.sort((a, b) => a.date - b.date);
+  const nextDue = dues[0] || null;
 
-  const tabs = [
-    { id: 'overview', label: 'Overview' },
-    { id: 'rotation', label: 'Rotation' },
-    { id: 'announcements', label: 'Announcements' },
-    { id: 'calculator', label: 'Calculator' },
-    { id: 'rules', label: 'Rules' },
-  ];
-
-  const getMemberStatusBadge = (status) => {
-    switch (status) {
-      case 'paid':
-        return <span className="flex items-center gap-1 text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-full text-xs font-medium"><HiCheckCircle className="w-3.5 h-3.5" /> Paid</span>;
-      case 'pending':
-        return <span className="flex items-center gap-1 text-yellow-700 bg-yellow-50 px-2.5 py-1 rounded-full text-xs font-medium"><HiClock className="w-3.5 h-3.5" /> Pending Verification</span>;
-      case 'overdue':
-        return <span className="flex items-center gap-1 text-red-700 bg-red-50 px-2.5 py-1 rounded-full text-xs font-medium"><HiExclamation className="w-3.5 h-3.5" /> Overdue</span>;
-      case 'not_due':
-        return <span className="flex items-center gap-1 text-gray-500 bg-gray-100 px-2.5 py-1 rounded-full text-xs font-medium"><HiClock className="w-3.5 h-3.5" /> Not Yet Due</span>;
-      default:
-        return null;
-    }
-  };
+  // Next cash out (member) / next payout (admin)
+  const cashOuts = joined
+    .map(({ group, payouts, member }) => {
+      const d = nextCashOutForMember(group, payouts, parseSpots(member.spots));
+      return d ? { ...d, groupName: group.name } : null;
+    })
+    .filter(Boolean)
+    .sort((a, b) => (a.dueNow === b.dueNow ? a.date - b.date : a.dueNow ? -1 : 1));
+  const payoutsNext = managed
+    .map(({ group, payouts, members }) => {
+      const d = nextPayoutForGroup(group, payouts, buildSpotMap(members));
+      return d ? { ...d, groupName: group.name } : null;
+    })
+    .filter(Boolean)
+    .sort((a, b) => (a.dueNow === b.dueNow ? a.date - b.date : a.dueNow ? -1 : 1));
+  const cashOrPayout = isAdmin ? (payoutsNext[0] || cashOuts[0] || null) : (cashOuts[0] || null);
 
   return (
     <div className="min-h-screen bg-gray-50">
       <Header />
       <BroadcastAlert />
 
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 md:py-8">
-        {/* Welcome Section */}
-        <div className="flex flex-col md:flex-row md:items-center justify-between mb-6 gap-4">
-          <div>
-            <h1 className="text-2xl md:text-3xl font-bold text-gray-900">
-              Welcome back, {user.name} 👋
+      <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-6 md:py-8">
+        {/* Welcome */}
+        <div className="flex items-center gap-4 mb-6">
+          {account?.profile_pic
+            ? <img src={account.profile_pic} alt="" className="w-14 h-14 rounded-2xl object-cover border border-gray-100 shrink-0" />
+            : <div className="w-14 h-14 bg-primary-100 rounded-2xl flex items-center justify-center shrink-0"><span className="text-primary-700 font-bold text-xl">{(account?.name || user.name || 'U').charAt(0).toUpperCase()}</span></div>}
+          <div className="min-w-0">
+            <h1 className="text-xl md:text-2xl font-bold text-gray-900 flex items-center gap-2 truncate">
+              Welcome back, {(account?.name || user.name || 'there').split(' ')[0]} 👋
+              {account?.is_verified && <HiBadgeCheck className="w-7 h-7 text-blue-500 drop-shadow shrink-0" title="Verified by PayRound" />}
             </h1>
-            <p className="text-gray-500 mt-1">Here&apos;s your savings overview</p>
-          </div>
-          <div className="flex gap-3">
-            <button
-              onClick={() => router.push('/groups/search')}
-              className="flex items-center gap-2 bg-white border border-gray-200 text-gray-700 text-sm font-medium px-4 py-2.5 rounded-xl hover:bg-gray-50 transition-all"
-            >
-              <HiUserGroup className="w-4 h-4" />
-              Join Group
-            </button>
-            <button
-              onClick={() => router.push('/groups/create')}
-              className="flex items-center gap-2 bg-primary-600 text-white text-sm font-medium px-4 py-2.5 rounded-xl hover:bg-primary-700 transition-all shadow-lg shadow-primary-200"
-            >
-              <HiCurrencyDollar className="w-4 h-4" />
-              Create Group
-            </button>
+            <p className="text-sm text-gray-500">Here&apos;s what&apos;s happening with your savings groups.</p>
           </div>
         </div>
 
-        {/* Quick Stats */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-          <DashboardCard
-            icon={<HiUserGroup className="w-5 h-5" />}
-            label="Active Groups"
-            value={user.memberGroups.length || 1}
-            subtext={`Member of ${activeGroup.name}`}
-            color="primary"
-          />
-          <DashboardCard
-            icon={<HiCurrencyDollar className="w-5 h-5" />}
-            label="Total Contributed"
-            value={`₦${(memberData?.totalPaid || 0).toLocaleString()}`}
-            color="gold"
-            subtext={memberData?.contributions?.length || 0}
-          />
-          <DashboardCard
-            icon={<HiChartBar className="w-5 h-5" />}
-            label={`Rotation #${memberData?.rotationNo || '-'}`}
-            value={memberData?.payoutStatus === 'next' ? 'You\'re Next! 🎯' : memberData?.payoutStatus === 'received' ? 'Received ✅' : 'Waiting'}
-            color={memberData?.payoutStatus === 'next' ? 'purple' : memberData?.payoutStatus === 'received' ? 'green' : 'blue'}
-            subtext={`Expected: ${memberData?.expectedPayout || 'N/A'}`}
-          />
-          <DashboardCard
-            icon={<HiBell className="w-5 h-5" />}
-            label="Next Payment Due"
-            value={memberData?.contributions?.length > 0 
-              ? (memberData.contributions[memberData.contributions.length - 1]?.status === 'paid' ? 'All Good' : 'Due Soon')
-              : 'Due Soon'
-            }
-            color={memberData?.contributions?.length > 0 && memberData.contributions[memberData.contributions.length - 1]?.status === 'paid' ? 'green' : 'red'}
-          />
+        {/* Stats */}
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4 mb-8">
+          <div className="bg-white rounded-2xl border border-gray-100 p-4">
+            <HiUserGroup className="w-5 h-5 text-primary-600 mb-2" />
+            <p className="text-2xl font-bold text-gray-900">{joined.length}</p>
+            <p className="text-xs text-gray-500">Groups I Joined</p>
+          </div>
+          <div className="bg-white rounded-2xl border border-gray-100 p-4">
+            <HiShieldCheck className="w-5 h-5 text-purple-600 mb-2" />
+            <p className="text-2xl font-bold text-gray-900">{managed.length}</p>
+            <p className="text-xs text-gray-500">Groups I Manage</p>
+          </div>
+          <div className="bg-white rounded-2xl border border-gray-100 p-4">
+            <HiCalendar className="w-5 h-5 text-amber-500 mb-2" />
+            <p className="text-sm font-bold text-gray-900 leading-tight min-h-[2rem]">
+              {nextDue ? (nextDue.dueNow ? `Due now` : fmtDate(nextDue.date)) : '—'}
+            </p>
+            <p className="text-xs text-gray-500">Next Payment Due{nextDue ? ` • ${nextDue.groupName}` : ''}</p>
+          </div>
+          <div className="bg-white rounded-2xl border border-gray-100 p-4">
+            <HiCash className="w-5 h-5 text-emerald-600 mb-2" />
+            <p className="text-sm font-bold text-gray-900 leading-tight min-h-[2rem]">
+              {cashOrPayout ? (cashOrPayout.dueNow ? `Now (spot #${cashOrPayout.spot})` : `${fmtDate(cashOrPayout.date)} (spot #${cashOrPayout.spot})`) : '—'}
+            </p>
+            <p className="text-xs text-gray-500">{isAdmin ? 'Next Payout' : 'Next Cash Out'}{cashOrPayout ? ` • ${cashOrPayout.groupName}` : ''}</p>
+          </div>
         </div>
 
-        {/* Group Info Banner */}
-        <div className="bg-gradient-to-r from-primary-600 to-primary-700 rounded-2xl p-5 md:p-6 mb-6 text-white">
-          <div className="flex items-center justify-between">
-            <div>
-              <h3 className="font-bold text-lg">{activeGroup.name}</h3>
-              <p className="text-primary-100 text-sm">ID: {activeGroup.id}</p>
+        {/* ============ GROUPS I JOINED (members AND admins) ============ */}
+        <div className="flex items-center justify-between mb-3">
+          <h2 className="text-lg font-bold text-gray-900 flex items-center gap-2"><HiUserGroup className="w-5 h-5 text-primary-600" /> Groups I Joined</h2>
+          <button onClick={() => router.push('/groups/search')} className="text-xs font-medium text-primary-600 flex items-center gap-1 hover:text-primary-700"><HiSearch className="w-4 h-4" /> Find groups</button>
+        </div>
+        {joined.length === 0 ? (
+          <div className="bg-white rounded-2xl border border-dashed border-gray-200 p-8 text-center mb-8">
+            <HiUserGroup className="w-10 h-10 text-gray-300 mx-auto mb-2" />
+            <p className="text-sm text-gray-500 mb-4">You haven&apos;t joined any group yet. Real, approved groups only.</p>
+            <button onClick={() => router.push('/groups/search')} className="bg-primary-600 text-white text-sm font-medium px-6 py-2.5 rounded-xl hover:bg-primary-700">Browse Groups</button>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8">
+            {joined.map(({ group: g, member, payments, payouts }) => {
+              const mySpots = parseSpots(member.spots);
+              const due = nextDueForMember(g, payments, mySpots);
+              const cash = nextCashOutForMember(g, payouts, mySpots);
+              return (
+                <button key={g.id} onClick={() => router.push(`/groups/${g.id}`)} className="bg-white rounded-2xl border border-gray-100 p-5 text-left card-hover">
+                  <div className="flex items-center gap-3 mb-3">
+                    {g.avatar_url
+                      ? <img src={g.avatar_url} alt="" className="w-11 h-11 rounded-xl object-cover border border-gray-100 shrink-0" />
+                      : <div className="w-11 h-11 bg-primary-100 rounded-xl flex items-center justify-center shrink-0"><span className="text-primary-700 font-bold">{g.name?.charAt(0)}</span></div>}
+                    <div className="min-w-0 flex-1">
+                      <p className="font-semibold text-gray-900 flex items-center gap-1.5 min-w-0">
+                        <span className="truncate">{g.name}</span>
+                        {g.is_verified && <HiBadgeCheck className="w-5 h-5 text-blue-500 shrink-0" />}
+                        {g.badge_tier && <span className="text-[11px]">{badgeEmoji[g.badge_tier]}</span>}
+                      </p>
+                      <p className="text-xs text-gray-500">₦{Number(g.amount || 0).toLocaleString()} {g.frequency || 'weekly'}{mySpots.length ? ` • My spot${mySpots.length > 1 ? 's' : ''}: #${mySpots.join(', #')}` : ''}</p>
+                    </div>
+                    <HiArrowRight className="w-4 h-4 text-gray-300 shrink-0" />
+                  </div>
+                  <div className="grid grid-cols-2 gap-2 text-xs">
+                    <div className="bg-gray-50 rounded-lg p-2.5">
+                      <p className="text-gray-400 mb-0.5">Next payment due</p>
+                      <p className={`font-semibold ${due?.dueNow ? 'text-amber-600' : 'text-gray-800'}`}>{due ? (due.dueNow ? 'Due now ⚠️' : fmtDate(due.date)) : 'No spot yet'}</p>
+                    </div>
+                    <div className="bg-gray-50 rounded-lg p-2.5">
+                      <p className="text-gray-400 mb-0.5">Next cash out</p>
+                      <p className={`font-semibold ${cash?.dueNow ? 'text-emerald-600' : 'text-gray-800'}`}>{cash ? (cash.dueNow ? `Now — spot #${cash.spot} 💰` : `${fmtDate(cash.date)} — #${cash.spot}`) : 'All collected 🎉'}</p>
+                    </div>
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        )}
+
+        {/* ============ GROUPS I MANAGE (group admins only) ============ */}
+        {isAdmin && (
+          <>
+            <div className="flex items-center justify-between mb-3">
+              <h2 className="text-lg font-bold text-gray-900 flex items-center gap-2"><HiShieldCheck className="w-5 h-5 text-purple-600" /> Groups I Manage</h2>
+              <button onClick={() => router.push('/dashboard/admin')} className="text-xs font-medium text-primary-600 flex items-center gap-1 hover:text-primary-700"><HiClipboardList className="w-4 h-4" /> Admin dashboard</button>
             </div>
-            <div className="text-right">
-              <p className="text-sm text-primary-100">Group Health</p>
-              <p className="text-2xl font-bold">{activeGroup.healthScore}%</p>
-            </div>
-          </div>
-        </div>
-
-        {/* Tabs */}
-        <div className="flex overflow-x-auto gap-2 mb-6 pb-1 scrollbar-hide">
-          {tabs.map(tab => (
-            <button
-              key={tab.id}
-              onClick={() => setActiveTab(tab.id)}
-              className={`px-5 py-2.5 rounded-xl text-sm font-medium whitespace-nowrap transition-all ${
-                activeTab === tab.id
-                  ? 'bg-primary-600 text-white shadow-lg shadow-primary-200'
-                  : 'bg-white text-gray-600 border border-gray-200 hover:border-primary-200 hover:text-primary-600'
-              }`}
-            >
-              {tab.label}
-            </button>
-          ))}
-        </div>
-
-        {/* Tab Content */}
-        {activeTab === 'overview' && (
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            {/* Member Progress */}
-            <div className="lg:col-span-2 space-y-6">
-              <div className="bg-white rounded-2xl border border-gray-100 p-6">
-                <h3 className="text-lg font-semibold text-gray-900 mb-4">Your Progress</h3>
-                <div className="grid grid-cols-2 gap-4 mb-6">
-                  <div className="p-4 bg-primary-50 rounded-xl">
-                    <p className="text-xs text-primary-600 font-medium">Rotation Number</p>
-                    <p className="text-2xl font-bold text-primary-900 mt-1">#{memberData?.rotationNo}</p>
-                  </div>
-                  <div className="p-4 bg-gold-50 rounded-xl">
-                    <p className="text-xs text-gold-600 font-medium">Total Paid</p>
-                    <p className="text-2xl font-bold text-gold-900 mt-1">₦{(memberData?.totalPaid || 0).toLocaleString()}</p>
-                  </div>
-                  <div className="p-4 bg-purple-50 rounded-xl">
-                    <p className="text-xs text-purple-600 font-medium">Payout Status</p>
-                    <p className="text-base font-bold text-purple-900 mt-1 capitalize">{memberData?.payoutStatus === 'next' ? 'Next to Receive 🎯' : memberData?.payoutStatus === 'received' ? 'Received ✅' : 'Waiting'}</p>
-                  </div>
-                  <div className="p-4 bg-blue-50 rounded-xl">
-                    <p className="text-xs text-blue-600 font-medium">Expected Payout</p>
-                    <p className="text-lg font-bold text-blue-900 mt-1">{memberData?.expectedPayout || 'N/A'}</p>
-                  </div>
-                </div>
-
-                <ProgressBar
-                  value={memberData?.contributions?.filter(c => c.status === 'paid').length || 0}
-                  max={activeGroup.totalCycles}
-                  label="Contribution Progress"
-                  color="primary"
-                />
-              </div>
-
-              {/* Payment History */}
-              <div className="bg-white rounded-2xl border border-gray-100 p-6">
-                <h3 className="text-lg font-semibold text-gray-900 mb-4">Payment History</h3>
-                {memberData?.contributions?.length > 0 ? (
-                  <div className="space-y-2">
-                    {memberData.contributions.map((contribution, index) => (
-                      <div key={index} className="flex items-center justify-between p-3.5 bg-gray-50 rounded-xl">
-                        <div>
-                          <p className="text-sm font-medium text-gray-900">Cycle {index + 1}</p>
-                          <p className="text-xs text-gray-500">{contribution.paidDate || 'Not paid'}</p>
-                        </div>
-                        <div className="flex items-center gap-3">
-                          <span className="text-sm font-medium text-gray-900">₦{contribution.amount.toLocaleString()}</span>
-                          {getMemberStatusBadge(contribution.status)}
-                        </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8">
+              {managed.map(({ group: g, members, payments, payouts }) => {
+                const N = cycleLength(g);
+                const filled = members.reduce((sum, m) => sum + parseSpots(m.spots).length, 0);
+                const nextPay = nextPayoutForGroup(g, payouts, buildSpotMap(members));
+                const renewal = g.expiry_at ? new Date(g.expiry_at) : null;
+                const renewalSoon = renewal && (renewal - Date.now()) < 7 * 86400000;
+                return (
+                  <div key={g.id} className="bg-white rounded-2xl border border-gray-100 p-5">
+                    <div className="flex items-center gap-3 mb-3">
+                      {g.avatar_url
+                        ? <img src={g.avatar_url} alt="" className="w-11 h-11 rounded-xl object-cover border border-gray-100 shrink-0" />
+                        : <div className="w-11 h-11 bg-purple-100 rounded-xl flex items-center justify-center shrink-0"><span className="text-purple-700 font-bold">{g.name?.charAt(0)}</span></div>}
+                      <div className="min-w-0 flex-1">
+                        <p className="font-semibold text-gray-900 flex items-center gap-1.5 min-w-0">
+                          <span className="truncate">{g.name}</span>
+                          {g.is_verified && <HiBadgeCheck className="w-5 h-5 text-blue-500 shrink-0" />}
+                        </p>
+                        <p className="text-xs text-gray-500">{members.length} member{members.length === 1 ? '' : 's'} • {filled}/{N} spots filled</p>
                       </div>
-                    ))}
+                    </div>
+                    <div className="space-y-2 text-xs mb-4">
+                      <div className="flex justify-between bg-gray-50 rounded-lg p-2.5">
+                        <span className="text-gray-400">Next payout</span>
+                        <span className={`font-semibold ${nextPay?.dueNow ? 'text-amber-600' : 'text-gray-800'}`}>{nextPay ? (nextPay.dueNow ? `Now — spot #${nextPay.spot}` : `${fmtDate(nextPay.date)} — #${nextPay.spot}`) : 'All collected 🎉'}</span>
+                      </div>
+                      <div className={`flex justify-between rounded-lg p-2.5 ${renewalSoon ? 'bg-amber-50 border border-amber-200' : 'bg-gray-50'}`}>
+                        <span className="text-gray-400 flex items-center gap-1">{renewalSoon && <HiExclamation className="w-3.5 h-3.5 text-amber-500" />} Group plan renewal</span>
+                        <span className={`font-semibold ${renewalSoon ? 'text-amber-700' : 'text-gray-800'}`}>{renewal ? fmtDate(renewal) : '—'}{renewalSoon ? ' — renew soon!' : ''}</span>
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2">
+                      <button onClick={() => router.push(`/dashboard/admin/${g.id}/payments`)} className="bg-primary-600 hover:bg-primary-700 text-white text-xs font-semibold py-2.5 rounded-xl transition-all">Review Payments</button>
+                      <button onClick={() => router.push(`/groups/${g.id}`)} className="border border-gray-200 hover:bg-gray-50 text-gray-700 text-xs font-semibold py-2.5 rounded-xl transition-all">Open Group</button>
+                    </div>
                   </div>
-                ) : (
-                  <p className="text-sm text-gray-500 text-center py-4">No payment history yet.</p>
-                )}
-              </div>
+                );
+              })}
             </div>
-
-            {/* Sidebar */}
-            <div className="space-y-6">
-              {/* Latest Announcement */}
-              {activeGroup.announcements?.length > 0 && (
-                <div>
-                  <div className="flex items-center justify-between mb-3">
-                    <h3 className="font-semibold text-gray-900">Latest Announcement</h3>
-                    <button onClick={() => setActiveTab('announcements')} className="text-xs text-primary-600 font-medium">View all</button>
-                  </div>
-                  <AnnouncementCard announcement={activeGroup.announcements[activeGroup.announcements.length - 1]} />
-                </div>
-              )}
-
-              {/* Quick Actions */}
-              <div className="bg-white rounded-2xl border border-gray-100 p-5">
-                <h3 className="font-semibold text-gray-900 mb-3">Quick Actions</h3>
-                <div className="space-y-2">
-                  <button
-                    onClick={() => router.push(`/groups/${activeGroup.id}/payment`)}
-                    className="w-full flex items-center gap-3 p-3 bg-primary-50 text-primary-700 rounded-xl text-sm font-medium hover:bg-primary-100 transition-all"
-                  >
-                    <HiCurrencyDollar className="w-5 h-5" />
-                    Make Payment
-                  </button>
-                  <button
-                    onClick={() => setActiveTab('rotation')}
-                    className="w-full flex items-center gap-3 p-3 bg-purple-50 text-purple-700 rounded-xl text-sm font-medium hover:bg-purple-100 transition-all"
-                  >
-                    <HiUserGroup className="w-5 h-5" />
-                    View Rotation
-                  </button>
-                  <button
-                    onClick={() => setActiveTab('calculator')}
-                    className="w-full flex items-center gap-3 p-3 bg-gold-50 text-gold-700 rounded-xl text-sm font-medium hover:bg-gold-100 transition-all"
-                  >
-                    <HiCalculator className="w-5 h-5" />
-                    Calculate
-                  </button>
-                  <button
-                    onClick={() => router.push(`/groups/${activeGroup.id}`)}
-                    className="w-full flex items-center gap-3 p-3 bg-gray-50 text-gray-700 rounded-xl text-sm font-medium hover:bg-gray-100 transition-all"
-                  >
-                    <HiDocumentText className="w-5 h-5" />
-                    Group Details
-                  </button>
-                </div>
-              </div>
-
-              {/* Payment Status */}
-              <div className="bg-white rounded-2xl border border-gray-100 p-5">
-                <h3 className="font-semibold text-gray-900 mb-3">Current Cycle Status</h3>
-                <div className="space-y-3">
-                  <div className="flex justify-between items-center">
-                    <span className="text-sm text-gray-600">Members Paid</span>
-                    <span className="text-sm font-medium text-gray-900">{stats?.paidThisCycle || 0} / {stats?.totalMembers || 0}</span>
-                  </div>
-                  <ProgressBar value={stats?.paidThisCycle || 0} max={stats?.totalMembers || 1} size="sm" showPercent={false} />
-                  <div className="flex justify-between items-center">
-                    <span className="text-sm text-gray-600">Cycle</span>
-                    <span className="text-sm font-medium text-gray-900">{stats?.currentCycle || 0} / {stats?.totalCycles || 0}</span>
-                  </div>
-                  <ProgressBar value={stats?.currentCycle || 0} max={stats?.totalCycles || 1} size="sm" color="gold" showPercent={false} />
-                </div>
-              </div>
-            </div>
-          </div>
+          </>
         )}
 
-        {activeTab === 'rotation' && (
-          <div className="max-w-2xl">
-            <div className="bg-white rounded-2xl border border-gray-100 p-6">
-              <div className="flex items-center justify-between mb-4">
-                <h3 className="text-lg font-semibold text-gray-900">Rotation Order</h3>
-                <span className="text-xs text-gray-500">{activeGroup.rotationOrder?.length || 0} members</span>
-              </div>
-              <RotationTable rotationOrder={activeGroup.rotationOrder} />
-            </div>
-          </div>
-        )}
-
-        {activeTab === 'announcements' && (
-          <div className="max-w-2xl space-y-4">
-            {activeGroup.announcements?.length > 0 ? (
-              activeGroup.announcements.map(ann => (
-                <AnnouncementCard key={ann.id} announcement={ann} />
-              ))
-            ) : (
-              <div className="bg-white rounded-2xl border border-gray-100 p-6 text-center">
-                <p className="text-gray-500">No announcements yet.</p>
-              </div>
-            )}
-          </div>
-        )}
-
-        {activeTab === 'calculator' && (
-          <div className="max-w-md">
-            <Calculator
-              contributionAmount={activeGroup.contributionAmount}
-              totalMembers={activeGroup.maxMembers}
-            />
-          </div>
-        )}
-
-        {activeTab === 'rules' && (
-          <div className="max-w-2xl">
-            <div className="bg-white rounded-2xl border border-gray-100 p-6">
-              <h3 className="text-lg font-semibold text-gray-900 mb-2">Group Rules</h3>
-              <p className="text-sm text-gray-500 mb-4">Rules set by the admin for {activeGroup.name}</p>
-              {activeGroup.rules?.length > 0 ? (
-                <ul className="space-y-3">
-                  {activeGroup.rules.map((rule, index) => (
-                    <li key={index} className="flex items-start gap-3 p-3 bg-gray-50 rounded-xl">
-                      <span className="w-6 h-6 bg-primary-100 text-primary-700 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0 mt-0.5">
-                        {index + 1}
-                      </span>
-                      <span className="text-sm text-gray-700">{rule}</span>
-                    </li>
-                  ))}
-                </ul>
-              ) : (
-                <p className="text-sm text-gray-500 text-center py-4">No rules have been set yet.</p>
-              )}
-            </div>
-          </div>
-        )}
+        {/* Quick actions */}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          <button onClick={() => router.push('/groups/search')} className="bg-white rounded-2xl border border-gray-100 p-4 card-hover flex flex-col items-center gap-1.5 text-center">
+            <HiSearch className="w-5 h-5 text-primary-600" /><span className="text-xs font-medium text-gray-700">Find Groups</span>
+          </button>
+          <button onClick={() => router.push('/groups/create')} className="bg-white rounded-2xl border border-gray-100 p-4 card-hover flex flex-col items-center gap-1.5 text-center">
+            <HiPlusCircle className="w-5 h-5 text-primary-600" /><span className="text-xs font-medium text-gray-700">Create Group</span>
+          </button>
+          <button onClick={() => router.push('/notifications')} className="bg-white rounded-2xl border border-gray-100 p-4 card-hover flex flex-col items-center gap-1.5 text-center">
+            <HiClock className="w-5 h-5 text-primary-600" /><span className="text-xs font-medium text-gray-700">Notifications</span>
+          </button>
+          <button onClick={() => router.push('/profile')} className="bg-white rounded-2xl border border-gray-100 p-4 card-hover flex flex-col items-center gap-1.5 text-center">
+            <HiGift className="w-5 h-5 text-primary-600" /><span className="text-xs font-medium text-gray-700">My Profile</span>
+          </button>
+        </div>
       </div>
 
       <Footer />

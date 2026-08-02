@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import Header from '@/components/Header';
 import Footer from '@/components/Footer';
 import ImageLightbox from '@/components/ImageLightbox';
-import { HiUser, HiMail, HiPhone, HiCamera, HiPencil, HiSave, HiBadgeCheck, HiClock, HiGift } from 'react-icons/hi';
+import { HiUser, HiMail, HiPhone, HiCamera, HiPencil, HiSave, HiBadgeCheck, HiClock, HiGift, HiLockClosed, HiLocationMarker, HiBriefcase, HiCalendar, HiIdentification } from 'react-icons/hi';
 import toast from 'react-hot-toast';
 
 export default function ProfilePage() {
@@ -16,7 +16,7 @@ export default function ProfilePage() {
   const [saving, setSaving] = useState(false);
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
   const [zoomPhoto, setZoomPhoto] = useState(null); // expanded photo src
-  const [formData, setFormData] = useState({ name: '', phone: '' });
+  const [formData, setFormData] = useState({ name: '', phone: '', gender: '', dob: '', address: '', occupation: '', bio: '' });
   const photoRef = useRef(null);
 
   useEffect(() => {
@@ -25,18 +25,22 @@ export default function ProfilePage() {
     let parsed;
     try { parsed = JSON.parse(stored); } catch { router.push('/login'); return; }
     setUser(parsed);
-    setFormData({ name: parsed.name || '', phone: parsed.phone || '' });
+    setFormData(prev => ({ ...prev, name: parsed.name || '', phone: parsed.phone || '' }));
     (async () => {
       try {
         const { supabase } = await import('@/lib/supabase');
         const { data } = await supabase
           .from('users')
-          .select('name, email, phone, role, profile_pic, pending_profile_pic, is_verified, approval_status, referral_earnings, referred_by, created_at')
+          .select('name, email, phone, role, profile_pic, pending_profile_pic, is_verified, is_approved, approval_status, referral_earnings, referred_by, created_at, gender, dob, address, occupation, bio')
           .eq('email', (parsed.email || '').toLowerCase())
           .single();
         if (data) {
           setAccount(data);
-          setFormData({ name: data.name || '', phone: data.phone || '' });
+          setFormData({
+            name: data.name || '', phone: data.phone || '',
+            gender: data.gender || '', dob: data.dob || '',
+            address: data.address || '', occupation: data.occupation || '', bio: data.bio || '',
+          });
         }
       } catch (e) {
         console.log('Profile load:', e.message);
@@ -76,13 +80,26 @@ export default function ProfilePage() {
       const { supabase } = await import('@/lib/supabase');
       const { error } = await supabase
         .from('users')
-        .update({ name: formData.name.trim(), phone: formData.phone.trim() })
+        .update({
+          name: formData.name.trim(),
+          phone: formData.phone.trim(),
+          ...(extrasUnlocked ? {
+            gender: formData.gender || null,
+            dob: formData.dob || null,
+            address: formData.address.trim() || null,
+            occupation: formData.occupation.trim() || null,
+            bio: formData.bio.trim() || null,
+          } : {}),
+        })
         .eq('email', user.email.toLowerCase());
       if (error) throw error;
       const updated = { ...user, name: formData.name.trim(), phone: formData.phone.trim() };
       localStorage.setItem('payround_user', JSON.stringify(updated));
       setUser(updated);
-      setAccount(prev => prev ? { ...prev, name: updated.name, phone: updated.phone } : prev);
+      setAccount(prev => prev ? {
+        ...prev, name: updated.name, phone: updated.phone,
+        ...(extrasUnlocked ? { gender: formData.gender, dob: formData.dob, address: formData.address, occupation: formData.occupation, bio: formData.bio } : {}),
+      } : prev);
       setEditing(false);
       toast.success('Profile updated!');
     } catch (e) {
@@ -92,6 +109,8 @@ export default function ProfilePage() {
   };
 
   const refLink = `https://payround-omega.vercel.app/signup?ref=${user.id || ''}`;
+  // Extra profile details unlock after PayRound approves the account
+  const extrasUnlocked = !!(account?.is_approved || account?.approval_status === 'approved');
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -169,6 +188,51 @@ export default function ProfilePage() {
                   <input type="tel" value={formData.phone} onChange={e => setFormData(p => ({...p, phone: e.target.value}))} className="w-full pl-11 pr-4 py-3 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary-500" />
                 </div>
               </div>
+              {extrasUnlocked ? (
+                <>
+                  <div className="border-t border-gray-100 pt-4">
+                    <p className="text-xs font-semibold text-gray-500 mb-3">ADDITIONAL DETAILS</p>
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1.5">Gender</label>
+                      <select value={formData.gender} onChange={e => setFormData(p => ({...p, gender: e.target.value}))} className="w-full px-4 py-3 border border-gray-200 rounded-xl text-sm bg-white focus:outline-none focus:ring-2 focus:ring-primary-500">
+                        <option value="">Select…</option>
+                        <option value="Male">Male</option>
+                        <option value="Female">Female</option>
+                        <option value="Other">Other</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1.5">Date of Birth</label>
+                      <input type="date" value={formData.dob} onChange={e => setFormData(p => ({...p, dob: e.target.value}))} className="w-full px-4 py-3 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary-500" />
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1.5">Residential Address</label>
+                    <div className="relative">
+                      <HiLocationMarker className="absolute left-3.5 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+                      <input type="text" value={formData.address} onChange={e => setFormData(p => ({...p, address: e.target.value}))} placeholder="Your home address" className="w-full pl-11 pr-4 py-3 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary-500" />
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1.5">Occupation</label>
+                    <div className="relative">
+                      <HiBriefcase className="absolute left-3.5 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+                      <input type="text" value={formData.occupation} onChange={e => setFormData(p => ({...p, occupation: e.target.value}))} placeholder="e.g. Trader, Teacher" className="w-full pl-11 pr-4 py-3 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary-500" />
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1.5">Short Bio</label>
+                    <textarea value={formData.bio} onChange={e => setFormData(p => ({...p, bio: e.target.value}))} placeholder="Tell group admins a little about yourself (e.g. why you save)" rows={3} className="w-full px-4 py-3 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary-500" />
+                  </div>
+                </>
+              ) : (
+                <div className="bg-amber-50 border border-amber-200 rounded-xl p-3.5 text-xs text-amber-800 flex items-start gap-2">
+                  <HiLockClosed className="w-4 h-4 shrink-0 mt-0.5" />
+                  <span>Gender, date of birth, address, occupation and bio unlock after PayRound approves your account.</span>
+                </div>
+              )}
               <div className="flex gap-3 pt-2">
                 <button onClick={handleSave} disabled={saving} className="flex-1 bg-primary-600 text-white font-medium py-3 rounded-xl hover:bg-primary-700 transition-all flex items-center justify-center gap-2 disabled:opacity-60"><HiSave className="w-4 h-4" /> {saving ? 'Saving…' : 'Save Changes'}</button>
                 <button onClick={() => setEditing(false)} className="flex-1 border border-gray-200 text-gray-700 font-medium py-3 rounded-xl hover:bg-gray-50 transition-all">Cancel</button>
@@ -179,6 +243,13 @@ export default function ProfilePage() {
               <div className="flex items-center justify-between p-4 bg-gray-50 rounded-xl"><div><p className="text-xs text-gray-500">Full Name</p><p className="text-sm font-medium text-gray-900">{account?.name || user.name}</p></div><HiUser className="w-5 h-5 text-gray-400" /></div>
               <div className="flex items-center justify-between p-4 bg-gray-50 rounded-xl"><div><p className="text-xs text-gray-500">Email</p><p className="text-sm font-medium text-gray-900">{user.email}</p></div><HiMail className="w-5 h-5 text-gray-400" /></div>
               <div className="flex items-center justify-between p-4 bg-gray-50 rounded-xl"><div><p className="text-xs text-gray-500">Phone</p><p className="text-sm font-medium text-gray-900">{account?.phone || user.phone || '—'}</p></div><HiPhone className="w-5 h-5 text-gray-400" /></div>
+              <div className="flex items-center justify-between p-4 bg-gray-50 rounded-xl"><div><p className="text-xs text-gray-500">Gender</p><p className="text-sm font-medium text-gray-900">{account?.gender || (extrasUnlocked ? '—' : 'Unlocks after approval')}</p></div><HiIdentification className="w-5 h-5 text-gray-400" /></div>
+              <div className="flex items-center justify-between p-4 bg-gray-50 rounded-xl"><div><p className="text-xs text-gray-500">Date of Birth</p><p className="text-sm font-medium text-gray-900">{account?.dob || '—'}</p></div><HiCalendar className="w-5 h-5 text-gray-400" /></div>
+              <div className="flex items-center justify-between p-4 bg-gray-50 rounded-xl"><div><p className="text-xs text-gray-500">Address</p><p className="text-sm font-medium text-gray-900">{account?.address || '—'}</p></div><HiLocationMarker className="w-5 h-5 text-gray-400" /></div>
+              <div className="flex items-center justify-between p-4 bg-gray-50 rounded-xl"><div><p className="text-xs text-gray-500">Occupation</p><p className="text-sm font-medium text-gray-900">{account?.occupation || '—'}</p></div><HiBriefcase className="w-5 h-5 text-gray-400" /></div>
+              {account?.bio && (
+                <div className="p-4 bg-gray-50 rounded-xl"><p className="text-xs text-gray-500 mb-1">Bio</p><p className="text-sm font-medium text-gray-900 whitespace-pre-line">{account.bio}</p></div>
+              )}
               <div className="flex items-center justify-between p-4 bg-gray-50 rounded-xl"><div><p className="text-xs text-gray-500">Referral Earnings</p><p className="text-sm font-medium text-gray-900">₦{Number(account?.referral_earnings || 0).toLocaleString()}</p></div><HiGift className="w-5 h-5 text-gray-400" /></div>
               <button onClick={() => setEditing(true)} className="w-full flex items-center justify-center gap-2 border border-gray-200 text-gray-700 font-medium py-3 rounded-xl hover:bg-gray-50 transition-all"><HiPencil className="w-4 h-4" /> Edit Profile</button>
             </div>

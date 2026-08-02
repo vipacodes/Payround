@@ -6,7 +6,7 @@ import Header from '@/components/Header';
 import Footer from '@/components/Footer';
 import {
   HiBell, HiCheckCircle, HiUser, HiUserGroup,
-  HiChevronRight, HiBadgeCheck, HiRefresh
+  HiChevronRight, HiBadgeCheck, HiRefresh, HiTrash
 } from 'react-icons/hi';
 import { HiMegaphone } from 'react-icons/hi2';
 
@@ -56,6 +56,25 @@ export default function NotificationsPage() {
     return () => clearInterval(t);
   }, []);
 
+  // Delete ONLY my personal notifications — shared/broadcast ones belong to everyone
+  const deleteOne = async (id) => {
+    try {
+      const { supabase } = await import('@/lib/supabase');
+      const { error } = await supabase.from('notifications').delete().eq('id', id);
+      if (!error) setNotifications(prev => prev.filter(n => n.id !== id));
+    } catch {}
+  };
+
+  const clearAllMine = async () => {
+    const mine = notifications.filter(n => myEmail && n.user_email && n.user_email.toLowerCase() === myEmail);
+    if (mine.length === 0) return;
+    try {
+      const { supabase } = await import('@/lib/supabase');
+      await supabase.from('notifications').delete().in('id', mine.map(n => n.id));
+      setNotifications(prev => prev.filter(n => !(n.user_email && n.user_email.toLowerCase() === myEmail)));
+    } catch {}
+  };
+
   // Only marks MY visible notifications as read — never other users' notifications
   const markAllRead = async () => {
     try {
@@ -98,6 +117,9 @@ export default function NotificationsPage() {
                 <HiCheckCircle className="w-4 h-4" /> Mark all read
               </button>
             )}
+            <button onClick={clearAllMine} className="flex items-center gap-1.5 text-sm font-medium text-red-500 border border-red-200 bg-red-50 px-3.5 py-2 rounded-xl hover:bg-red-100" title="Delete all my personal notifications">
+              <HiTrash className="w-4 h-4" /> Clear
+            </button>
           </div>
         </div>
 
@@ -126,6 +148,16 @@ export default function NotificationsPage() {
                     </span>
                   </span>
                   {!n.is_read && <span className="w-2.5 h-2.5 bg-primary-600 rounded-full shrink-0 mt-2" />}
+                  {personal && (
+                    <span
+                      role="button"
+                      title="Delete this notification"
+                      onClick={(e) => { e.stopPropagation(); deleteOne(n.id); }}
+                      className="shrink-0 p-1.5 rounded-lg text-gray-300 hover:text-red-500 hover:bg-red-50 transition-colors"
+                    >
+                      <HiTrash className="w-4 h-4" />
+                    </span>
+                  )}
                 </button>
               );
             })}
