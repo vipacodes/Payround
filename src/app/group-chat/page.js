@@ -31,7 +31,6 @@ function GroupChatInner() {
   const [deleting, setDeleting] = useState(false);
   const [zoomImg, setZoomImg] = useState(null);    // tap any chat image → fullscreen
   const [adminBank, setAdminBank] = useState(null); // the admin's bank details (🏦 chip in the header)
-  const [showBank, setShowBank] = useState(false);
   const [annDraft, setAnnDraft] = useState('');     // announcement box composer (admin)
   const [annEdit, setAnnEdit] = useState(false);
   const [annBusy, setAnnBusy] = useState(false);
@@ -266,9 +265,9 @@ function GroupChatInner() {
               <div className="shrink-0 flex items-center gap-1.5">
                 {hasBank && (
                   <button
-                    onClick={() => setShowBank(v => !v)}
-                    title="Admin bank details — where members send payments"
-                    className={`text-[11px] font-semibold px-2.5 py-1.5 rounded-full border transition-colors ${showBank ? 'bg-emerald-600 border-emerald-600 text-white' : 'bg-emerald-50 border-emerald-200 text-emerald-700'}`}
+                    onClick={() => { try { navigator.clipboard.writeText(adminBank.account_number || ''); toast.success('Account number copied! 📋'); } catch { toast.error('Copy failed — long-press the number below instead'); } }}
+                    title="Admin bank details stay open below — tap this chip to copy the account number instantly"
+                    className="text-[11px] font-semibold px-2.5 py-1.5 rounded-full border transition-colors bg-emerald-600 border-emerald-600 text-white"
                   >
                     🏦 Bank
                   </button>
@@ -285,8 +284,8 @@ function GroupChatInner() {
               </div>
             </div>
 
-            {/* 🏦 Admin bank dropdown — tap the Bank chip to pay/copy details */}
-            {showBank && hasBank && (
+            {/* 🏦 Admin bank card — ALWAYS open so members can see where to pay without tapping anything */}
+            {hasBank && (
               <div className="px-4 py-3 border-b border-emerald-100 bg-emerald-50/70">
                 <p className="text-[10px] font-bold text-emerald-800 mb-1">🏦 ADMIN BANK — send contributions here</p>
                 <div className="text-xs text-gray-900 space-y-0.5">
