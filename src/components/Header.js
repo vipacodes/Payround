@@ -22,6 +22,7 @@ export default function Header() {
   const [gchatShow, setGchatShow] = useState(false);
   const [showCalc, setShowCalc] = useState(false);   // 👥 icon appears ONLY for group admins & members
   const [gchatUnread, setGchatUnread] = useState(0);
+  const [frozen, setFrozen] = useState(false);       // ❄️ owner froze this account — app is covered with a notice
 
   useEffect(() => {
     const stored = localStorage.getItem('payround_user');
@@ -86,6 +87,35 @@ export default function Header() {
     return () => { mounted = false; clearInterval(t); };
   }, [pathname]);
 
+  // ❄️ Frozen-account watch — if PayRound freezes this account, the whole app is covered
+  useEffect(() => {
+    let mounted = true;
+    const check = async () => {
+      try {
+        const stored = localStorage.getItem('payround_user');
+        const email = stored ? (JSON.parse(stored).email || '').toLowerCase() : '';
+        if (!email) { if (mounted) setFrozen(false); return; }
+        const { supabase } = await import('@/lib/supabase');
+        const { data: acc } = await supabase.from('users').select('is_frozen').eq('email', email).maybeSingle();
+        if (mounted) setFrozen(!!acc?.is_frozen);
+      } catch {}
+    };
+    check();
+    const t = setInterval(check, 15000);
+    return () => { mounted = false; clearInterval(t); };
+  }, [pathname]);
+
+  // 📛 App icon badge — the installed app shows the total unread count on its home-screen icon
+  useEffect(() => {
+    try {
+      const total = (unreadCount || 0) + (unreadMsgs || 0) + (gchatUnread || 0);
+      if ('setAppBadge' in navigator) {
+        if (total > 0) navigator.setAppBadge(total).catch(() => {});
+        else if ('clearAppBadge' in navigator) navigator.clearAppBadge().catch(() => {});
+      }
+    } catch {}
+  }, [unreadCount, unreadMsgs, gchatUnread]);
+
   // Restore saved light/dark theme on every page load
   useEffect(() => {
     if (localStorage.getItem('payround_theme') === 'dark') document.documentElement.classList.add('dark');
@@ -114,6 +144,18 @@ export default function Header() {
 
   return (
     <header className="bg-white border-b border-gray-100 sticky top-0 z-50">
+      {frozen && (
+        <div className="fixed inset-0 z-[200] bg-white flex flex-col items-center justify-center px-6 text-center">
+          <div className="w-20 h-20 bg-sky-50 border border-sky-200 rounded-full flex items-center justify-center text-4xl mb-5">❄️</div>
+          <h1 className="text-2xl font-bold text-gray-900 mb-2">Account frozen</h1>
+          <p className="text-sm text-gray-600 max-w-md mb-1">Your PayRound account has been frozen — you can&apos;t use the app right now.</p>
+          <p className="text-xs text-gray-400 max-w-md mb-6">Think this is a mistake? Contact PayRound support on WhatsApp: <b className="text-gray-600">+234 915 1723 199</b></p>
+          <button
+            onClick={() => { try { localStorage.removeItem('payround_user'); } catch {} router.push('/login'); }}
+            className="bg-primary-600 text-white text-sm font-semibold px-6 py-3 rounded-xl hover:bg-primary-700"
+          >Log out</button>
+        </div>
+      )}
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex items-center justify-between h-16">
           {/* Logo */}

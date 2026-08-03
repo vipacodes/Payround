@@ -101,11 +101,11 @@ function SearchContent() {
         const { supabase } = await import('@/lib/supabase');
         const { data: gs } = await supabase
           .from('groups')
-          .select('id, name, description, amount, frequency, max_members, admin_name, admin_email, is_verified, badge_tier, avatar_url, created_at')
+          .select('id, name, description, amount, frequency, max_members, admin_name, admin_email, is_verified, badge_tier, avatar_url, created_at, is_frozen')
           .in('status', ['active', 'approved'])
           .order('created_at', { ascending: false });
         if (!mounted) return;
-        const list = gs || [];
+        const list = (gs || []).filter(g => !g.is_frozen); // ❄️ frozen groups are hidden from search
         setGroupsList(list);
         setResults(applySearch(list, initialQuery));
         // Real approved-member counts per group

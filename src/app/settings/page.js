@@ -47,6 +47,7 @@ export default function SettingsPage() {
   const [bankName, setBankName] = useState('');
   const [accountNumber, setAccountNumber] = useState('');
   const [accountName, setAccountName] = useState('');
+  const [paymentRemark, setPaymentRemark] = useState('');
   const [bankSaving, setBankSaving] = useState(false);
 
   useEffect(() => {
@@ -61,11 +62,12 @@ export default function SettingsPage() {
     (async () => {
       try {
         const { supabase } = await import('@/lib/supabase');
-        const { data } = await supabase.from('users').select('profile_pic, pending_profile_pic, bank_name, account_number, account_name').eq('email', user.email.toLowerCase()).single();
+        const { data } = await supabase.from('users').select('profile_pic, pending_profile_pic, bank_name, account_number, account_name, payment_remark').eq('email', user.email.toLowerCase()).single();
         if (data) {
           setBankName(data.bank_name || '');
           setAccountNumber(data.account_number || '');
           setAccountName(data.account_name || '');
+          setPaymentRemark(data.payment_remark || '');
         }
         if (data?.profile_pic) setPhoto(data.profile_pic);
         if (data?.pending_profile_pic) setPendingPhoto(data.pending_profile_pic);
@@ -101,7 +103,7 @@ export default function SettingsPage() {
     setBankSaving(true);
     try {
       const { supabase } = await import('@/lib/supabase');
-      const row = { bank_name: bankName.trim() || null, account_number: acct || null, account_name: accountName.trim() || null };
+      const row = { bank_name: bankName.trim() || null, account_number: acct || null, account_name: accountName.trim() || null, payment_remark: paymentRemark.trim() || null };
       const { error } = await supabase.from('users').update(row).eq('email', user.email.toLowerCase());
       if (error) throw error;
       toast.success('🏦 Bank details saved — they now show on your profile.');
@@ -208,6 +210,9 @@ export default function SettingsPage() {
               className="w-full px-4 py-3 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary-500" />
             <input type="text" value={accountName} onChange={e => setAccountName(e.target.value)} placeholder="Account name — e.g. Basikoro James Okeroghene" maxLength={80}
               className="w-full px-4 py-3 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary-500" />
+            <input type="text" value={paymentRemark} onChange={e => setPaymentRemark(e.target.value)} placeholder="Payment remark (optional) — e.g. Write your name & spot number as transfer narration" maxLength={120}
+              className="w-full px-4 py-3 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary-500" />
+            <p className="text-[11px] text-gray-400 -mt-1">📝 The remark shows under your bank details on your profile and at the top of your group(s) — members see exactly what to write when paying you.</p>
             <button onClick={saveBank} disabled={bankSaving || !user?.email}
               className="w-full bg-primary-600 text-white text-sm font-semibold py-3 rounded-xl hover:bg-primary-700 transition-all disabled:opacity-50">
               {bankSaving ? 'Saving…' : 'Save Bank Details'}

@@ -267,6 +267,20 @@ function GroupChatInner() {
                                 {u?.is_verified && <HiBadgeCheck className="w-3 h-3 text-blue-500 shrink-0 badge-emboss" />}
                               </p>
                             )}
+                            {m.image_url && (
+                              <span className="relative block mb-1.5 -mx-1">
+                                <img src={m.image_url} alt="payment receipt" className="rounded-xl w-full max-h-52 object-contain bg-black/5" />
+                                {m.receipt_status === 'approved' && (
+                                  <img src="/stamps/approved.png" alt="APPROVED stamp" title="Approved by the group admin" className="absolute inset-0 m-auto w-28 object-contain -rotate-12 drop-shadow-lg" />
+                                )}
+                                {m.receipt_status === 'declined' && (
+                                  <img src="/stamps/declined.png" alt="DECLINED stamp" title="Declined by the group admin" className="absolute inset-0 m-auto w-36 object-contain -rotate-12 drop-shadow-lg" />
+                                )}
+                                {(!m.receipt_status || m.receipt_status === 'pending') && (
+                                  <span className="absolute top-1.5 left-1.5 text-[9px] font-bold bg-amber-400 text-amber-950 px-2 py-0.5 rounded-full shadow">⏳ WAITING FOR ADMIN REVIEW</span>
+                                )}
+                              </span>
+                            )}
                             <p className="whitespace-pre-line break-words">{m.body}</p>
                             <p className={`text-[9px] mt-0.5 ${mine ? 'text-primary-200 text-right' : 'text-gray-400'}`}>{timeOf(m.created_at)}</p>
                           </div>
@@ -282,7 +296,11 @@ function GroupChatInner() {
                 </div>
 
                 {/* composer — admin always types; members type only while the admin has opened the chat */}
-                {memberLocked ? (
+                {g?.is_frozen ? (
+                  <div className="px-4 py-4 border-t border-gray-100 bg-sky-50">
+                    <p className="text-xs text-sky-800 text-center">❄️ This group is frozen by PayRound — chat and payments are paused for now.</p>
+                  </div>
+                ) : memberLocked ? (
                   <div className="px-4 py-4 border-t border-gray-100 bg-gray-50">
                     <p className="text-xs text-gray-600 text-center mb-2.5">🔒 Only the group admin can type here right now — you can read everything.<br />To make a payment, upload your receipt from the group page:</p>
                     <button onClick={() => router.push(`/groups/${activeId}#pay`)} className="w-full bg-primary-600 text-white text-sm font-semibold py-2.5 rounded-xl hover:bg-primary-700 transition-colors">📤 Upload payment receipt (choose spots & weeks) →</button>

@@ -74,6 +74,8 @@ export default function AdminPaymentsPage() {
       const { supabase } = await import('@/lib/supabase');
       const { error } = await supabase.from('payments').update({ status: 'approved', reviewed_at: new Date().toISOString() }).eq('id', p.id);
       if (error) throw error;
+      // 🟢 Stamp the receipt APPROVED in the group chat (everyone sees it)
+      try { await supabase.from('group_messages').update({ receipt_status: 'approved' }).eq('payment_id', p.id); } catch {}
       await notify({
         user_email: p.user_email, type: 'payment_approved',
         message: `✅ Your payment of ₦${Number(p.amount || 0).toLocaleString()} in "${group.name}" was approved — spot${parseSpots(p.spots).length > 1 ? 's' : ''} #${parseSpots(p.spots).join(', #')} marked paid for ${p.weeks} ${periodLabel(group.frequency)}${p.weeks > 1 ? 's' : ''}. 🎉`,
@@ -94,6 +96,8 @@ export default function AdminPaymentsPage() {
         status: 'declined', decline_reason: reason || null, reviewed_at: new Date().toISOString(),
       }).eq('id', p.id);
       if (error) throw error;
+      // 🔴 Stamp the receipt DECLINED in the group chat
+      try { await supabase.from('group_messages').update({ receipt_status: 'declined' }).eq('payment_id', p.id); } catch {}
       await notify({
         user_email: p.user_email, type: 'payment_declined',
         message: `⚠️ Your payment of ₦${Number(p.amount || 0).toLocaleString()} in "${group.name}" was declined — it has NOT been marked paid.${reason ? ` Reason from admin: "${reason}".` : ''} Please upload a clearer/valid receipt.`,
@@ -175,6 +179,9 @@ export default function AdminPaymentsPage() {
           <HiArrowLeft className="w-4 h-4" /> Back to Admin Dashboard
         </button>
 
+        {group.is_frozen && (
+          <div className="mb-4 rounded-xl border border-sky-300 bg-sky-50 p-3 text-xs text-sky-800">❄️ This group is frozen by PayRound — approvals and payouts are paused. It re-opens automatically when the freeze is lifted.</div>
+        )}
         <div className="flex items-center justify-between mb-6 flex-wrap gap-2">
           <div>
             <h1 className="text-2xl font-bold text-gray-900">Payments — {group.name}</h1>
@@ -225,16 +232,16 @@ export default function AdminPaymentsPage() {
                         className="w-full border border-gray-200 rounded-lg px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-red-300"
                       />
                       <div className="flex gap-2">
-                        <button disabled={busy} onClick={() => handleDecline(p)} className="bg-red-600 hover:bg-red-700 text-white px-3 py-1.5 rounded-lg text-xs font-semibold disabled:opacity-50">Confirm Decline</button>
+                        <button disabled={busy || group.is_frozen} onClick={() => handleDecline(p)} className="bg-red-600 hover:bg-red-700 text-white px-3 py-1.5 rounded-lg text-xs font-semibold disabled:opacity-50">Confirm Decline</button>
                         <button disabled={busy} onClick={() => { setDeclineId(null); setDeclineReason(''); }} className="border px-3 py-1.5 rounded-lg text-xs">Cancel</button>
                       </div>
                     </div>
                   ) : (
                     <div className="mt-3 flex gap-2">
-                      <button disabled={busy} onClick={() => handleApprove(p)} className="bg-primary-600 hover:bg-primary-700 text-white px-4 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1 disabled:opacity-50">
+                      <button disabled={busy || group.is_frozen} onClick={() => handleApprove(p)} className="bg-primary-600 hover:bg-primary-700 text-white px-4 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1 disabled:opacity-50">
                         <HiCheck className="w-3.5 h-3.5" /> Approve — Mark Paid
                       </button>
-                      <button disabled={busy} onClick={() => { setDeclineId(p.id); setDeclineReason(''); }} className="bg-red-50 text-red-600 border border-red-200 hover:bg-red-100 px-4 py-1.5 rounded-lg text-xs font-semibold disabled:opacity-50">
+                      <button disabled={busy || group.is_frozen} onClick={() => { setDeclineId(p.id); setDeclineReason(''); }} className="bg-red-50 text-red-600 border border-red-200 hover:bg-red-100 px-4 py-1.5 rounded-lg text-xs font-semibold disabled:opacity-50">
                         Decline
                       </button>
                     </div>
@@ -290,7 +297,7 @@ export default function AdminPaymentsPage() {
                         {collected ? (
                           <span className="text-amber-700 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-full text-xs font-semibold">💰 Collected {new Date(collected.created_at).toLocaleDateString()}</span>
                         ) : dueNow && holder ? (
-                          <button disabled={busy} onClick={() => handleMarkCollected(spot, holder)} className="bg-amber-500 hover:bg-amber-600 text-white px-3 py-1 rounded-lg text-xs font-semibold disabled:opacity-50">
+                          <button disabled={busy || group.is_frozen} onClick={() => handleMarkCollected(spot, holder)} className="bg-amber-500 hover:bg-amber-600 text-white px-3 py-1 rounded-lg text-xs font-semibold disabled:opacity-50">
                             Mark ₦{((group.amount || 0) * Math.max(1, members.reduce((sum, m) => sum + parseSpots(m.spots).length, 0))).toLocaleString()} Collected
                           </button>
                         ) : (

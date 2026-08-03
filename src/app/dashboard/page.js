@@ -93,9 +93,9 @@ export default function DashboardPage() {
       try {
         const { supabase } = await import('@/lib/supabase');
         const { data: gs } = await supabase.from('groups')
-          .select('id, name, avatar_url, amount, frequency, max_members, admin_name, is_verified, badge_tier, created_at')
+          .select('id, name, avatar_url, amount, frequency, max_members, admin_name, is_verified, badge_tier, created_at, is_frozen')
           .in('status', ['active', 'approved']).order('created_at', { ascending: false }).limit(30);
-        setLiveGroups(gs || []);
+        setLiveGroups((gs || []).filter(g => !g.is_frozen)); // ❄️ frozen groups stay out of the browse list
         const counts = {};
         for (const g of gs || []) {
           const { data: mems } = await supabase.from('members').select('id').eq('group_id', g.id).eq('status', 'approved');

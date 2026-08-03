@@ -72,7 +72,7 @@ export default function GroupDetailsPage() {
 
         // Group admin's public profile — so members can open it and tap Follow
         if (g.admin_email) {
-          const { data: adm } = await supabase.from('users').select('id, name, phone, profile_pic, bank_name, account_number, account_name').eq('email', g.admin_email.toLowerCase()).single();
+          const { data: adm } = await supabase.from('users').select('id, name, phone, profile_pic, bank_name, account_number, account_name, payment_remark').eq('email', g.admin_email.toLowerCase()).single();
           if (mounted && adm) setAdminProfile(adm);
         }
 
@@ -116,6 +116,46 @@ export default function GroupDetailsPage() {
     return () => { mounted = false; };
   }, [params.id]);
 
+  // 👑 Admin joins their OWN group as a member — instant, holds the picked spots, self-approves receipts
+  const adminJoinOwnGroup = async () => {
+    if (!me || joining || desiredSpots.length === 0) return;
+    setJoining(true);
+    try {
+      const { supabase } = await import('@/lib/supabase');
+      const email = me.email.toLowerCase();
+      const { data: amems } = await supabase.from('members').select('spots').eq('group_id', params.id).eq('status', 'approved');
+      const taken = (amems || []).flatMap(m => parseSpots(m.spots));
+      const conflict = desiredSpots.filter(x => taken.includes(x));
+      if (conflict.length) { toast.error(`Spot(s) #${conflict.join(', #')} were just taken — pick another.`); setJoining(false); return; }
+      const { data: acc } = await supabase.from('users').select('name, phone').eq('email', email).maybeSingle();
+      const row = {
+        id: `m-${Date.now()}`, group_id: params.id,
+        member_email: email,
+        member_name: acc?.name || me.name || group.admin_name || '',
+        member_phone: acc?.phone || '',
+        spots_requested: desiredSpots.length,
+        desired_spots: formatSpots(desiredSpots),
+        spots: formatSpots(desiredSpots),
+        offered_spots: '',
+        status: 'approved',
+        approved_at: new Date().toISOString(),
+        requested_at: new Date().toISOString(),
+      };
+      const { error } = await supabase.from('members').insert(row);
+      if (error) throw error;
+      setMembers(prev => [...prev, row]);
+      setMemberCount(c => c + 1);
+      setMyMember(row);
+      setMyStatus('approved');
+      setPaySpots([...desiredSpots]);
+      const held = desiredSpots.join(', #');
+      setDesiredSpots([]);
+      toast.success(`You're in as a member too — you hold spot(s) #${held}. 🎉 Upload receipts like any member and approve them in your Payments tab.`);
+      try { const { notifyGroupFullIfFilled } = await import('@/lib/notifications'); await notifyGroupFullIfFilled(supabase, params.id); } catch {}
+    } catch (e) { toast.error(`Could not join: ${e.message || 'try again'}`); }
+    setJoining(false);
+  };
+
   // 📤 Opened from the chat's "Upload payment receipt" shortcut? Glide straight to the Pay card.
   useEffect(() => {
     if (loading || !myMember) return;
@@ -157,6 +197,7 @@ export default function GroupDetailsPage() {
   }
 
   const isLive = ['active', 'approved'].includes(group.status);
+  const frozen = !!group.is_frozen; // ❄️ PayRound froze this group — joins/payments/chat are paused
 
   // Spot offer answers: accept joins the group with the offered spots; decline keeps you out
   const acceptOffer = async () => {
@@ -349,6 +390,15 @@ export default function GroupDetailsPage() {
         user_email: (group.admin_email || '').toLowerCase(),
         message: `🧾 ${row.member_name || row.user_email} uploaded a receipt for spot${paySpots.length > 1 ? 's' : ''} #${paySpots.join(', #')} (${payWeeks} ${label}${payWeeks > 1 ? 's' : ''}, ₦${receiptAmount.toLocaleString()}) in "${group.name}" — review and approve/decline in Payments.`,
       });
+      // 🧾 Post the receipt into the group chat — everyone sees the image, and the
+      // APPROVED / DECLINED stamp lands on it the moment the admin reviews it
+      try {
+        await supabase.from('group_messages').insert({
+          id: `gm-${row.id}`, group_id: params.id, from_email: row.user_email,
+          body: `🧾 ${row.member_name || row.user_email} paid ₦${receiptAmount.toLocaleString()} — spot${paySpots.length > 1 ? 's' : ''} #${paySpots.join(', #')} (${payWeeks} ${label}${payWeeks > 1 ? 's' : ''})`,
+          image_url: receiptData, payment_id: row.id, receipt_status: 'pending',
+        });
+      } catch {}
       setPayments([row, ...payments]);
       setReceiptData(null); setReceiptName(''); setPayWeeks(1);
       toast.success('Receipt sent! The admin will review it shortly — you will be notified.');
@@ -388,6 +438,17 @@ export default function GroupDetailsPage() {
           )}
         </div>
 
+        {/* ❄️ Frozen by PayRound — everything in this group is paused */}
+        {frozen && (
+          <div className="rounded-2xl border border-sky-300 bg-sky-50 p-4 mb-6 flex items-start gap-3">
+            <span className="text-2xl shrink-0">❄️</span>
+            <div>
+              <p className="text-sm font-bold text-sky-900">This group is frozen</p>
+              <p className="text-xs text-sky-800 mt-0.5">PayRound has paused this group — joining, payments and chat are on hold for now. You can still view the board and your history. Questions? Contact PayRound support on WhatsApp: <b>+234 915 1723 199</b></p>
+            </div>
+          </div>
+        )}
+
         {/* 🏦 Where members pay — the group admin's bank, always pinned at the top of the group */}
         <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4 mb-6">
           <p className="text-xs font-bold text-emerald-800 mb-1">🏦 ADMIN BANK — send your contribution here</p>
@@ -405,6 +466,7 @@ export default function GroupDetailsPage() {
                 </p>
               )}
               {adminProfile.account_name && <p><span className="text-gray-500 text-xs">Account Name:</span> <b>{adminProfile.account_name}</b></p>}
+              {adminProfile.payment_remark && <p className="pt-0.5"><span className="text-gray-500 text-xs">📝 Payment remark:</span> <b>{adminProfile.payment_remark}</b></p>}
             </div>
           ) : isAdmin ? (
             <p className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-xl p-2.5 flex items-center gap-2">
@@ -444,6 +506,18 @@ export default function GroupDetailsPage() {
             )}
           </button>
         </div>
+
+        {/* ✏️ Group admin tools — edit details (reviewed by PayRound) / payments */}
+        {isAdmin && (
+          <div className="flex gap-2 mb-6">
+            <button onClick={() => router.push(`/dashboard/admin/${group.id}/edit`)} className="flex-1 bg-white border border-gray-200 text-gray-700 text-sm font-semibold py-3 rounded-xl hover:border-primary-300 hover:text-primary-700 flex items-center justify-center gap-2">
+              ✏️ Edit Group
+            </button>
+            <button onClick={() => router.push(`/dashboard/admin/${group.id}/payments`)} className="flex-1 bg-white border border-gray-200 text-gray-700 text-sm font-semibold py-3 rounded-xl hover:border-primary-300 hover:text-primary-700 flex items-center justify-center gap-2">
+              💳 Payments
+            </button>
+          </div>
+        )}
 
         {/* 📜 Group Rules — visible to EVERYONE before joining */}
         <div className="bg-white rounded-2xl border border-gray-100 p-6 mb-6">
@@ -486,7 +560,7 @@ export default function GroupDetailsPage() {
         </div>
 
         {/* 🪑 Pick your spots & join — the whole join flow lives right here on the group page */}
-        {!isMember && myStatus !== 'offered' && (
+        {!frozen && !isMember && myStatus !== 'offered' && (
           <div className="bg-white rounded-2xl border border-gray-100 p-6 mb-6">
             <h2 className="font-bold text-gray-900 mb-2 flex items-center gap-2"><HiCalendar className="w-5 h-5 text-primary-600" /> Available Spots — Tap to Pick Yours</h2>
             {myStatus === 'pending' ? (
@@ -584,8 +658,58 @@ export default function GroupDetailsPage() {
           </div>
         )}
 
+        {/* 👑 Admins can hold spots & contribute in their own group too */}
+        {isAdmin && !myMember && !frozen && (
+          <div className="bg-white rounded-2xl border-2 border-primary-200 p-6 mb-6">
+            <h2 className="font-bold text-gray-900 mb-1">👑 Join your own group as a member</h2>
+            <p className="text-xs text-gray-500 mb-3">
+              You run this group — but you can also hold spot(s) and contribute like any member.
+              You&apos;ll upload receipts the same way, and your green boxes tick when you approve your own receipt in the Payments tab.
+            </p>
+            {openSpots.length === 0 ? (
+              <p className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-xl p-3">No open spots left — the group is already full.</p>
+            ) : (
+              <>
+                <p className="text-[11px] text-gray-500 mb-2">Tap the green spot(s) you want to hold ({openSpots.length} of {N} open):</p>
+                <div className="grid grid-cols-5 sm:grid-cols-8 gap-1.5 mb-3">
+                  {Array.from({ length: N }, (_, i) => i + 1).map(spot => {
+                    const taken = spot in spotMap;
+                    const on = desiredSpots.includes(spot);
+                    return (
+                      <button
+                        key={spot}
+                        type="button"
+                        disabled={taken}
+                        onClick={() => toggleDesiredSpot(spot)}
+                        title={taken ? `Spot #${spot} is taken` : `Hold spot #${spot} yourself`}
+                        className={`h-10 rounded-lg text-sm font-bold transition-all ${
+                          taken
+                            ? 'bg-red-100 text-red-400 border border-red-200 cursor-not-allowed line-through'
+                            : on
+                              ? 'bg-emerald-600 text-white border border-emerald-600 badge-emboss ring-2 ring-emerald-300'
+                              : 'bg-emerald-50 text-emerald-700 border border-emerald-300 hover:bg-emerald-100'
+                        }`}
+                      >
+                        #{spot}{on ? ' ✓' : ''}
+                      </button>
+                    );
+                  })}
+                </div>
+                <button
+                  onClick={adminJoinOwnGroup}
+                  disabled={desiredSpots.length === 0 || joining}
+                  className="w-full bg-primary-600 text-white font-semibold py-3.5 rounded-xl hover:bg-primary-700 transition-all shadow-lg shadow-primary-200 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {joining ? 'Joining…' : `Join as Member${desiredSpots.length ? ` — take spot(s) #${desiredSpots.join(', #')}` : ''}`}
+                </button>
+                <p className="text-[11px] text-gray-400 mt-2 text-center">Instant — no approval needed, you are the admin. You&apos;ll appear in the Members list and Payment Tracker like everyone else.</p>
+              </>
+            )}
+          </div>
+        )}
+
         {/* 🪑 Spot offer waiting for MY answer — shown prominently before anything else */}
-        {myStatus === 'offered' && myOffer && (
+        {!frozen && myStatus === 'offered' && myOffer && (
           <div className="bg-white rounded-2xl border-2 border-amber-300 p-6 mb-6">
             <h2 className="font-bold text-gray-900 mb-1">🪑 The admin offered you a spot</h2>
             <p className="text-sm text-gray-700 mb-1">
@@ -725,7 +849,7 @@ export default function GroupDetailsPage() {
             </div>
 
             {/* Upload receipt */}
-            {myMember && (
+            {myMember && !frozen && (
               <div id="pay-card" className="bg-white rounded-2xl border border-gray-100 p-6 mt-6 scroll-mt-24">
                 <h2 className="font-bold text-gray-900 mb-1 flex items-center gap-2"><HiUpload className="w-5 h-5 text-primary-600" /> Pay Your Contribution</h2>
                 <p className="text-xs text-gray-500 mb-3">
@@ -735,6 +859,7 @@ export default function GroupDetailsPage() {
                 {adminProfile && (adminProfile.bank_name || adminProfile.account_number) && (
                   <p className="text-xs bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-xl p-2.5 mb-4">
                     🏦 Pay to: <b>{adminProfile.bank_name || '—'}</b> • <b className="font-mono">{adminProfile.account_number || '—'}</b> • {adminProfile.account_name || adminProfile.name}
+                    {adminProfile.payment_remark && <span className="block mt-0.5">📝 Remark: <b>{adminProfile.payment_remark}</b></span>}
                   </p>
                 )}
                 {mySpots.length === 0 ? (

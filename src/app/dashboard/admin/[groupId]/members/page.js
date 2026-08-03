@@ -28,6 +28,8 @@ export default function AdminMembersPage() {
   const [spotOffers, setSpotOffers] = useState([]); // sent spot offers waiting for the user's accept/decline
   const [offerFor, setOfferFor] = useState(null);   // join-request card with the offer panel open
   const [offerSpots, setOfferSpots] = useState([]);
+  const [spotEditList, setSpotEditList] = useState([]);  // member spot editor — picked spots for the editor
+  const [spotEditBusy, setSpotEditBusy] = useState(false);
 
   // Load the REAL group from the database (bundled demo data only as fallback for legacy demo links)
   useEffect(() => {
@@ -113,6 +115,29 @@ export default function AdminMembersPage() {
       }
     } catch (e) { toast.error('Could not update request.'); }
     loadSupa();
+  };
+
+  // ✏️ Move an approved member to different spot(s) — only free numbers can be picked; the member is notified
+  const saveMemberSpots = async () => {
+    if (!selectedMember || spotEditBusy) return;
+    if (!spotEditList.length) { toast.error('Pick at least one spot (or remove the member instead).'); return; }
+    setSpotEditBusy(true);
+    try {
+      const { supabase } = await import('@/lib/supabase');
+      const { formatSpots } = await import('@/lib/payments');
+      const spots = formatSpots(spotEditList);
+      const { error } = await supabase.from('members').update({ spots }).eq('id', selectedMember.id);
+      if (error) throw error;
+      await supabase.from('notifications').insert({
+        id: `spotchg-${Date.now()}`, type: 'spots_changed', group_id: params.groupId, is_read: false,
+        user_email: selectedMember.email,
+        message: `🪑 Your group admin moved your spot(s) in "${group?.name || 'your group'}" — you now hold spot${spotEditList.length > 1 ? 's' : ''} #${spotEditList.join(', #')}. Your payment history carries over.`,
+      });
+      toast.success(`Spots updated — ${selectedMember.name} now holds #${spotEditList.join(', #')}. They got a notification.`);
+      setSelectedMember(prev => prev ? { ...prev, spots } : prev);
+      await loadSupa();
+    } catch (e) { toast.error('Could not update spots.'); }
+    setSpotEditBusy(false);
   };
 
   // Send an alternative spot offer — the user must ACCEPT to join or DECLINE to stay out (both sides get notified)
@@ -235,6 +260,10 @@ export default function AdminMembersPage() {
         </div>
         <p className="text-gray-500 mb-6">{approvedMembers.length} approved member{approvedMembers.length === 1 ? '' : 's'} {joinRequests.length > 0 ? `• ${joinRequests.length} join request${joinRequests.length > 1 ? 's' : ''} waiting` : ''}</p>
 
+        {group?.is_frozen && (
+          <div className="mb-4 rounded-xl border border-sky-300 bg-sky-50 p-3 text-xs text-sky-800">❄️ This group is frozen by PayRound — approvals, spot offers and spot changes are paused until the freeze is lifted.</div>
+        )}
+
         {/* Join Requests — real requests from the members table; preview profile before approving */}
         {joinRequests.length > 0 && (
           <div className="bg-white rounded-2xl border border-amber-200 p-5 mb-6">
@@ -261,6 +290,7 @@ export default function AdminMembersPage() {
                       );
                     })()}
                   </div>
+                  {!group?.is_frozen && (
                   <div className="flex gap-2 flex-wrap">
                     <button onClick={() => handleJoinRequest(req, true)} className="bg-primary-600 hover:bg-primary-700 text-white px-3 py-1.5 rounded-lg text-xs font-medium">Approve → Add Member</button>
                     <button onClick={() => {
@@ -274,6 +304,7 @@ export default function AdminMembersPage() {
                     }} className="bg-amber-50 text-amber-700 border border-amber-200 hover:bg-amber-100 px-3 py-1.5 rounded-lg text-xs font-medium">🪑 Suggest spot(s)</button>
                     <button onClick={() => handleJoinRequest(req, false)} className="bg-red-50 text-red-600 border border-red-200 hover:bg-red-100 px-3 py-1.5 rounded-lg text-xs font-medium">Decline</button>
                   </div>
+                  )}
                 </div>
                 {/* Past reviews by other group admins */}
                 <div className="mt-3 bg-gray-50 rounded-xl p-3">
@@ -342,7 +373,7 @@ export default function AdminMembersPage() {
               {filteredMembers.map(member => (
                 <button
                   key={member.id}
-                  onClick={() => setSelectedMember(selectedMember?.id === member.id ? null : member)}
+                  onClick={() => { const next = selectedMember?.id === member.id ? null : member; setSelectedMember(next); setSpotEditList(parseSpotsLite(next?.spots)); }}
                   className={`w-full flex items-center justify-between p-4 hover:bg-gray-50 transition-colors text-left ${
                     selectedMember?.id === member.id ? 'bg-primary-50' : ''
                   }`}
@@ -388,6 +419,33 @@ export default function AdminMembersPage() {
                   <DetailRow icon={<HiCurrencyDollar className="w-4 h-4" />} label="Payouts Collected" value={collectedForMember(selectedMember).length > 0 ? collectedForMember(selectedMember).map(po => `#${po.spot} ✅`).join(', ') : 'None yet'} />
                   <DetailRow icon={<HiClock className="w-4 h-4" />} label="Joined" value={selectedMember.approved_at ? new Date(selectedMember.approved_at).toLocaleDateString() : '—'} />
                 </div>
+
+                {/* ✏️ Change this member's spot(s) — only free numbers + their own are pickable */}
+                {!group?.is_frozen && (
+                <div className="mt-5 border-t border-gray-100 pt-4">
+                  <div className="text-xs font-bold text-gray-500 mb-2">Change this member&apos;s spot(s)</div>
+                  <div className="flex flex-wrap gap-1.5 mb-2">
+                    {[...new Set([...freeSpotNums, ...parseSpotsLite(selectedMember.spots)])]
+                      .sort((a, b) => a - b)
+                      .map(sp => {
+                        const on = spotEditList.includes(sp);
+                        const theirs = parseSpotsLite(selectedMember.spots).includes(sp);
+                        return (
+                          <button key={sp} type="button"
+                            onClick={() => setSpotEditList(on ? spotEditList.filter(x => x !== sp) : [...spotEditList, sp].sort((a, b) => a - b))}
+                            className={`w-10 h-9 rounded-lg text-xs font-bold border transition-colors ${on ? 'bg-emerald-600 text-white border-emerald-600' : 'bg-white text-gray-600 border-gray-200 hover:border-emerald-300'}`}
+                            title={theirs ? 'their current spot' : 'a free spot'}
+                          >#{sp}</button>
+                        );
+                      })}
+                  </div>
+                  <p className="text-[11px] text-gray-400 mb-3">Current: <b>{spotsLabel(selectedMember)}</b>. Only free numbers and their own spots are listed — two members can never share a spot. The member is notified of the change.</p>
+                  <div className="flex gap-2">
+                    <button onClick={saveMemberSpots} disabled={spotEditBusy} className="bg-emerald-600 text-white text-xs font-semibold px-4 py-2 rounded-lg hover:bg-emerald-700 disabled:opacity-50">{spotEditBusy ? 'Saving…' : 'Save new spot(s)'}</button>
+                    <button onClick={() => setSpotEditList(parseSpotsLite(selectedMember.spots))} className="text-xs text-gray-600 border border-gray-200 px-3 py-2 rounded-lg bg-white hover:bg-gray-50">Reset</button>
+                  </div>
+                </div>
+                )}
 
                 {/* Member reviews — given by group admins, shown to other admins before approving joins */}
                 {selectedMember.email && (
