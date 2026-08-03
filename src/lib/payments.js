@@ -135,13 +135,33 @@ export function periodStartDate(group, period) {
   return new Date(groupStartMs(group) + (Math.max(1, period) - 1) * periodMsOf(group));
 }
 
+// 👑 Spots held by the group's ADMIN auto-tick when the group allows it
+// (groups.admin_auto_paid — default ON; the admin can switch it off).
+export function adminAutoSpots(group, spotMap) {
+  if (!group || group.admin_auto_paid === false) return [];
+  const em = (group.admin_email || '').toLowerCase();
+  if (!em) return [];
+  return Object.entries(spotMap || {})
+    .filter(([, m]) => String(m?.member_email || m?.user_email || '').toLowerCase() === em)
+    .map(([spot]) => parseInt(spot, 10))
+    .filter(Number.isFinite);
+}
+
+// Paid weeks for one spot, counting admin auto-tick: auto spots count as paid
+// through the current period — the admin never needs receipts for their own spots.
+export function paidWeeksEffective(payments, spot, autoSpots, period) {
+  const base = paidWeeksForSpot(payments, spot);
+  return (autoSpots || []).includes(spot) && period > 0 ? Math.max(base, period) : base;
+}
+
 // Next contribution due date for a member holding `spots` (paid weeks tracked per spot).
 // Returns { date, dueNow:boolean } or null when the member holds no spots.
-export function nextDueForMember(group, payments, spots) {
+export function nextDueForMember(group, payments, spots, autoSpots) {
   if (!spots || spots.length === 0) return null;
   const period = currentPeriod(group);
-  // The member's payment covers ALL their spots — use the least-paid spot
-  const minPaid = Math.min(...spots.map(s => paidWeeksForSpot(payments, s)));
+  // The member's payment covers ALL their spots — use the least-paid spot.
+  // Admin auto-tick spots always count as covered through the current period.
+  const minPaid = Math.min(...spots.map(s => paidWeeksEffective(payments, s, autoSpots, period)));
   if (minPaid >= period) {
     return { date: periodStartDate(group, period + 1), dueNow: false };
   }

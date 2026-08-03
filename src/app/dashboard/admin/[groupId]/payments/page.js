@@ -14,7 +14,7 @@ import toast from 'react-hot-toast';
 import { sounds } from '@/lib/sounds';
 import {
   parseSpots, currentPeriod, cycleLength, periodLabel, withRotationClock,
-  paidWeeksForSpot, isSpotCurrent, buildSpotMap, payoutForSpot, payoutPerSpot, adminInterest, frequencyLabel
+  paidWeeksForSpot, isSpotCurrent, buildSpotMap, payoutForSpot, payoutPerSpot, adminInterest, frequencyLabel, adminAutoSpots, paidWeeksEffective
 } from '@/lib/payments';
 
 export default function AdminPaymentsPage() {
@@ -169,6 +169,7 @@ export default function AdminPaymentsPage() {
   const period = clockGroup ? currentPeriod(clockGroup) : 0; // 0 = savings haven't started (group not full yet)
   const N = cycleLength(group);
   const spotMap = buildSpotMap(members);
+  const autoSpots = adminAutoSpots(group, spotMap); // 👑 admin self-spots auto-tick
   const label = periodLabel(group.frequency, group.frequency_days);
   const spotPayout = payoutPerSpot(group);
   const adminMoney = adminInterest(group);
@@ -281,7 +282,7 @@ export default function AdminPaymentsPage() {
               <tbody>
                 {Array.from({ length: N }, (_, i) => i + 1).map(spot => {
                   const holder = spotMap[spot];
-                  const paid = paidWeeksForSpot(payments, spot);
+                  const paid = paidWeeksEffective(payments, spot, autoSpots, period);
                   const collected = payoutForSpot(payouts, spot);
                   const dueNow = !collected && period >= spot;
                   return (

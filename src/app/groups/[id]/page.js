@@ -13,7 +13,7 @@ import {
 import ImageLightbox from '@/components/ImageLightbox';
 import GroupBadge from '@/components/GroupBadge';
 import { remindRenewalIfSoon } from '@/lib/renewal';
-import { parseSpots, formatSpots, currentPeriod, cycleLength, periodLabel, periodDays, paidWeeksForSpot, isSpotCurrent, buildSpotMap, payoutForSpot, withRotationClock, payoutPerSpot, adminInterest, frequencyLabel } from '@/lib/payments';
+import { parseSpots, formatSpots, currentPeriod, cycleLength, periodLabel, periodDays, paidWeeksForSpot, isSpotCurrent, buildSpotMap, payoutForSpot, withRotationClock, payoutPerSpot, adminInterest, frequencyLabel, adminAutoSpots, paidWeeksEffective } from '@/lib/payments';
 import { compressImage } from '@/lib/image';
 import toast from 'react-hot-toast';
 import { sounds } from '@/lib/sounds';
@@ -44,6 +44,7 @@ export default function GroupDetailsPage() {
   const [editingRules, setEditingRules] = useState(false);
   const [rulesText, setRulesText] = useState('');
   const [savingRules, setSavingRules] = useState(false);
+  const [autoTickBusy, setAutoTickBusy] = useState(false);
   // 🪑 Join flow lives HERE on the group page — tap green spots, agree to the rules, one tap to join
   const [desiredSpots, setDesiredSpots] = useState([]);
   const [agreeRules, setAgreeRules] = useState(false);
@@ -270,6 +271,21 @@ export default function GroupDetailsPage() {
   };
 
   // Admin writes the group's own rules — every user reads them BEFORE joining
+  // 👑 Auto-tick toggle — the admin's own spots mark themselves paid every round
+  const toggleAutoTick = async () => {
+    if (autoTickBusy) return;
+    setAutoTickBusy(true);
+    try {
+      const { supabase } = await import('@/lib/supabase');
+      const next = group.admin_auto_paid === false;
+      const { error } = await supabase.from('groups').update({ admin_auto_paid: next }).eq('id', params.id);
+      if (error) throw error;
+      setGroup(prev => ({ ...prev, admin_auto_paid: next }));
+      toast(next ? `👑 Auto-tick ON — your spot(s) mark themselves paid every ${label}.` : `⏸ Auto-tick OFF — you'll upload receipts like everyone else.`);
+    } catch (e) { toast.error(`Could not change auto-tick: ${e.message || 'try again'}`); }
+    setAutoTickBusy(false);
+  };
+
   const saveRules = async () => {
     setSavingRules(true);
     try {
@@ -356,6 +372,7 @@ export default function GroupDetailsPage() {
   const openSpots = Array.from({ length: N }, (_, i) => i + 1).filter(sp => !(sp in spotMap));
   const daysPerPeriod = periodDays(group.frequency, group.frequency_days);
   const expectedPayout = payoutPerSpot(group);
+  const autoSpots = adminAutoSpots(group, spotMap); // 👑 admin-held spots that tick themselves paid
   const adminMoney = adminInterest(group);
   const myPayments = me?.email ? payments.filter(p => (p.user_email || '').toLowerCase() === me.email.toLowerCase()) : [];
   const receiptAmount = (group.amount || 0) * Math.max(1, paySpots.length) * payWeeks;
@@ -811,7 +828,7 @@ export default function GroupDetailsPage() {
                   <tbody>
                     {Array.from({ length: N }, (_, i) => i + 1).map(spot => {
                       const holder = spotMap[spot];
-                      const paid = paidWeeksForSpot(payments, spot);
+                      const paid = paidWeeksEffective(payments, spot, autoSpots, period);
                       const collected = payoutForSpot(payouts, spot);
                       const mine = mySpots.includes(spot);
                       return (
@@ -845,7 +862,19 @@ export default function GroupDetailsPage() {
 
             {/* ✅ Payment Tracker — members listed by their spots; every admin approval ticks the next box green */}
             <div className="bg-white rounded-2xl border border-gray-100 p-6 mt-6">
-              <h2 className="font-bold text-gray-900 mb-1 flex items-center gap-2"><HiCheckCircle className="w-5 h-5 text-emerald-500" /> Payment Tracker</h2>
+              <div className="flex items-start justify-between gap-3 flex-wrap mb-1">
+                <h2 className="font-bold text-gray-900 flex items-center gap-2"><HiCheckCircle className="w-5 h-5 text-emerald-500" /> Payment Tracker</h2>
+                {isAdmin && mySpots.length > 0 && (
+                  <button
+                    onClick={toggleAutoTick}
+                    disabled={autoTickBusy}
+                    title="Your own spots tick themselves paid every round — no receipts needed from you. Tap to switch off."
+                    className={`flex items-center gap-1.5 text-[11px] font-bold px-3 py-1.5 rounded-full border transition-colors disabled:opacity-50 ${group.admin_auto_paid !== false ? 'bg-amber-100 border-amber-300 text-amber-800' : 'bg-gray-50 border-gray-200 text-gray-500'}`}
+                  >
+                    👑 Auto-tick my spots (#${mySpots.join(', #')}) {group.admin_auto_paid !== false ? 'ON' : 'OFF'}
+                  </button>
+                )}
+              </div>
               <p className="text-xs text-gray-500 mb-4">
                 Members are listed by the spots they hold. Each spot must pay <strong>{N} times</strong> (one per {label}), so it shows <strong>{N} boxes</strong>.
                 Every time the admin approves a receipt, the next box(es) turn <span className="text-emerald-600 font-semibold">green ✓</span> automatically —
@@ -867,12 +896,13 @@ export default function GroupDetailsPage() {
                         </p>
                         <div className="mt-2 space-y-2.5">
                           {spots.map(spot => {
-                            const paid = Math.min(N, paidWeeksForSpot(payments, spot));
+                            const paid = Math.min(N, paidWeeksEffective(payments, spot, autoSpots, period));
                             return (
                               <div key={spot}>
                                 <p className="text-[11px] font-semibold text-gray-600 mb-1">
                                   Spot #{spot} · ₦{Number(group.amount || 0).toLocaleString()} × {N} {label}s ·{' '}
                                   <span className={paid >= N ? 'text-emerald-600' : 'text-gray-400'}>{paid}/{N} paid{paid >= N ? ' ✅' : ''}</span>
+                                  {autoSpots.includes(spot) && <span className="ml-1.5 text-[9px] font-bold text-amber-700 bg-amber-100 border border-amber-200 px-1.5 py-0.5 rounded-full">👑 auto</span>}
                                 </p>
                                 <div className="flex flex-wrap gap-1">
                                   {Array.from({ length: N }, (_, i) => (
@@ -904,6 +934,9 @@ export default function GroupDetailsPage() {
                   Choose the spot(s) you are paying for and how many {label}s the payment covers — paying for several {label}s upfront is allowed.
                   The admin reviews your receipt and marks you paid.
                 </p>
+                {isAdmin && autoSpots.length > 0 && (
+                  <p className="text-[11px] bg-amber-50 border border-amber-200 text-amber-800 rounded-lg px-2.5 py-1.5 mb-3 font-semibold">👑 Your own spot(s) #{autoSpots.join(', #')} tick themselves paid every {label} — you don&apos;t need receipts for them (toggle it off in the Payment Tracker above if you prefer uploading receipts).</p>
+                )}
                 {adminProfile && (adminProfile.bank_name || adminProfile.account_number) && (
                   <p className="text-xs bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-xl p-2.5 mb-4">
                     🏦 Pay to: <b>{adminProfile.bank_name || '—'}</b> • <b className="font-mono">{adminProfile.account_number || '—'}</b> • {adminProfile.account_name || adminProfile.name}

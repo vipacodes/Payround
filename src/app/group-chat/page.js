@@ -6,6 +6,7 @@ import Header from '@/components/Header';
 import Footer from '@/components/Footer';
 import LoadingScreen from '@/components/LoadingScreen';
 import GroupBadge from '@/components/GroupBadge';
+import ImageLightbox from '@/components/ImageLightbox';
 import { HiArrowLeft, HiBadgeCheck, HiUserGroup, HiPaperAirplane } from 'react-icons/hi';
 import toast from 'react-hot-toast';
 import { sounds } from '@/lib/sounds';
@@ -28,6 +29,12 @@ function GroupChatInner() {
   const [sending, setSending] = useState(false);
   const [sel, setSel] = useState('');
   const [deleting, setDeleting] = useState(false);
+  const [zoomImg, setZoomImg] = useState(null);    // tap any chat image → fullscreen
+  const [adminBank, setAdminBank] = useState(null); // the admin's bank details (🏦 chip in the header)
+  const [showBank, setShowBank] = useState(false);
+  const [annDraft, setAnnDraft] = useState('');     // announcement box composer (admin)
+  const [annEdit, setAnnEdit] = useState(false);
+  const [annBusy, setAnnBusy] = useState(false);
   const listRef = useRef(null);
   const nearBottom = useRef(true);
   const firstOpen = useRef(true);
@@ -98,8 +105,8 @@ function GroupChatInner() {
         const { data } = await supa.from('group_messages').select('*').eq('group_id', activeId).order('created_at', { ascending: true }).limit(500);
         if (!alive) return;
         // keep the admin lock state fresh (members see typing open/close live)
-        supa.from('groups').select('id, chat_open').eq('id', activeId).single().then(({ data: gr }) => {
-          if (alive && gr) setG(prev => prev ? { ...prev, chat_open: gr.chat_open } : prev);
+        supa.from('groups').select('id, chat_open, announcement').eq('id', activeId).single().then(({ data: gr }) => {
+          if (alive && gr) setG(prev => prev ? { ...prev, chat_open: gr.chat_open, announcement: gr.announcement ?? prev.announcement } : prev);
         });
         if (firstOpen.current || nearBottom.current) scrollToEnd();
         firstOpen.current = false;
@@ -121,7 +128,14 @@ function GroupChatInner() {
         const ids = await getMyGroupIds(supabase, me);
         if (!ids.includes(activeId)) { if (alive) { setDenied(true); setG(null); setMsgs([]); } return; }
         if (alive) setDenied(false);
-        supabase.from('groups').select('*').eq('id', activeId).single().then(({ data }) => { if (alive) setG(data || null); });
+        supabase.from('groups').select('*').eq('id', activeId).single().then(({ data }) => {
+          if (alive) setG(data || null);
+          const adminEm = (data?.admin_email || '').toLowerCase();
+          if (adminEm) {
+            supabase.from('users').select('bank_name, account_number, account_name, payment_remark').eq('email', adminEm).maybeSingle()
+              .then(({ data: ab }) => { if (alive) setAdminBank(ab || null); });
+          }
+        });
         load();
         timer = setInterval(load, 5000);
       } catch { if (alive) setDenied(true); }
@@ -132,6 +146,7 @@ function GroupChatInner() {
   }, [activeId, me]);
 
   const isRoomAdmin = !!g && (g.admin_email || '').toLowerCase() === me;
+  const hasBank = !!(adminBank && (adminBank.bank_name || adminBank.account_number || adminBank.account_name));
   const memberLocked = !!g && !g.chat_open && !isRoomAdmin;
 
   // Admin only: open the room so members can type, or lock it back (members still read everything
@@ -146,6 +161,37 @@ function GroupChatInner() {
       setG(prev => ({ ...prev, chat_open: next }));
       toast.success(next ? '🔓 Chat opened — members can now type.' : '🔒 Chat locked — only you can type. Members can still upload receipts from the group page.');
     } catch (err) { toast.error(`Could not change chat lock: ${err.message || 'try again'}`); }
+  };
+
+  // 📢 Announcement box (admin only) — pinned above the chat composer until cleared
+  const saveAnnouncement = async () => {
+    const txt = annDraft.trim();
+    if (!txt || annBusy || !isRoomAdmin) return;
+    setAnnBusy(true);
+    try {
+      const { supabase } = await import('@/lib/supabase');
+      const { error } = await supabase.from('groups').update({ announcement: txt }).eq('id', activeId);
+      if (error) throw error;
+      setG(prev => ({ ...prev, announcement: txt }));
+      setAnnEdit(false); setAnnDraft('');
+      sounds.success();
+      toast.success('📢 Announcement posted — every member sees it above the chat.');
+    } catch (err) { sounds.error(); toast.error(`Could not post announcement: ${err.message || 'try again'}`); }
+    setAnnBusy(false);
+  };
+  const clearAnnouncement = async () => {
+    if (annBusy || !isRoomAdmin) return;
+    if (!window.confirm('Clear the announcement for everyone?')) return;
+    setAnnBusy(true);
+    try {
+      const { supabase } = await import('@/lib/supabase');
+      const { error } = await supabase.from('groups').update({ announcement: null }).eq('id', activeId);
+      if (error) throw error;
+      setG(prev => ({ ...prev, announcement: null }));
+      setAnnEdit(false); setAnnDraft('');
+      toast.success('Announcement cleared.');
+    } catch (err) { toast.error(`Could not clear: ${err.message || 'try again'}`); }
+    setAnnBusy(false);
   };
 
   const send = async (e) => {
@@ -197,6 +243,7 @@ function GroupChatInner() {
     return (
       <div className="min-h-screen bg-gray-50">
         <Header />
+        {zoomImg && <ImageLightbox src={zoomImg} alt="Chat photo" onClose={() => setZoomImg(null)} />}
         <div className="max-w-2xl mx-auto px-4 py-4">
           <div className="bg-white rounded-2xl border border-gray-100 overflow-hidden">
             {/* room head */}
@@ -216,16 +263,45 @@ function GroupChatInner() {
                 </p>
                 <button onClick={() => router.push(`/groups/${activeId}`)} className="text-[11px] text-primary-600 font-medium hover:text-primary-700">View group →</button>
               </div>
-              {isRoomAdmin && (
-                <button
-                  onClick={toggleLock}
-                  title={g?.chat_open ? 'Members can type — tap to lock (admin only)' : 'Locked: only you can type — tap to open for members'}
-                  className={`shrink-0 text-[11px] font-semibold px-3 py-1.5 rounded-full border transition-colors ${g?.chat_open ? 'bg-emerald-50 border-emerald-200 text-emerald-700' : 'bg-gray-50 border-gray-200 text-gray-600'}`}
-                >
-                  {g?.chat_open ? '🔓 Open' : '🔒 Locked'}
-                </button>
-              )}
+              <div className="shrink-0 flex items-center gap-1.5">
+                {hasBank && (
+                  <button
+                    onClick={() => setShowBank(v => !v)}
+                    title="Admin bank details — where members send payments"
+                    className={`text-[11px] font-semibold px-2.5 py-1.5 rounded-full border transition-colors ${showBank ? 'bg-emerald-600 border-emerald-600 text-white' : 'bg-emerald-50 border-emerald-200 text-emerald-700'}`}
+                  >
+                    🏦 Bank
+                  </button>
+                )}
+                {isRoomAdmin && (
+                  <button
+                    onClick={toggleLock}
+                    title={g?.chat_open ? 'Members can type — tap to lock (admin only)' : 'Locked: only you can type — tap to open for members'}
+                    className={`text-[11px] font-semibold px-2.5 py-1.5 rounded-full border transition-colors ${g?.chat_open ? 'bg-emerald-50 border-emerald-200 text-emerald-700' : 'bg-gray-50 border-gray-200 text-gray-600'}`}
+                  >
+                    {g?.chat_open ? '🔓' : '🔒'}
+                  </button>
+                )}
+              </div>
             </div>
+
+            {/* 🏦 Admin bank dropdown — tap the Bank chip to pay/copy details */}
+            {showBank && hasBank && (
+              <div className="px-4 py-3 border-b border-emerald-100 bg-emerald-50/70">
+                <p className="text-[10px] font-bold text-emerald-800 mb-1">🏦 ADMIN BANK — send contributions here</p>
+                <div className="text-xs text-gray-900 space-y-0.5">
+                  {adminBank.bank_name && <p><span className="text-gray-500">Bank:</span> <b>{adminBank.bank_name}</b></p>}
+                  {adminBank.account_number && (
+                    <p className="flex items-center gap-2 flex-wrap">
+                      <span className="text-gray-500">Account No:</span> <b className="font-mono text-sm tracking-wide">{adminBank.account_number}</b>
+                      <button onClick={() => { try { navigator.clipboard.writeText(adminBank.account_number); toast.success('Account number copied!'); } catch {} }} className="text-[10px] font-semibold text-emerald-700 border border-emerald-200 bg-white px-2 py-0.5 rounded-full">Copy</button>
+                    </p>
+                  )}
+                  {adminBank.account_name && <p><span className="text-gray-500">Name:</span> <b>{adminBank.account_name}</b></p>}
+                  {adminBank.payment_remark && <p><span className="text-gray-500">📝 Remark:</span> <b>{adminBank.payment_remark}</b></p>}
+                </div>
+              </div>
+            )}
 
             {/* access answer */}
             {denied ? (
@@ -270,7 +346,7 @@ function GroupChatInner() {
                               </p>
                             )}
                             {m.image_url && (
-                              <span className="relative block mb-1.5 -mx-1">
+                              <span onClick={(e) => { e.stopPropagation(); setZoomImg(m.image_url); }} className="relative block mb-1.5 -mx-1 cursor-zoom-in" title="Tap to view full image">
                                 <img src={m.image_url} alt="payment receipt" className="rounded-xl w-full max-h-52 object-contain bg-black/5" />
                                 {m.receipt_status === 'approved' && (
                                   <img src="/stamps/approved.png" alt="APPROVED stamp" title="Approved by the group admin" className="absolute inset-0 m-auto w-28 object-contain -rotate-12 drop-shadow-lg" />
@@ -297,6 +373,41 @@ function GroupChatInner() {
                   })}
                 </div>
 
+                {/* 📢 ANNOUNCEMENT BOX — the admin's pinned note for every member; stays until they clear it */}
+                <div className="px-4 pt-3 border-t border-gray-100">
+                  <div className={`rounded-xl p-3 ${g?.announcement ? 'border-2 border-amber-300 bg-amber-50' : 'border border-dashed border-gray-200 bg-gray-50/60'}`}>
+                    <div className="flex items-center justify-between gap-2 mb-1">
+                      <p className={`text-[10px] font-bold tracking-wide ${g?.announcement ? 'text-amber-800' : 'text-gray-500'}`}>📢 ANNOUNCEMENT BOX</p>
+                      {isRoomAdmin && !annEdit && g?.announcement && (
+                        <span className="flex gap-1.5">
+                          <button onClick={() => { setAnnDraft(g.announcement || ''); setAnnEdit(true); }} className="text-[10px] font-bold text-amber-700 bg-white border border-amber-200 px-2 py-0.5 rounded-full">✏️ Edit</button>
+                          <button onClick={clearAnnouncement} disabled={annBusy} className="text-[10px] font-bold text-red-600 bg-white border border-red-200 px-2 py-0.5 rounded-full disabled:opacity-50">🗑 Clear</button>
+                        </span>
+                      )}
+                    </div>
+                    {isRoomAdmin && (annEdit || !g?.announcement) ? (
+                      <div>
+                        <textarea
+                          value={annDraft}
+                          onChange={e => setAnnDraft(e.target.value)}
+                          rows={2}
+                          maxLength={500}
+                          placeholder="Type an announcement here — every member sees it above the chat box, and it stays until YOU clear it…"
+                          className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-amber-400"
+                        />
+                        <div className="flex gap-2 mt-2">
+                          <button onClick={saveAnnouncement} disabled={annBusy || !annDraft.trim()} className="bg-amber-500 hover:bg-amber-600 text-white text-xs font-bold px-4 py-2 rounded-lg disabled:opacity-50">{annBusy ? 'Posting…' : '📢 Post announcement'}</button>
+                          {annEdit && <button onClick={() => { setAnnEdit(false); setAnnDraft(''); }} className="text-xs text-gray-500 border border-gray-200 px-4 py-2 rounded-lg">Cancel</button>}
+                        </div>
+                      </div>
+                    ) : g?.announcement ? (
+                      <p className="text-sm text-amber-950 whitespace-pre-line">{g.announcement}</p>
+                    ) : (
+                      <p className="text-xs text-gray-400">No announcement right now.</p>
+                    )}
+                  </div>
+                </div>
+
                 {/* composer — admin always types; members type only while the admin has opened the chat */}
                 {g?.is_frozen ? (
                   <div className="px-4 py-4 border-t border-gray-100 bg-sky-50">
@@ -304,7 +415,6 @@ function GroupChatInner() {
                   </div>
                 ) : memberLocked ? (
                   <div className="px-4 py-4 border-t border-gray-100 bg-gray-50">
-                    <p className="text-xs text-gray-600 text-center mb-2.5">🔒 Only the group admin can type here right now — you can read everything.<br />To make a payment, upload your receipt from the group page:</p>
                     <button onClick={() => router.push(`/groups/${activeId}#pay`)} className="w-full bg-primary-600 text-white text-sm font-semibold py-2.5 rounded-xl hover:bg-primary-700 transition-colors">📤 Upload payment receipt (choose spots & weeks) →</button>
                   </div>
                 ) : (

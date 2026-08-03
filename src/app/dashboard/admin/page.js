@@ -9,7 +9,7 @@ import {
   HiUserGroup, HiCurrencyDollar, HiCheckCircle,
   HiExclamation, HiClock, HiShieldCheck, HiBadgeCheck
 } from 'react-icons/hi';
-import { parseSpots, currentPeriod, cycleLength, paidWeeksForSpot , withRotationClock } from '@/lib/payments';
+import { parseSpots, currentPeriod, cycleLength, paidWeeksForSpot , withRotationClock, buildSpotMap, adminAutoSpots, paidWeeksEffective } from '@/lib/payments';
 
 export default function AdminDashboardPage() {
   const router = useRouter();
@@ -89,8 +89,10 @@ export default function AdminDashboardPage() {
           const filledSpots = members.reduce((sum, m) => sum + parseSpots(m.spots).length, 0);
           const approvedPays = payments.filter(p => p.status === 'approved');
           const totalCollected = approvedPays.reduce((sum, p) => sum + Number(p.amount || 0), 0);
+          const spotMapHere = buildSpotMap(members);
+          const autoSpotsHere = adminAutoSpots(g, spotMapHere);
           const spotsCurrent = clockG ? Array.from({ length: N }, (_, i) => i + 1)
-            .filter(spot => paidWeeksForSpot(approvedPays, spot) >= period).length : 0;
+            .filter(spot => paidWeeksEffective(approvedPays, spot, autoSpotsHere, period) >= period).length : 0;
           return (
             <div key={g.id} className="bg-white rounded-2xl border border-gray-100 p-5 mb-5">
               <div className="flex items-start justify-between gap-3 flex-wrap mb-4">

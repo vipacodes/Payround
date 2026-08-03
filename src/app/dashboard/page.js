@@ -14,7 +14,7 @@ import {
 } from 'react-icons/hi';
 import {
   parseSpots, currentPeriod, cycleLength,
-  buildSpotMap, nextDueForMember, nextCashOutForMember, nextPayoutForGroup, withRotationClock, frequencyLabel
+  buildSpotMap, nextDueForMember, nextCashOutForMember, nextPayoutForGroup, withRotationClock, frequencyLabel, adminAutoSpots
 } from '@/lib/payments';
 import { remindRenewalIfSoon } from '@/lib/renewal';
 
@@ -119,7 +119,7 @@ export default function DashboardPage() {
     if (!parseSpots(member.spots).length) return null;
     const cg = withRotationClock(group, members);
     if (!cg) return { groupName: group.name, pending: true, date: FAR_FUTURE }; // ⏳ starts when the group is full
-    const d = nextDueForMember(cg, payments, parseSpots(member.spots));
+    const d = nextDueForMember(cg, payments, parseSpots(member.spots), adminAutoSpots(cg, buildSpotMap(members)));
     return d ? { groupName: group.name, ...d } : null;
   }).filter(Boolean).sort((a, b) => a.date - b.date);
   const cashRows = joined.map(({ group, payouts, member, members }) => {
@@ -200,7 +200,7 @@ export default function DashboardPage() {
             ) : joined.map(({ group: g, member, members, payments, payouts }) => {
               const mySpots = parseSpots(member.spots);
               const cg = withRotationClock(g, members);
-              const due = cg ? nextDueForMember(cg, payments, mySpots) : null;
+              const due = cg ? nextDueForMember(cg, payments, mySpots, adminAutoSpots(cg, buildSpotMap(members))) : null;
               const cash = cg ? nextCashOutForMember(cg, payouts, mySpots) : null;
               return (
                 <button key={g.id} onClick={() => router.push(`/groups/${g.id}`)} className="w-full flex items-center gap-3 py-3 border-b border-gray-50 last:border-0 text-left hover:bg-gray-50/60 rounded-xl px-2 transition-colors">
