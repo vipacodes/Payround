@@ -14,7 +14,7 @@ import {
 } from 'react-icons/hi';
 import {
   parseSpots, currentPeriod, cycleLength,
-  buildSpotMap, nextDueForMember, nextCashOutForMember, nextPayoutForGroup, withRotationClock
+  buildSpotMap, nextDueForMember, nextCashOutForMember, nextPayoutForGroup, withRotationClock, frequencyLabel
 } from '@/lib/payments';
 import { remindRenewalIfSoon } from '@/lib/renewal';
 
@@ -93,7 +93,7 @@ export default function DashboardPage() {
       try {
         const { supabase } = await import('@/lib/supabase');
         const { data: gs } = await supabase.from('groups')
-          .select('id, name, avatar_url, amount, frequency, max_members, admin_name, is_verified, badge_tier, created_at, is_frozen')
+          .select('id, name, avatar_url, amount, frequency, frequency_days, max_members, admin_name, is_verified, badge_tier, created_at, is_frozen')
           .in('status', ['active', 'approved']).order('created_at', { ascending: false }).limit(30);
         setLiveGroups((gs || []).filter(g => !g.is_frozen)); // ❄️ frozen groups stay out of the browse list
         const counts = {};
@@ -308,7 +308,7 @@ export default function DashboardPage() {
                     : <div className="w-9 h-9 bg-primary-100 rounded-lg flex items-center justify-center shrink-0"><span className="text-primary-700 font-bold text-xs">{g.name?.charAt(0)}</span></div>}
                   <div className="min-w-0 flex-1">
                     <p className="text-sm font-semibold text-gray-900 flex items-center gap-1 min-w-0"><span className="truncate">{g.name}</span><GroupBadge verified={g.is_verified} tier={g.badge_tier} /></p>
-                    <p className="text-[11px] text-gray-500">₦{Number(g.amount || 0).toLocaleString()} {g.frequency || 'weekly'} • {groupCounts[g.id] ?? '…'}{g.max_members ? `/${g.max_members}` : ''} members • by {g.admin_name || '—'}</p>
+                    <p className="text-[11px] text-gray-500">₦{Number(g.amount || 0).toLocaleString()} {frequencyLabel(g).toLowerCase()} • {groupCounts[g.id] ?? '…'}{g.max_members ? `/${g.max_members}` : ''} members • by {g.admin_name || '—'}</p>
                   </div>
                   <span className="text-[11px] font-semibold text-primary-600 shrink-0">View & Join →</span>
                 </button>

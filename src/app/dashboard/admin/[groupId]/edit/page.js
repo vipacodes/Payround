@@ -9,17 +9,26 @@ import {
   HiArrowLeft, HiPencil, HiClock, HiCheckCircle, HiExclamation,
   HiTrash, HiShieldCheck, HiBan
 } from 'react-icons/hi';
-import { parseSpots } from '@/lib/payments';
+import { parseSpots, periodLabel, adminInterest, frequencyLabel } from '@/lib/payments';
 import toast from 'react-hot-toast';
 
-const FREQS = ['Daily', 'Weekly', 'Every 2 weeks', 'Monthly'];
+const FREQS = ['Daily', 'Weekly', 'Every 2 weeks', 'Monthly', 'Custom'];
 // These core changes affect money + rotation, so PayRound must approve them first
 const EDITABLE_LABELS = {
   name: 'Group name',
   description: 'Description',
   amount: 'Contribution amount (₦)',
   frequency: 'Contribution frequency',
+  frequency_days: 'Custom frequency (days)',
   max_members: 'Number of spots (members)',
+  payout_amount: 'Payout each spot collects (₦)',
+};
+
+// Human formatting for old → new values in the request summary
+const fmtVal = (k, v) => {
+  if (k === 'amount' || k === 'payout_amount') return (v === null || v === undefined || v === '' || Number(v) <= 0) ? (k === 'payout_amount' ? 'full pot (no set payout)' : '—') : `₦${Number(v).toLocaleString()}`;
+  if (k === 'frequency_days') return v ? `every ${v} days` : '—';
+  return (v === null || v === undefined || v === '') ? '—' : String(v);
 };
 
 export default function EditGroupPage() {
@@ -29,7 +38,7 @@ export default function EditGroupPage() {
   const [group, setGroup] = useState(null);
   const [takenSpots, setTakenSpots] = useState(0);
   const [loading, setLoading] = useState(true);
-  const [form, setForm] = useState({ name: '', description: '', amount: '', frequency: 'Weekly', max_members: '' });
+  const [form, setForm] = useState({ name: '', description: '', amount: '', frequency: 'Weekly', customDays: '', max_members: '', payout_amount: '' });
   const [requests, setRequests] = useState([]);       // my edit requests for this group (history)
   const [submitting, setSubmitting] = useState(false);
   const [showDelete, setShowDelete] = useState(false);
@@ -47,7 +56,7 @@ export default function EditGroupPage() {
       if (!g) { toast.error('Group not found.'); router.push('/dashboard'); return; }
       if ((g.admin_email || '').toLowerCase() !== user.email.toLowerCase()) { toast.error('Only the group admin can edit this group.'); router.push(`/groups/${params.groupId}`); return; }
       setGroup(g);
-      setForm({ name: g.name || '', description: g.description || '', amount: String(g.amount ?? ''), frequency: g.frequency || 'Weekly', max_members: String(g.max_members ?? '') });
+      setForm({ name: g.name || '', description: g.description || '', amount: String(g.amount ?? ''), frequency: g.frequency || 'Weekly', customDays: g.frequency_days ? String(g.frequency_days) : '', max_members: String(g.max_members ?? ''), payout_amount: g.payout_amount ? String(g.payout_amount) : '' });
       const { data: mems } = await supabase.from('members').select('spots').eq('group_id', params.groupId).eq('status', 'approved');
       const taken = new Set();
       (mems || []).forEach(m => parseSpots(m.spots).forEach(sp => taken.add(sp)));
@@ -66,7 +75,13 @@ export default function EditGroupPage() {
   if (form.description.trim() !== (group.description || '')) changed.description = form.description.trim();
   if (String(Number(form.amount || 0)) !== String(Number(group.amount || 0))) changed.amount = Number(form.amount || 0);
   if (form.frequency !== (group.frequency || 'Weekly')) changed.frequency = form.frequency;
+  const newDays = form.frequency === 'Custom' ? (parseInt(form.customDays, 10) || null) : null;
+  const oldDays = group.frequency_days ? parseInt(group.frequency_days, 10) : null;
+  if (newDays !== oldDays) changed.frequency_days = newDays;
   if (String(parseInt(form.max_members, 10) || 0) !== String(parseInt(group.max_members, 10) || 0)) changed.max_members = parseInt(form.max_members, 10) || 0;
+  const newPayout = form.payout_amount === '' ? null : (Number(form.payout_amount) || 0);
+  const oldPayout = Number(group.payout_amount) > 0 ? Number(group.payout_amount) : null;
+  if (String(newPayout) !== String(oldPayout)) changed.payout_amount = newPayout;
   const changeCount = Object.keys(changed).length;
   const pendingCount = requests.filter(r => r.status === 'pending').length;
 
@@ -79,14 +94,21 @@ export default function EditGroupPage() {
       if (!Number.isInteger(mm) || mm < 2 || mm > 200) { toast.error('Number of spots must be between 2 and 200.'); return; }
       if (mm < takenSpots) { toast.error(`You can\'t shrink below ${takenSpots} — that many spots are already taken by members.`); return; }
     }
+    if (form.frequency === 'Custom') {
+      const d = parseInt(form.customDays, 10);
+      if (!Number.isInteger(d) || d < 2 || d > 365) { toast.error('Custom frequency: enter every how many days (2–365).'); return; }
+    }
+    if (changed.payout_amount !== undefined && changed.payout_amount !== null) {
+      if (!(Number(changed.payout_amount) > 0)) { toast.error('Payout amount must be more than ₦0 — or clear the field for the full pot.'); return; }
+      const amt = Number(changed.amount ?? form.amount) || 0;
+      const mm2 = parseInt(changed.max_members ?? form.max_members, 10) || 0;
+      if (amt && mm2 && Number(changed.payout_amount) > amt * mm2) { toast.error(`Payout can't be more than ₦${(amt * mm2).toLocaleString()} — that's everything the group collects each round.`); return; }
+    }
     setSubmitting(true);
     try {
       const { supabase } = await import('@/lib/supabase');
-      const summary = Object.entries(changed).map(([k, v]) => {
-        const oldV = k === 'name' ? group.name : k === 'description' ? (group.description || '—') : k === 'amount' ? `₦${Number(group.amount || 0).toLocaleString()}` : k === 'max_members' ? group.max_members : group.frequency;
-        const newV = k === 'amount' ? `₦${Number(v).toLocaleString()}` : v;
-        return `${EDITABLE_LABELS[k]}: ${oldV} → ${newV}`;
-      }).join(' • ');
+      const oldOf = (k) => k === 'name' ? group.name : k === 'description' ? group.description : k === 'amount' ? group.amount : k === 'max_members' ? group.max_members : k === 'frequency' ? group.frequency : k === 'frequency_days' ? group.frequency_days : k === 'payout_amount' ? group.payout_amount : undefined;
+      const summary = Object.entries(changed).map(([k, v]) => `${EDITABLE_LABELS[k]}: ${fmtVal(k, oldOf(k))} → ${fmtVal(k, v)}`).join(' • ');
       const { error } = await supabase.from('group_edit_requests').insert({
         id: `edit-${Date.now()}`,
         group_id: params.groupId,
@@ -153,7 +175,7 @@ export default function EditGroupPage() {
           <h2 className="font-bold text-gray-900 mb-1">Group details</h2>
           <p className="text-xs text-gray-500 mb-5">
             Core changes (name, amount, frequency, number of spots) are reviewed by <b>PayRound</b> before going live — members are never surprised by silent edits.
-            Rules and your avatar can still be changed instantly from the group page.
+            The payout amount & custom frequency go through the same review. Rules and your avatar can still be changed instantly from the group page.
           </p>
 
           <label className="block text-xs font-semibold text-gray-600 mb-1.5">Group name</label>
@@ -176,6 +198,13 @@ export default function EditGroupPage() {
                 className="w-full px-4 py-3 border border-gray-200 rounded-xl text-sm bg-white focus:outline-none focus:ring-2 focus:ring-primary-500">
                 {FREQS.map(f => <option key={f} value={f}>{f}</option>)}
               </select>
+              {form.frequency === 'Custom' && (
+                <div className="mt-2">
+                  <input type="number" min="2" max="365" value={form.customDays} onChange={e => setForm(f => ({ ...f, customDays: e.target.value }))} placeholder="Every how many days? e.g. 10"
+                    className="w-full px-4 py-3 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary-500" />
+                  <p className="text-[10px] text-gray-400 mt-1">Members contribute every {parseInt(form.customDays, 10) > 0 ? form.customDays : '…'} days.</p>
+                </div>
+              )}
             </div>
             <div>
               <label className="block text-xs font-semibold text-gray-600 mb-1.5">Number of spots</label>
@@ -183,6 +212,32 @@ export default function EditGroupPage() {
                 className="w-full px-4 py-3 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary-500" />
               <p className="text-[10px] text-gray-400 mt-1">{takenSpots} already taken — can&apos;t go below that.</p>
             </div>
+          </div>
+
+          {/* 💰 Payout per spot — admin interest lives in the gap (only admins ever see it) */}
+          <div className="mb-5">
+            <label className="block text-xs font-semibold text-gray-600 mb-1.5">Payout each spot collects (₦) <span className="font-normal text-gray-400">— leave empty for the full pot</span></label>
+            <input type="number" min="1" value={form.payout_amount} onChange={e => setForm(f => ({ ...f, payout_amount: e.target.value }))}
+              placeholder={`${((Number(form.amount) || 0) * (parseInt(form.max_members, 10) || 0)).toLocaleString()} = the full pot`}
+              className="w-full px-4 py-3 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary-500" />
+            <p className="text-[10px] text-gray-400 mt-1">What ONE spot receives on its turn. Members see this as their expected payout — the gap between it and the full pot is <b>your interest</b>.</p>
+            {(() => {
+              const sim = { ...group, amount: Number(form.amount) || 0, max_members: parseInt(form.max_members, 10) || 0, payout_amount: form.payout_amount === '' ? null : Number(form.payout_amount) };
+              if (!sim.amount || !sim.max_members) return null;
+              const money = adminInterest(sim);
+              const per = periodLabel(form.frequency, form.customDays);
+              return (
+                <div className="mt-2 bg-amber-50 border border-amber-200 rounded-xl p-3 text-xs text-amber-900 space-y-1">
+                  <p className="font-bold flex items-center gap-1.5 flex-wrap">👑 Interest preview <span className="text-[10px] bg-amber-500 text-white px-2 py-0.5 rounded-full font-bold">ONLY YOU SEE THIS</span></p>
+                  <p>Collected every {per}: <b>₦{money.collected.toLocaleString()}</b> · paid out per spot: <b>₦{money.payout.toLocaleString()}</b></p>
+                  {money.perRound > 0
+                    ? <p className="font-bold">Your interest: ₦{money.perRound.toLocaleString()} / {per} · <span className="text-emerald-700">₦{money.perCycle.toLocaleString()} per full cycle</span></p>
+                    : money.perRound === 0
+                      ? <p>Interest: ₦0 — spots collect the full pot.</p>
+                      : <p className="text-red-600 font-semibold">⚠️ Payout is higher than what the group collects each {per} — the pot would run short.</p>}
+                </div>
+              );
+            })()}
           </div>
 
           {changeCount > 0 && (

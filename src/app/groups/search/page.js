@@ -6,6 +6,7 @@ import Header from '@/components/Header';
 import Footer from '@/components/Footer';
 import { HiSearch, HiUserGroup, HiCalendar, HiCurrencyDollar, HiBadgeCheck } from 'react-icons/hi';
 import GroupBadge from '@/components/GroupBadge';
+import { frequencyLabel } from '@/lib/payments';
 
 
 
@@ -42,7 +43,7 @@ function RealGroupCard({ group, memberCount }) {
         </div>
         <div className="flex items-center gap-2 text-sm text-gray-600">
           <HiCalendar className="w-4 h-4 text-primary-500 shrink-0" />
-          <span>{group.frequency || 'Weekly'}</span>
+          <span>{frequencyLabel(group)}</span>
         </div>
         <div className="flex items-center gap-2 text-sm text-gray-600 col-span-2">
           <HiUserGroup className="w-4 h-4 text-primary-500 shrink-0" />
@@ -101,7 +102,7 @@ function SearchContent() {
         const { supabase } = await import('@/lib/supabase');
         const { data: gs } = await supabase
           .from('groups')
-          .select('id, name, description, amount, frequency, max_members, admin_name, admin_email, is_verified, badge_tier, avatar_url, created_at, is_frozen')
+          .select('id, name, description, amount, frequency, frequency_days, max_members, admin_name, admin_email, is_verified, badge_tier, avatar_url, created_at, is_frozen')
           .in('status', ['active', 'approved'])
           .order('created_at', { ascending: false });
         if (!mounted) return;

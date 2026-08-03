@@ -13,7 +13,7 @@ import {
 import toast from 'react-hot-toast';
 import {
   parseSpots, currentPeriod, cycleLength, periodLabel, withRotationClock,
-  paidWeeksForSpot, isSpotCurrent, buildSpotMap, payoutForSpot
+  paidWeeksForSpot, isSpotCurrent, buildSpotMap, payoutForSpot, payoutPerSpot, adminInterest, frequencyLabel
 } from '@/lib/payments';
 
 export default function AdminPaymentsPage() {
@@ -78,7 +78,7 @@ export default function AdminPaymentsPage() {
       try { await supabase.from('group_messages').update({ receipt_status: 'approved' }).eq('payment_id', p.id); } catch {}
       await notify({
         user_email: p.user_email, type: 'payment_approved',
-        message: `✅ Your payment of ₦${Number(p.amount || 0).toLocaleString()} in "${group.name}" was approved — spot${parseSpots(p.spots).length > 1 ? 's' : ''} #${parseSpots(p.spots).join(', #')} marked paid for ${p.weeks} ${periodLabel(group.frequency)}${p.weeks > 1 ? 's' : ''}. 🎉`,
+        message: `✅ Your payment of ₦${Number(p.amount || 0).toLocaleString()} in "${group.name}" was approved — spot${parseSpots(p.spots).length > 1 ? 's' : ''} #${parseSpots(p.spots).join(', #')} marked paid for ${p.weeks} ${periodLabel(group.frequency, group.frequency_days)}${p.weeks > 1 ? 's' : ''}. 🎉`,
       });
       toast.success(`${p.member_name || p.user_email} marked paid (spot(s) ${p.spots}, ${p.weeks} week(s)).`);
       await loadAll();
@@ -114,8 +114,9 @@ export default function AdminPaymentsPage() {
     setBusy(true);
     try {
       const { supabase } = await import('@/lib/supabase');
-      const activeSpots = members.reduce((sum, m) => sum + parseSpots(m.spots).length, 0);
-      const potAmount = (group.amount || 0) * Math.max(1, activeSpots);
+      // Expected payout per spot — the amount the admin set in group settings
+      // (defaults to the full pot when no custom payout is set)
+      const potAmount = payoutPerSpot(group);
       const { error } = await supabase.from('payouts').insert({
         id: `po-${Date.now()}`, group_id: params.groupId, spot,
         user_email: holder?.member_email || '', member_name: holder?.member_name || '',
@@ -165,7 +166,9 @@ export default function AdminPaymentsPage() {
   const period = clockGroup ? currentPeriod(clockGroup) : 0; // 0 = savings haven't started (group not full yet)
   const N = cycleLength(group);
   const spotMap = buildSpotMap(members);
-  const label = periodLabel(group.frequency);
+  const label = periodLabel(group.frequency, group.frequency_days);
+  const spotPayout = payoutPerSpot(group);
+  const adminMoney = adminInterest(group);
   const pending = payments.filter(p => p.status === 'pending');
   const history = payments.filter(p => p.status !== 'pending');
 
@@ -186,7 +189,10 @@ export default function AdminPaymentsPage() {
           <div>
             <h1 className="text-2xl font-bold text-gray-900">Payments — {group.name}</h1>
             <p className="text-sm text-gray-500">
-              ₦{Number(group.amount || 0).toLocaleString()} per {label} per spot • Cycle: {N} {label}s • {clockGroup ? <>Current {label}: <strong>{Math.min(period, N)} of {N}</strong></> : <span className="text-amber-600 font-semibold">⏳ savings start when the group is full</span>}
+              ₦{Number(group.amount || 0).toLocaleString()} per {label} per spot • Pays <b className="text-emerald-700">₦{spotPayout.toLocaleString()}</b> / spot • Cycle: {N} {label}s • {clockGroup ? <>Current {label}: <strong>{Math.min(period, N)} of {N}</strong></> : <span className="text-amber-600 font-semibold">⏳ savings start when the group is full</span>}
+            </p>
+            <p className="text-[11px] text-amber-900 bg-amber-50 border border-amber-200 rounded-lg px-2.5 py-1.5 mt-2 font-semibold">
+              👑 Only you see this — your interest: <b>₦{adminMoney.perRound.toLocaleString()}</b> every {label} · <b className="text-emerald-800">₦{adminMoney.perCycle.toLocaleString()}</b> per full cycle
             </p>
           </div>
           <button onClick={() => { setLoading(true); loadAll(); }} className="flex items-center gap-1.5 text-xs font-medium text-gray-500 border rounded-lg px-3 py-2 hover:bg-gray-50">

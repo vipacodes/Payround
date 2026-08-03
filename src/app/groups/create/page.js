@@ -8,6 +8,7 @@ import { HiCheckCircle, HiArrowLeft, HiLightningBolt, HiUserGroup, HiCurrencyDol
 import { HiBanknotes } from 'react-icons/hi2';
 import toast from 'react-hot-toast';
 import { GROUP_COLORS, platformInfo } from '@/lib/data';
+import { frequencyLabel } from '@/lib/payments';
 
 const STEPS = [
   { num: 1, title: 'Group Info' },
@@ -42,6 +43,7 @@ export default function CreateGroupPage() {
     name: '',
     description: '',
     contributionAmount: '',
+    payoutAmount: '',
     schedule: 'Weekly',
     customDays: '',
     maxMembers: '',
@@ -71,6 +73,19 @@ export default function CreateGroupPage() {
       if (!selfieFile) { toast.error('Clear selfie is mandatory for KYC'); return; }
       if (!idFile) { toast.error('Valid ID (NIN/Voter/Driver/Passport) is mandatory'); return; }
       if (!avatarPreview) { toast.error('Group logo is required — upload it in step 1'); return; }
+    }
+    if (step === 2) {
+      const amt = parseInt(formData.contributionAmount, 10);
+      const mm = parseInt(formData.maxMembers, 10);
+      if (!amt || amt <= 0) { toast.error('Enter the contribution amount each spot pays.'); return; }
+      if (!Number.isInteger(mm) || mm < 2 || mm > 200) { toast.error('Number of spots (max members) must be between 2 and 200.'); return; }
+      if (formData.schedule === 'Custom') {
+        const d = parseInt(formData.customDays, 10);
+        if (!Number.isInteger(d) || d < 2 || d > 365) { toast.error('Custom schedule: enter every how many days (2–365).'); return; }
+      }
+      const pay = parseInt(formData.payoutAmount, 10);
+      if (formData.payoutAmount !== '' && !(pay > 0)) { toast.error('Payout amount must be more than ₦0 — or leave it empty for the full pot.'); return; }
+      if (pay > 0 && pay > amt * mm) { toast.error(`Payout can't be more than ₦${(amt * mm).toLocaleString()} — that's everything the group collects each round.`); return; }
     }
     if (step < 5) setStep(step + 1);
     window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -151,7 +166,7 @@ export default function CreateGroupPage() {
     try {
       const { supabase } = await import('@/lib/supabase');
       const { data } = await supabase.from('groups')
-        .select('id, name, status, rejection_reason, amount, frequency, plan_months, avatar_url, created_at')
+        .select('id, name, status, rejection_reason, amount, frequency, frequency_days, payout_amount, plan_months, avatar_url, created_at')
         .eq('admin_email', email).order('created_at', { ascending: false });
       setMyGroups(data || []);
     } catch { setMyGroups([]); }
@@ -219,7 +234,9 @@ export default function CreateGroupPage() {
         name: formData.name,
         description: formData.description,
         amount: parseInt(formData.contributionAmount) || 0,
-        frequency: formData.schedule || 'Weekly',
+        frequency: formData.schedule === 'Custom' ? 'Custom' : (formData.schedule || 'Weekly'),
+        frequency_days: formData.schedule === 'Custom' ? (parseInt(formData.customDays, 10) || null) : null,
+        payout_amount: parseInt(formData.payoutAmount, 10) > 0 ? parseInt(formData.payoutAmount, 10) : null,
         max_members: parseInt(formData.maxMembers) || 0,
         color: selectedColor,
         admin_email: adminEmail,
@@ -270,7 +287,7 @@ export default function CreateGroupPage() {
                     )}
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-semibold text-gray-900 truncate">{g.name} <span className="text-[10px] font-normal text-gray-400">• {g.id}</span></p>
-                      <p className="text-[11px] text-gray-500">₦{Number(g.amount || 0).toLocaleString()} {g.frequency} • {g.plan_months ? `${g.plan_months}-month plan` : 'trial'} • {g.created_at ? new Date(g.created_at).toLocaleDateString() : ''}</p>
+                      <p className="text-[11px] text-gray-500">₦{Number(g.amount || 0).toLocaleString()} {frequencyLabel(g)} • {g.plan_months ? `${g.plan_months}-month plan` : 'trial'} • {g.created_at ? new Date(g.created_at).toLocaleDateString() : ''}</p>
                     </div>
                     {g.status === 'pending_owner' && <span className="text-[10px] font-bold bg-amber-100 text-amber-700 px-2 py-1 rounded-full shrink-0">⏳ Pending approval</span>}
                     {g.status === 'trial_active' && <span className="text-[10px] font-bold bg-blue-100 text-blue-700 px-2 py-1 rounded-full shrink-0">🧪 Trial</span>}
@@ -361,7 +378,32 @@ export default function CreateGroupPage() {
               <div><label className="block text-sm font-medium mb-1.5">Amount (₦) *</label><input type="number" value={formData.contributionAmount} onChange={(e)=>updateField('contributionAmount', e.target.value)} placeholder="e.g., 50000" className="w-full px-4 py-3 border rounded-xl text-sm focus:ring-2 focus:ring-primary-500 outline-none" /></div>
               <div><label className="block text-sm font-medium mb-1.5">Schedule *</label><select value={formData.schedule} onChange={(e)=>updateField('schedule', e.target.value)} className="w-full px-4 py-3 border rounded-xl text-sm bg-white outline-none"><option value="Daily">Daily</option><option value="Weekly">Weekly</option><option value="Every 2 Weeks">Every 2 Weeks</option><option value="Monthly">Monthly</option><option value="Custom">Custom</option></select></div>
               {formData.schedule==='Custom' && (<div><label className="block text-sm font-medium mb-1.5">Every how many days?</label><input type="number" value={formData.customDays} onChange={(e)=>updateField('customDays', e.target.value)} placeholder="e.g., 10" className="w-full px-4 py-3 border rounded-xl text-sm outline-none" /></div>)}
-              <div><label className="block text-sm font-medium mb-1.5">Max Members *</label><input type="number" value={formData.maxMembers} onChange={(e)=>updateField('maxMembers', e.target.value)} placeholder="e.g., 20" className="w-full px-4 py-3 border rounded-xl text-sm outline-none" /></div>
+              <div><label className="block text-sm font-medium mb-1.5">Number of Spots (Max Members) *</label><input type="number" value={formData.maxMembers} onChange={(e)=>updateField('maxMembers', e.target.value)} placeholder="e.g., 10" className="w-full px-4 py-3 border rounded-xl text-sm outline-none" /></div>
+              <div>
+                <label className="block text-sm font-medium mb-1.5">Payout each spot collects (₦) <span className="font-normal text-gray-400">— optional</span></label>
+                <input type="number" value={formData.payoutAmount} onChange={(e)=>updateField('payoutAmount', e.target.value)} placeholder={(parseInt(formData.contributionAmount,10)||0) * (parseInt(formData.maxMembers,10)||0) > 0 ? `leave empty = full pot ₦${((parseInt(formData.contributionAmount,10)||0) * (parseInt(formData.maxMembers,10)||0)).toLocaleString()}` : 'e.g., 40000'} className="w-full px-4 py-3 border rounded-xl text-sm outline-none" />
+                <p className="text-[11px] text-gray-400 mt-1">Leave it empty and every spot collects the full pot. Set a lower amount and the difference becomes <b>your interest</b> as the admin.</p>
+              </div>
+              {(() => {
+                const amt = parseInt(formData.contributionAmount, 10) || 0;
+                const mm = parseInt(formData.maxMembers, 10) || 0;
+                if (!amt || !mm) return null;
+                const collected = amt * mm;
+                const customPay = parseInt(formData.payoutAmount, 10);
+                const pay = customPay > 0 ? customPay : collected;
+                const per = collected - pay;
+                const perLabel = formData.schedule === 'Custom' ? `${parseInt(formData.customDays, 10) || '?'} days` : formData.schedule.toLowerCase();
+                return (
+                  <div className="bg-amber-50 border border-amber-200 rounded-xl p-3.5 text-xs text-amber-900 space-y-1">
+                    <p className="font-bold flex items-center gap-1.5">👑 Money preview <span className="text-[10px] bg-amber-500 text-white px-2 py-0.5 rounded-full font-bold">ONLY YOU EVER SEE THE INTEREST</span></p>
+                    <p>Group collects <b>₦{collected.toLocaleString()}</b> every {perLabel} ({`₦${amt.toLocaleString()} × ${mm} spots`}).</p>
+                    <p>Each spot collects <b>₦{pay.toLocaleString()}</b> on its turn — members see this as their expected payout.</p>
+                    {per > 0
+                      ? <p className="font-bold">Your interest: ₦{per.toLocaleString()} every {perLabel} · <span className="text-emerald-700">₦{(per * mm).toLocaleString()} per full cycle</span> ({mm} rounds)</p>
+                      : <p className="text-amber-700">Interest: ₦0 — spots collect the full pot.</p>}
+                  </div>
+                );
+              })()}
             </div>
           )}
 
@@ -397,8 +439,9 @@ export default function CreateGroupPage() {
 
               <div className="p-4 bg-gray-50 rounded-xl space-y-2 text-sm">
                 <div className="flex justify-between"><span className="text-gray-500">Group</span><span className="font-medium">{formData.name || 'Not set'} <span className="inline-block w-3 h-3 rounded-full ml-1" style={{backgroundColor:selectedColor}} /></span></div>
-                <div className="flex justify-between"><span className="text-gray-500">Amount</span><span className="font-medium">₦{(parseInt(formData.contributionAmount)||0).toLocaleString()} / {formData.schedule}</span></div>
-                <div className="flex justify-between"><span className="text-gray-500">Max</span><span className="font-medium">{formData.maxMembers || 'Not set'}</span></div>
+                <div className="flex justify-between"><span className="text-gray-500">Amount</span><span className="font-medium">₦{(parseInt(formData.contributionAmount)||0).toLocaleString()} / {formData.schedule === 'Custom' ? `every ${formData.customDays || '?'} days` : formData.schedule}</span></div>
+                <div className="flex justify-between"><span className="text-gray-500">Spots</span><span className="font-medium">{formData.maxMembers || 'Not set'}</span></div>
+                <div className="flex justify-between"><span className="text-gray-500">Payout per spot</span><span className="font-medium">{parseInt(formData.payoutAmount, 10) > 0 ? `₦${parseInt(formData.payoutAmount, 10).toLocaleString()}` : `Full pot ₦${((parseInt(formData.contributionAmount, 10) || 0) * (parseInt(formData.maxMembers, 10) || 0)).toLocaleString()}`}</span></div>
                 <div className="flex justify-between"><span className="text-gray-500">KYC</span><span className="font-medium">{selfieFile?'Selfie ✅':'Selfie ❌'} & {idFile?`${formData.idType} ✅`:`ID ❌`}</span></div>
                 <div className="flex justify-between"><span className="text-gray-500">Color</span><span className="font-medium">{selectedColor}</span></div>
               </div>

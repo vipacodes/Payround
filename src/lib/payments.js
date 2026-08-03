@@ -14,26 +14,65 @@ export function formatSpots(arr) {
   return [...new Set(arr)].sort((a, b) => a - b).join(',');
 }
 
-export function periodDays(frequency) {
+export function periodDays(frequency, customDays) {
   const f = String(frequency || 'weekly').toLowerCase();
+  if (f.includes('custom')) {
+    const d = parseInt(customDays, 10);
+    return Number.isFinite(d) && d > 0 ? Math.min(d, 365) : 7;
+  }
   if (f.includes('month')) return 30;
-  if (f.includes('bi') || f.includes('two') || f.includes('fortnight')) return 14;
+  if (f.includes('bi') || f.includes('two') || f.includes('fortnight') || f.includes('2 week') || f.includes('2week')) return 14;
   if (f.includes('day') || f.includes('daily')) return 1;
   return 7; // weekly
 }
 
-export function periodLabel(frequency) {
+export function periodLabel(frequency, customDays) {
   const f = String(frequency || 'weekly').toLowerCase();
+  if (f.includes('custom')) {
+    const d = parseInt(customDays, 10);
+    return Number.isFinite(d) && d > 0 ? `${d} days` : 'round';
+  }
   if (f.includes('month')) return 'month';
-  if (f.includes('bi') || f.includes('two') || f.includes('fortnight')) return '2 weeks';
+  if (f.includes('bi') || f.includes('two') || f.includes('fortnight') || f.includes('2 week') || f.includes('2week')) return '2 weeks';
   if (f.includes('day') || f.includes('daily')) return 'day';
   return 'week';
+}
+
+// Pretty frequency text for cards/lists — e.g. "Weekly", "Every 2 weeks", "Every 10 days"
+export function frequencyLabel(group) {
+  const f = String(group?.frequency || 'Weekly');
+  if (f.toLowerCase().includes('custom')) {
+    const d = parseInt(group?.frequency_days, 10);
+    return Number.isFinite(d) && d > 0 ? `Every ${d} days` : 'Custom';
+  }
+  return f;
+}
+
+// 💰 What ONE spot collects on its turn. If the admin set a payout amount we use
+// it — otherwise the default is the full pot (contribution × number of spots).
+export function payoutPerSpot(group) {
+  const explicit = Number(group?.payout_amount);
+  if (Number.isFinite(explicit) && explicit > 0) return explicit;
+  return (Number(group?.amount) || 0) * cycleLength(group);
+}
+
+// 👑 ADMIN-ONLY money math — the "interest" is the gap between what the whole
+// group contributes each round and what one spot is paid out. NEVER show these
+// numbers to regular members.
+// e.g. ₦4,100 × 10 spots = ₦41,000 collected each round; payout ₦40,000 →
+// interest ₦1,000 per round × 10 rounds = ₦10,000 for the full cycle.
+export function adminInterest(group) {
+  const N = cycleLength(group);
+  const collected = (Number(group?.amount) || 0) * N;
+  const payout = payoutPerSpot(group);
+  const perRound = collected - payout;
+  return { N, collected, payout, perRound, perCycle: perRound * N, hasCustomPayout: Number(group?.payout_amount) > 0 };
 }
 
 // 1-based current period of the cycle, counted from when the group was created.
 export function currentPeriod(group) {
   const start = new Date(group?.start_date || group?.created_at || Date.now()).getTime();
-  const ms = periodDays(group?.frequency) * 86400000;
+  const ms = periodDays(group?.frequency, group?.frequency_days) * 86400000;
   return Math.max(1, Math.floor((Date.now() - start) / ms) + 1);
 }
 
@@ -85,7 +124,7 @@ export function payoutForSpot(payouts, spot) {
 // the start of period k too.
 
 export function periodMsOf(group) {
-  return periodDays(group?.frequency) * 86400000;
+  return periodDays(group?.frequency, group?.frequency_days) * 86400000;
 }
 
 export function groupStartMs(group) {

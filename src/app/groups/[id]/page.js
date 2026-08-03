@@ -13,7 +13,7 @@ import {
 import ImageLightbox from '@/components/ImageLightbox';
 import GroupBadge from '@/components/GroupBadge';
 import { remindRenewalIfSoon } from '@/lib/renewal';
-import { parseSpots, formatSpots, currentPeriod, cycleLength, periodLabel, periodDays, paidWeeksForSpot, isSpotCurrent, buildSpotMap, payoutForSpot, withRotationClock } from '@/lib/payments';
+import { parseSpots, formatSpots, currentPeriod, cycleLength, periodLabel, periodDays, paidWeeksForSpot, isSpotCurrent, buildSpotMap, payoutForSpot, withRotationClock, payoutPerSpot, adminInterest, frequencyLabel } from '@/lib/payments';
 import { compressImage } from '@/lib/image';
 import toast from 'react-hot-toast';
 
@@ -342,7 +342,7 @@ export default function GroupDetailsPage() {
   const clockGroup = withRotationClock(group, members);
   const period = clockGroup ? currentPeriod(clockGroup) : 0;
   const N = cycleLength(group);
-  const label = periodLabel(group.frequency);
+  const label = periodLabel(group.frequency, group.frequency_days);
   const spotMap = buildSpotMap(members);
   const mySpots = myMember ? parseSpots(myMember.spots) : [];
   // Members sorted by the spots they hold — used by the checkbox payment tracker
@@ -351,8 +351,9 @@ export default function GroupDetailsPage() {
     .sort((a, b) => Math.min(...parseSpots(a.spots)) - Math.min(...parseSpots(b.spots)));
   // Open spots with estimated payout dates — shown to visitors BEFORE they join
   const openSpots = Array.from({ length: N }, (_, i) => i + 1).filter(sp => !(sp in spotMap));
-  const filledCount = Object.keys(spotMap).length;
-  const daysPerPeriod = periodDays(group.frequency);
+  const daysPerPeriod = periodDays(group.frequency, group.frequency_days);
+  const expectedPayout = payoutPerSpot(group);
+  const adminMoney = adminInterest(group);
   const myPayments = me?.email ? payments.filter(p => (p.user_email || '').toLowerCase() === me.email.toLowerCase()) : [];
   const receiptAmount = (group.amount || 0) * Math.max(1, paySpots.length) * payWeeks;
 
@@ -483,10 +484,11 @@ export default function GroupDetailsPage() {
           <div className="bg-white rounded-2xl border border-gray-100 p-4">
             <div className="flex items-center gap-2 text-gray-500 text-xs mb-1"><HiCurrencyDollar className="w-4 h-4 text-primary-500" /> Contribution</div>
             <p className="text-lg font-bold text-gray-900">₦{Number(group.amount || 0).toLocaleString()}</p>
+            <p className="text-[10px] text-emerald-700 font-bold mt-0.5">💰 you collect ₦{expectedPayout.toLocaleString()} / spot on your turn</p>
           </div>
           <div className="bg-white rounded-2xl border border-gray-100 p-4">
             <div className="flex items-center gap-2 text-gray-500 text-xs mb-1"><HiCalendar className="w-4 h-4 text-primary-500" /> Frequency</div>
-            <p className="text-lg font-bold text-gray-900">{group.frequency || 'Weekly'}</p>
+            <p className="text-lg font-bold text-gray-900">{frequencyLabel(group)}</p>
           </div>
           <div className="bg-white rounded-2xl border border-gray-100 p-4">
             <div className="flex items-center gap-2 text-gray-500 text-xs mb-1"><HiUserGroup className="w-4 h-4 text-primary-500" /> Members</div>
@@ -516,6 +518,46 @@ export default function GroupDetailsPage() {
             <button onClick={() => router.push(`/dashboard/admin/${group.id}/payments`)} className="flex-1 bg-white border border-gray-200 text-gray-700 text-sm font-semibold py-3 rounded-xl hover:border-primary-300 hover:text-primary-700 flex items-center justify-center gap-2">
               💳 Payments
             </button>
+          </div>
+        )}
+
+        {/* 👑 ADMIN EYES ONLY — interest + the things only the admin can see & change */}
+        {isAdmin && (
+          <div className="rounded-2xl border-2 border-amber-200 bg-gradient-to-br from-amber-50 to-yellow-50 p-5 mb-6">
+            <p className="text-sm font-bold text-amber-900 flex items-center gap-2 flex-wrap">👑 Your interest <span className="text-[10px] font-bold bg-amber-500 text-white px-2 py-0.5 rounded-full badge-emboss">ONLY YOU CAN SEE THIS</span></p>
+            <div className="mt-2 space-y-1 text-xs text-amber-900">
+              <p>Collected from all spots every {label}: <b>₦{adminMoney.collected.toLocaleString()}</b> (₦{Number(group.amount || 0).toLocaleString()} × {N} spots)</p>
+              <p>Paid out to each spot on its turn: <b>₦{adminMoney.payout.toLocaleString()}</b>{!adminMoney.hasCustomPayout && <span className="text-amber-700"> (currently the full pot — set a payout amount in Edit Group)</span>}</p>
+              {adminMoney.perRound > 0 ? (
+                <p className="text-sm font-bold text-amber-900 bg-amber-100/80 border border-amber-300 rounded-xl px-3 py-2 mt-1.5">Your interest: ₦{adminMoney.perRound.toLocaleString()} every {label} · <span className="text-emerald-800">₦{adminMoney.perCycle.toLocaleString()} per full cycle</span> ({N} {label}s)</p>
+              ) : adminMoney.perRound === 0 ? (
+                <p className="text-[11px] text-amber-700 mt-1.5">Interest right now: <b>₦0</b> — payouts equal the full pot. Set a payout amount in Edit Group to start earning an interest.</p>
+              ) : (
+                <p className="text-[11px] text-red-600 font-semibold mt-1.5">⚠️ The payout (₦{adminMoney.payout.toLocaleString()}) is HIGHER than the ₦{adminMoney.collected.toLocaleString()} collected each {label} — the pot would run short. Lower the payout in Edit Group.</p>
+              )}
+              <button onClick={() => router.push(`/dashboard/admin/${group.id}/edit`)} className="text-[11px] font-bold text-amber-800 underline underline-offset-2 mt-1">Change the payout amount in Edit Group →</button>
+            </div>
+            <div className="mt-4 pt-3 border-t border-amber-200/70 grid grid-cols-1 sm:grid-cols-2 gap-3 text-[11px]">
+              <div>
+                <p className="font-bold text-amber-900 mb-1">👁 Only YOU can see</p>
+                <ul className="space-y-0.5 list-disc list-inside text-amber-800">
+                  <li>this interest panel</li>
+                  <li>members&apos; phone numbers (Members tab)</li>
+                  <li>join requests &amp; their contact details</li>
+                  <li>receipts waiting for your review</li>
+                </ul>
+              </div>
+              <div>
+                <p className="font-bold text-amber-900 mb-1">✏️ Only YOU can change</p>
+                <ul className="space-y-0.5 list-disc list-inside text-amber-800">
+                  <li>group details &amp; payout amount (PayRound reviews)</li>
+                  <li>member spots &amp; spot offers</li>
+                  <li>approve / decline receipts, mark payouts collected</li>
+                  <li>group rules, open/lock chat, delete group</li>
+                </ul>
+              </div>
+            </div>
+            <p className="text-[10px] text-amber-700/80 mt-3">Members only ever see their expected payout per spot — never your interest.</p>
           </div>
         )}
 
@@ -571,11 +613,11 @@ export default function GroupDetailsPage() {
               <>
                 <p className="text-xs text-gray-500 mb-3">
                   <b>{openSpots.length} of {N} spot{N === 1 ? '' : 's'} still open.</b> Tap a green spot to choose it — you can hold several:
-                  each spot pays <b>₦{Number(group.amount || 0).toLocaleString()}</b> every {label} and collects its own full payout when its turn comes.
+                  each spot pays <b>₦{Number(group.amount || 0).toLocaleString()}</b> every {label} and collects <b>₦{expectedPayout.toLocaleString()}</b> when its turn comes.
                 </p>
                 <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-gray-500 mb-3">
                   <span className="inline-flex items-center gap-1.5"><span className="w-3 h-3 rounded bg-emerald-500 inline-block" /> Open — tap to pick</span>
-                  <span className="inline-flex items-center gap-1.5"><span className="w-3 h-3 rounded bg-red-400 inline-block" /> Taken — not available</span>
+                  <span className="inline-flex items-center gap-1.5"><span className="w-3 h-3 rounded bg-red-500 inline-block" /> Taken — shows the holder&apos;s name</span>
                 </div>
                 <div className="grid grid-cols-5 sm:grid-cols-8 gap-1.5 mb-2">
                   {Array.from({ length: N }, (_, i) => i + 1).map(spot => {
@@ -588,27 +630,28 @@ export default function GroupDetailsPage() {
                         disabled={taken}
                         onClick={() => toggleDesiredSpot(spot)}
                         title={taken ? `Spot #${spot} is taken` : on ? `Picked — tap to remove. Payout: ${spot * daysPerPeriod} days after savings start` : `Pick spot #${spot} — payout ${spot * daysPerPeriod} days after savings start`}
-                        className={`h-10 rounded-lg text-sm font-bold transition-all ${
+                        className={`h-11 rounded-lg text-sm font-bold transition-all flex flex-col items-center justify-center leading-tight ${
                           taken
-                            ? 'bg-red-100 text-red-400 border border-red-200 cursor-not-allowed line-through'
+                            ? 'bg-red-500 text-white border border-red-600 cursor-not-allowed'
                             : on
                               ? 'bg-emerald-600 text-white border border-emerald-600 badge-emboss ring-2 ring-emerald-300'
                               : 'bg-emerald-50 text-emerald-700 border border-emerald-300 hover:bg-emerald-100'
                         }`}
                       >
-                        #{spot}{on ? ' ✓' : ''}
+                        <span className={taken ? 'line-through text-[11px]' : ''}>#{spot}{!taken && on ? ' ✓' : ''}</span>
+                        {taken && <span className="text-[8px] font-semibold text-white/95 truncate max-w-full px-0.5">{(spotMap[spot]?.member_name || 'Taken').split(' ')[0]}</span>}
                       </button>
                     );
                   })}
                 </div>
                 <p className="text-[11px] text-gray-400 mb-3">
                   Each later spot pays out one {label} later: <b>#1 → {daysPerPeriod} days</b> after savings start · <b>#2 → {2 * daysPerPeriod} days</b> · <b>#3 → {3 * daysPerPeriod} days</b> …
-                  Exact dates can&apos;t be fixed yet — <b>savings start when the group is full</b>; that&apos;s when the {group.frequency || 'weekly'} payout clock starts.
-                  Pot per payout right now: ≈ ₦{((group.amount || 0) * Math.max(1, filledCount)).toLocaleString()} — it grows as more members join.
+                  Exact dates can&apos;t be fixed yet — <b>savings start when the group is full</b>; that&apos;s when the payout clock starts.
+                  Your expected payout: <b className="text-emerald-700">₦{expectedPayout.toLocaleString()} per spot</b> when its turn comes.
                 </p>
                 {desiredSpots.length > 0 && (
                   <p className="text-xs bg-emerald-50 border border-emerald-200 text-emerald-900 rounded-xl p-3 mb-3">
-                    You picked spot{desiredSpots.length > 1 ? 's' : ''} <b>#{desiredSpots.join(', #')}</b> → you pay <b>₦{((group.amount || 0) * desiredSpots.length).toLocaleString()}</b> every {label} and collect <b>{desiredSpots.length}</b> payout{desiredSpots.length > 1 ? 's' : ''}
+                    You picked spot{desiredSpots.length > 1 ? 's' : ''} <b>#{desiredSpots.join(', #')}</b> → you pay <b>₦{((group.amount || 0) * desiredSpots.length).toLocaleString()}</b> every {label} and collect <b>{desiredSpots.length}</b> payout{desiredSpots.length > 1 ? 's' : ''} worth <b>₦{expectedPayout.toLocaleString()}</b> each (₦{(expectedPayout * desiredSpots.length).toLocaleString()} in total)
                     {' '}({desiredSpots.map(x => `#${x}: ${x * daysPerPeriod} days after savings start`).join(' · ')}).
                     The admin grants these exact spots if still free — otherwise they offer you an alternative and <b>you</b> accept or decline.
                   </p>
@@ -682,15 +725,16 @@ export default function GroupDetailsPage() {
                         disabled={taken}
                         onClick={() => toggleDesiredSpot(spot)}
                         title={taken ? `Spot #${spot} is taken` : `Hold spot #${spot} yourself`}
-                        className={`h-10 rounded-lg text-sm font-bold transition-all ${
+                        className={`h-11 rounded-lg text-sm font-bold transition-all flex flex-col items-center justify-center leading-tight ${
                           taken
-                            ? 'bg-red-100 text-red-400 border border-red-200 cursor-not-allowed line-through'
+                            ? 'bg-red-500 text-white border border-red-600 cursor-not-allowed'
                             : on
                               ? 'bg-emerald-600 text-white border border-emerald-600 badge-emboss ring-2 ring-emerald-300'
                               : 'bg-emerald-50 text-emerald-700 border border-emerald-300 hover:bg-emerald-100'
                         }`}
                       >
-                        #{spot}{on ? ' ✓' : ''}
+                        <span className={taken ? 'line-through text-[11px]' : ''}>#{spot}{!taken && on ? ' ✓' : ''}</span>
+                        {taken && <span className="text-[8px] font-semibold text-white/95 truncate max-w-full px-0.5">{(spotMap[spot]?.member_name || 'Taken').split(' ')[0]}</span>}
                       </button>
                     );
                   })}
@@ -748,7 +792,7 @@ export default function GroupDetailsPage() {
               </p>
               {clockGroup
                 ? <p className="text-xs text-gray-500 mb-4">Current {label}: <strong>{Math.min(period, N)} of {N}</strong> (the clock started when the group became full)</p>
-                : <p className="text-[11px] text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-2.5 py-1.5 font-semibold mb-4 mt-1.5">⏳ Nothing is due yet — the {label}ly clock starts automatically when all {N} spots are filled ({Object.keys(spotMap).length}/{N} taken so far).</p>}
+                : <p className="text-[11px] text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-2.5 py-1.5 font-semibold mb-4 mt-1.5">⏳ Nothing is due yet — the contribution clock starts automatically when all {N} spots are filled ({Object.keys(spotMap).length}/{N} taken so far).</p>}
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead>
@@ -769,7 +813,7 @@ export default function GroupDetailsPage() {
                       return (
                         <tr key={spot} className={`border-b border-gray-50 ${mine ? 'bg-primary-50/40' : ''}`}>
                           <td className="py-2.5 pr-3 font-bold text-gray-900">#{spot}{mine && <span className="ml-1 text-[10px] text-primary-600 font-semibold">YOU</span>}</td>
-                          <td className="py-2.5 pr-3 text-gray-800">{holder ? (holder.member_name || 'Member') : <span className="text-gray-300">Open spot</span>}</td>
+                          <td className="py-2.5 pr-3 font-bold text-gray-900 text-sm">{holder ? (holder.member_name || 'Member') : <span className="text-gray-300 font-normal">Open spot</span>}</td>
                           <td className="py-2.5 pr-3 text-gray-600">{paid}/{N}</td>
                           <td className="py-2.5 pr-3">
                             {holder
