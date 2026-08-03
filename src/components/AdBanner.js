@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import AdVideo from './AdVideo';
 import Link from 'next/link';
 import { HiExternalLink, HiPhone, HiChevronLeft, HiChevronRight } from 'react-icons/hi';
 
@@ -56,7 +57,7 @@ export default function AdBanner({ ad: raw, variant = 'card', big = false }) {
   const mediaBox = current ? (
     <Link href={`/business/${raw.id}${itemParam}`} className="block relative group mb-3" title="Open business profile">
       {isVideoSrc(current) ? (
-        <video src={current} muted loop playsInline autoPlay className={`w-full ${big ? 'h-48' : 'h-36'} object-cover rounded-xl bg-black`} />
+        <AdVideo src={current} className={`w-full ${big ? 'h-48' : 'h-36'} object-cover rounded-xl bg-black`} />
       ) : (
         <img src={current} alt="" className={`w-full ${big ? 'h-48' : 'h-36'} object-cover rounded-xl`} />
       )}

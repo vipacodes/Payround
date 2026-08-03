@@ -8,6 +8,7 @@ import LoadingScreen from '@/components/LoadingScreen';
 import GroupBadge from '@/components/GroupBadge';
 import { HiArrowLeft, HiBadgeCheck, HiUserGroup, HiPaperAirplane } from 'react-icons/hi';
 import toast from 'react-hot-toast';
+import { sounds } from '@/lib/sounds';
 
 // Real group chat rooms — every group gets its own in-app conversation.
 // Rooms are visible (and openable) ONLY by that group's admin and its approved members.
@@ -161,6 +162,7 @@ function GroupChatInner() {
       });
       if (error) throw error;
       setBody('');
+      sounds.send();
       nearBottom.current = true;
       setMsgs(prev => [...prev, { id: `local-${Date.now()}`, group_id: activeId, from_email: me, body: text, created_at: new Date().toISOString() }]);
       scrollToEnd();

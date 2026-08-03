@@ -16,6 +16,7 @@ import { remindRenewalIfSoon } from '@/lib/renewal';
 import { parseSpots, formatSpots, currentPeriod, cycleLength, periodLabel, periodDays, paidWeeksForSpot, isSpotCurrent, buildSpotMap, payoutForSpot, withRotationClock, payoutPerSpot, adminInterest, frequencyLabel } from '@/lib/payments';
 import { compressImage } from '@/lib/image';
 import toast from 'react-hot-toast';
+import { sounds } from '@/lib/sounds';
 
 export default function GroupDetailsPage() {
   const router = useRouter();
@@ -236,6 +237,7 @@ export default function GroupDetailsPage() {
       setPaySpots(wanted);
       setMyOffer(null);
       setMyStatus('approved');
+      sounds.success();
       toast.success(`You're in! You hold spot${wanted.length > 1 ? 's' : ''} #${wanted.join(', #')}. 🎉`);
       // 🎉 If accepting that offer took the LAST open spot, everyone hears "savings start now!"
       try {
@@ -331,6 +333,7 @@ export default function GroupDetailsPage() {
       setAgreeRules(false);
       setDeclinedOffer(null);
       setMyStatus('pending');
+      sounds.success();
       toast.success('Join request sent! The admin will review it — you will be notified. 🎉');
     } catch (e) { toast.error(`Could not send request: ${e.message || 'try again'}`); }
     setJoining(false);
@@ -402,8 +405,9 @@ export default function GroupDetailsPage() {
       } catch {}
       setPayments([row, ...payments]);
       setReceiptData(null); setReceiptName(''); setPayWeeks(1);
+      sounds.success();
       toast.success('Receipt sent! The admin will review it shortly — you will be notified.');
-    } catch (e) { toast.error(`Upload failed: ${e.message || 'try again'}`); }
+    } catch (e) { sounds.error(); toast.error(`Upload failed: ${e.message || 'try again'}`); }
     setUploading(false);
   };
 

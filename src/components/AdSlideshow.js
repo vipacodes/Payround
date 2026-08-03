@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
+import AdVideo from './AdVideo';
 import Link from 'next/link';
 import { HiChevronLeft, HiChevronRight } from 'react-icons/hi';
 import { parseAdMedia, isVideoSrc } from './AdBanner';
@@ -127,7 +128,7 @@ function AdSlot({ items, slotKey, startOffset = 0, ratio }) {
       <Link href={href} className="absolute inset-0 block" title={`Open ${name}`}>
         {cur.video ? (
           <div key={`${cur.ad.id}-${cur.idx}`} className="ad-slide-media absolute inset-0 flex items-center justify-center bg-black">
-            <video src={cur.src} muted autoPlay playsInline loop className="w-full h-full object-contain" />
+            <AdVideo src={cur.src} className="w-full h-full object-contain" />
           </div>
         ) : (
           <div key={`${cur.ad.id}-${cur.idx}`} className="ad-slide-media absolute inset-0">

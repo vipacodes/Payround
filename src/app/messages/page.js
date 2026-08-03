@@ -7,6 +7,7 @@ import Footer from '@/components/Footer';
 import LoadingScreen from '@/components/LoadingScreen';
 import { HiArrowLeft, HiBadgeCheck, HiChatAlt2, HiPaperAirplane } from 'react-icons/hi';
 import toast from 'react-hot-toast';
+import { sounds } from '@/lib/sounds';
 
 // Real direct messages between users — business owners, group admins, everyone
 function MessagesInner() {
@@ -113,6 +114,7 @@ function MessagesInner() {
       });
       if (error) throw error;
       setBody('');
+      sounds.send();
       nearBottom.current = true;
       setMsgs(prev => [...prev, { id: `local-${Date.now()}`, from_email: me, to_email: active, body: text, created_at: new Date().toISOString(), read: false }]);
       scrollToEnd();

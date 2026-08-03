@@ -11,6 +11,7 @@ import {
   HiCheck, HiPhotograph, HiCurrencyDollar, HiRefresh
 } from 'react-icons/hi';
 import toast from 'react-hot-toast';
+import { sounds } from '@/lib/sounds';
 import {
   parseSpots, currentPeriod, cycleLength, periodLabel, withRotationClock,
   paidWeeksForSpot, isSpotCurrent, buildSpotMap, payoutForSpot, payoutPerSpot, adminInterest, frequencyLabel
@@ -80,6 +81,7 @@ export default function AdminPaymentsPage() {
         user_email: p.user_email, type: 'payment_approved',
         message: `✅ Your payment of ₦${Number(p.amount || 0).toLocaleString()} in "${group.name}" was approved — spot${parseSpots(p.spots).length > 1 ? 's' : ''} #${parseSpots(p.spots).join(', #')} marked paid for ${p.weeks} ${periodLabel(group.frequency, group.frequency_days)}${p.weeks > 1 ? 's' : ''}. 🎉`,
       });
+      sounds.success();
       toast.success(`${p.member_name || p.user_email} marked paid (spot(s) ${p.spots}, ${p.weeks} week(s)).`);
       await loadAll();
     } catch (e) { toast.error('Could not approve payment.'); }
@@ -129,6 +131,7 @@ export default function AdminPaymentsPage() {
           message: `💰 Your payout for spot #${spot} in "${group.name}" (₦${potAmount.toLocaleString()}) is marked COLLECTED — it now shows on the group board for all members. 🎉`,
         });
       }
+      sounds.cash();
       toast.success(`Spot #${spot} payout marked collected — visible to all members.`);
       await loadAll();
     } catch (e) { toast.error('Could not mark payout.'); }

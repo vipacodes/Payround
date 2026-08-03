@@ -33,6 +33,18 @@ export default function SettingsPage() {
   const router = useRouter();
   const [user, setUser] = useState(null);
   const [theme, setTheme] = useState('light');
+  const [soundsOn, setSoundsOn] = useState(true);
+  useEffect(() => { (async () => { try { const m = await import('@/lib/sounds'); setSoundsOn(m.soundsEnabled()); } catch {} })(); }, []);
+  const toggleSounds = async () => {
+    try {
+      const m = await import('@/lib/sounds');
+      const next = !soundsOn;
+      m.setSoundsEnabled(next);
+      setSoundsOn(next);
+      if (next) m.sounds.ding(); // little preview so you hear what you turned on
+      toast(next ? '🔊 Sounds on — messages, payments and alerts will chime softly.' : '🔇 Sounds off — the app stays silent.');
+    } catch {}
+  };
   const [showDelete, setShowDelete] = useState(false);
   const [password, setPassword] = useState('');
   const [showPw, setShowPw] = useState(false);
@@ -244,6 +256,20 @@ export default function SettingsPage() {
             desc="View your latest notifications"
             right={<HiChevronRight className="w-4 h-4 text-gray-400" />}
             onClick={() => router.push('/notifications')}
+          />
+          <SettingRow
+            icon={<span className="text-lg leading-none">{soundsOn ? '🔊' : '🔇'}</span>}
+            title="App Sounds"
+            desc={soundsOn ? 'On — soft chimes for messages, payments & alerts' : 'Off — the app stays silent'}
+            right={
+              <button
+                role="switch" aria-checked={soundsOn}
+                onClick={toggleSounds}
+                className={`relative w-11 h-6 rounded-full transition-colors ${soundsOn ? 'bg-primary-600' : 'bg-gray-200'}`}
+              >
+                <span className={`absolute top-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${soundsOn ? 'left-[22px]' : 'left-0.5'}`} />
+              </button>
+            }
           />
         </div>
 

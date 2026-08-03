@@ -37,6 +37,7 @@ export default function BroadcastAlert() {
   // Auto-hide after ~10 seconds with a small countdown bar
   useEffect(() => {
     if (!visible) return;
+    (async () => { try { const m = await import('@/lib/sounds'); m.sounds.ding(); } catch {} })();
     const DURATION = 10000;
     const started = Date.now();
     const tick = setInterval(() => {

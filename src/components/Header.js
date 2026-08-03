@@ -1,10 +1,11 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import { HiMenu, HiX, HiSearch, HiBell, HiHome, HiUserGroup, HiCurrencyDollar, HiUser, HiLogout, HiChartBar, HiCog, HiChatAlt2, HiCalculator } from 'react-icons/hi';
 import QuickCalc from '@/components/QuickCalc';
 import { logoutUser } from '@/lib/data';
+import { sounds } from '@/lib/sounds';
 import toast from 'react-hot-toast';
 
 export default function Header() {
@@ -114,6 +115,18 @@ export default function Header() {
         else if ('clearAppBadge' in navigator) navigator.clearAppBadge().catch(() => {});
       }
     } catch {}
+  }, [unreadCount, unreadMsgs, gchatUnread]);
+
+  // 🔊 Gentle sounds when something NEW lands while the app is open
+  // (pop = message, ding = notification — first count is silent so pages never chirp on load)
+  const prevCounts = useRef({ n: null, m: null, g: null });
+  useEffect(() => {
+    const prev = prevCounts.current;
+    if (prev.n !== null) {
+      if ((unreadMsgs || 0) > prev.m || (gchatUnread || 0) > prev.g) sounds.pop();
+      else if ((unreadCount || 0) > prev.n) sounds.ding();
+    }
+    prevCounts.current = { n: unreadCount || 0, m: unreadMsgs || 0, g: gchatUnread || 0 };
   }, [unreadCount, unreadMsgs, gchatUnread]);
 
   // Restore saved light/dark theme on every page load
