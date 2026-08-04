@@ -19,18 +19,82 @@ const AI_PATTERNS = [
   { keys: ['thrift', 'shoes'], topic: 'quality thrift finds' },
 ];
 
-function aiDescriptions(name, mediaCount, hasVideo) {
+// 👁 Truly read the uploaded media first: orientation of each image, and how bright/colourful
+// the set looks (tiny 24px canvas sample) — the AI then writes copy that matches the actual visuals
+function analyzeMedia(files) {
+  const out = { count: files.length, videos: 0, portraits: 0, landscapes: 0, squares: 0, bright: 0, dark: 0, colorful: 0, images: 0 };
+  return Promise.all(files.map(m => new Promise(res => {
+    if (m.startsWith('data:video')) { out.videos++; return res(); }
+    out.images++;
+    const img = new Image();
+    img.onload = () => {
+      const w = img.naturalWidth || 1, h = img.naturalHeight || 1;
+      if (h > w * 1.15) out.portraits++; else if (w > h * 1.15) out.landscapes++; else out.squares++;
+      try {
+        const c = document.createElement('canvas'); c.width = c.height = 24;
+        const ctx = c.getContext('2d'); ctx.drawImage(img, 0, 0, 24, 24);
+        const d = ctx.getImageData(0, 0, 24, 24).data;
+        let lum = 0, sat = 0;
+        for (let i = 0; i < d.length; i += 4) {
+          lum += 0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2];
+          const mx = Math.max(d[i], d[i + 1], d[i + 2]), mn = Math.min(d[i], d[i + 1], d[i + 2]);
+          sat += mx - mn;
+        }
+        lum /= (d.length / 4); sat /= (d.length / 4);
+        if (lum >= 140) out.bright++; else if (lum < 95) out.dark++;
+        if (sat >= 55) out.colorful++;
+      } catch {}
+      res();
+    };
+    img.onerror = () => res();
+    img.src = m;
+  }))).then(() => out);
+}
+
+function visualStory(a) {
+  if (!a || !a.count) return '';
+  const shapes = [];
+  if (a.portraits) shapes.push(`${a.portraits} portrait (tall) shot${a.portraits > 1 ? 's' : ''}`);
+  if (a.landscapes) shapes.push(`${a.landscapes} wide shot${a.landscapes > 1 ? 's' : ''}`);
+  if (a.squares) shapes.push(`${a.squares} square shot${a.squares > 1 ? 's' : ''}`);
+  if (a.videos) shapes.push(`${a.videos} short video${a.videos > 1 ? 's' : ''}`);
+  const mood = a.dark >= Math.max(1, Math.floor(a.images / 2))
+    ? 'clean, classy shots'
+    : a.colorful >= Math.max(1, Math.floor(a.images / 2))
+      ? 'bright, colourful photos'
+      : 'clear, well-lit photos';
+  return `Swipe through ${a.count} real ${mood}${shapes.length ? ' — ' + shapes.join(' + ') : ''} — what you see is exactly what arrives.`;
+}
+
+function aiDescriptions(name, a) {
   const n = (name || 'My Business').trim();
   const lower = n.toLowerCase();
   const hit = AI_PATTERNS.find(p => p.keys.some(k => lower.includes(k)));
   const topic = hit ? hit.topic : 'quality products & trusted service';
-  const proof = mediaCount > 0
-    ? ` You can see ${mediaCount === 1 ? 'a real sample' : `${mediaCount} real samples`} in the photos${hasVideo ? ' and video' : ''} attached — what you see is exactly what you get.`
-    : '';
+  const proof = visualStory(a);
+  const hashtag = '#' + n.replace(/[^a-z0-9]/gi, '').slice(0, 18) + ' #Payround #NaijaBusiness';
   return [
-    `🔥 ${n} — ${topic} you can trust!${proof}\n💯 Great quality at prices that respect your pocket.\n🚚 Fast response & quick delivery — order today!\n📲 Chat us on WhatsApp now to place your order.`,
-    `Looking for ${topic}? ${n} has you covered! ✨${proof}\n✔ Affordable prices\n✔ Honest service\n✔ Quick delivery anywhere\nSend us a message on WhatsApp — we reply fast! 💬`,
-    `Welcome to ${n}! 🎉 Your home of ${topic}.${proof}\nJoin our happy customers today — quality guaranteed, prices you'll love, and service with a smile. 😊\n👉 Tap the WhatsApp button to order now!`,
+    `🚨 ${n} is LIVE!
+${topic.charAt(0).toUpperCase() + topic.slice(1)} that people keep coming back for — and now it's one tap away.
+${proof ? '📸 ' + proof + '\n' : ''}✔ Honest prices\n✔ Fast responses\n✔ Quick delivery
+👉 Send us a WhatsApp message NOW to order — first come, first served!
+${hashtag}`,
+    `Why do customers love ${n}? Simple — ${topic}, done RIGHT. 💯
+${proof ? proof + '\n' : ''}No stories, no stress: pick what you want, chat us, get it fast. That's it.
+🎁 New customers get a warm welcome — try us this week!
+👉 WhatsApp us now — we reply in minutes.
+${hashtag}`,
+    `Looking for ${topic} you can actually trust? Stop scrolling. 😌
+${n} delivers the goods — literally.
+${proof ? '📸 ' + proof + '\n' : ''}💬 One message on WhatsApp and your order is moving.
+✔ Quality guaranteed\n✔ Prices that respect your pocket\n✔ Speed you'll love
+👉 Tap to chat with us on WhatsApp now!
+${hashtag}`,
+    `✨ ${n} — for people who don't settle for less.
+We've got the ${topic} everyone is talking about, served with a smile.
+${proof ? proof + '\n' : ''}Don't wait for "later" — stock moves FAST. 🏃🏽‍♂️💨
+👉 Message us on WhatsApp today and thank yourself tomorrow.
+${hashtag}`,
   ];
 }
 
@@ -39,7 +103,9 @@ export default function AdsPage() {
   const [submitted, setSubmitted] = useState(false);
   const [formData, setFormData] = useState({ businessName: '', description: '', contact: '', whatsapp: '', website: '' });
   const [mediaFiles, setMediaFiles] = useState([]);
+  const [mediaAlts, setMediaAlts] = useState([]);   // optional alt text per photo/video (advertiser's words)
   const [mediaError, setMediaError] = useState('');
+  const [editId, setEditId] = useState('');         // set while fixing a declined ad (UPDATE instead of INSERT)
   const [planDays, setPlanDays] = useState(7);
   const [receipt, setReceipt] = useState('');
   const [receiptError, setReceiptError] = useState('');
@@ -106,17 +172,23 @@ export default function AdsPage() {
         }
       } catch { setMediaError('One file could not be read — try another.'); }
     }
-    setMediaFiles(prev => [...prev, ...list].slice(0, MAX_MEDIA));
+    setMediaFiles(prev => {
+      const merged = [...prev, ...list].slice(0, MAX_MEDIA);
+      setMediaAlts(aPrev => [...aPrev, ...list.map(() => '')].slice(0, merged.length));
+      return merged;
+    });
   };
 
-  const useAiDescription = (regen) => {
+  const useAiDescription = async (regen) => {
     if (!formData.businessName.trim()) { toast.error('Type your business name first — the AI writes from it.'); return; }
-    const variants = aiDescriptions(formData.businessName, mediaFiles.length, mediaFiles.some(m => m.startsWith('data:video')));
+    const t = toast.loading('✨ Studying your photos & videos…');
+    const analysis = await analyzeMedia(mediaFiles);
+    const variants = aiDescriptions(formData.businessName, analysis);
     const next = regen ? (aiIdx + 1) % variants.length : aiIdx % variants.length;
     setAiIdx(next);
     setFormData(prev => ({ ...prev, description: variants[next] }));
     setAiUsed(true);
-    toast.success(regen ? '✨ New version written — edit it freely!' : '✨ Description written — edit anything you like!');
+    toast.success(regen ? '✨ Fresh version written from your media — edit freely!' : '✨ Written from your photos/videos — edit anything you like!', { id: t });
   };
 
   const pickReceipt = async (file) => {
@@ -161,7 +233,7 @@ export default function AdsPage() {
     try {
       const { supabase } = await import('@/lib/supabase');
       const cover = mediaFiles[0];
-      const { error } = await supabase.from('ads').insert({
+      const payload = {
         id: `ad-${Date.now()}`,
         business_name: formData.businessName.trim(),
         description: formData.description.trim(),
@@ -172,6 +244,7 @@ export default function AdsPage() {
         media_urls: JSON.stringify(mediaFiles),
         media_url: cover,
         media_type: cover.startsWith('data:video') ? 'video' : 'image',
+        media_alts: mediaAlts.some(a => (a || '').trim()) ? JSON.stringify(mediaAlts.map(a => (a || '').trim())) : null,
         duration_days: plan.days,
         price: plan.price,
         payment_receipt_url: receipt || null,
@@ -179,14 +252,26 @@ export default function AdsPage() {
         submitter_email: myEmail || 'visitor',
         status: 'pending',
         submitted_at: new Date().toISOString(),
-      });
+      };
+      let error;
+      if (editId) {
+        // fixing a declined ad — UPDATE the same row (keeps its original created date) and clear the rejection
+        const { submitted_at, ...rest } = payload;
+        ({ error } = await supabase.from('ads').update({ ...rest, reject_reason: null }).eq('id', editId));
+      } else {
+        ({ error } = await supabase.from('ads').insert(payload));
+      }
       if (error) throw error;
-      toast.success(receipt ? 'Ad + receipt submitted! PayRound will confirm your payment and set it LIVE. 🎉' : 'Ad saved! 💾 Pay and upload your receipt anytime from My Ads below.');
+      toast.success(editId
+        ? 'Updated ad sent for review again! 🎉 The reason it was declined is cleared.'
+        : receipt ? 'Ad + receipt submitted! PayRound will confirm your payment and set it LIVE. 🎉' : 'Ad saved! 💾 Pay and upload your receipt anytime from My Ads below.');
       setSubmitted(true);
       setFormData({ businessName: '', description: '', contact: '', whatsapp: '', website: '' });
       setMediaFiles([]);
       setReceipt('');
       setAiUsed(false); setAiIdx(0);
+      setMediaAlts([]);
+      setEditId('');
       loadMyAds(myEmail);
       setTimeout(() => { setShowForm(false); setSubmitted(false); }, 2500);
     } catch (err) {
@@ -208,6 +293,29 @@ export default function AdsPage() {
       toast.success('Receipt uploaded! PayRound will review and set your ad LIVE. 🎉', { id: t });
       loadMyAds(myEmail);
     } catch (err) { toast.error(`Upload failed: ${err.message || 'try again'}`, { id: t }); }
+  };
+
+  // ✏️ Fix a declined ad — load it back into the form; submitting UPDATEs the same row
+  const startEdit = (ad) => {
+    let media = [], alts = [];
+    try { const m = JSON.parse(ad.media_urls || '[]'); if (Array.isArray(m)) media = m; } catch {}
+    try { const a = JSON.parse(ad.media_alts || '[]'); if (Array.isArray(a)) alts = a; } catch {}
+    setFormData({
+      businessName: ad.business_name || '',
+      description: ad.description || '',
+      contact: ad.phone || ad.contact || '',
+      whatsapp: ad.whatsapp || '',
+      website: ad.website || '',
+    });
+    setMediaFiles(media);
+    setMediaAlts(media.map((_, i) => alts[i] || ''));
+    setPlanDays(ad.duration_days || 7);
+    setReceipt(ad.payment_receipt_url || '');
+    setEditId(ad.id);
+    setSubmitted(false);
+    setShowForm(true);
+    toast('Ad loaded into the form ✏️ — fix what PayRound flagged and resubmit below.');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   const deleteAd = async (ad) => {
@@ -291,6 +399,13 @@ export default function AdsPage() {
                         )}
                       </div>
                     </div>
+                    {statusOf(ad) === 'declined' && (
+                      <div className="mt-3 bg-red-50 border border-red-200 rounded-xl p-3">
+                        <p className="text-[11px] font-bold text-red-700 mb-0.5">❌ Why PayRound declined this ad:</p>
+                        <p className="text-xs text-red-800">{ad.reject_reason || 'No reason was given — please re-check the ad rules and resubmit.'}</p>
+                        <button onClick={() => startEdit(ad)} className="mt-2 text-[11px] font-bold text-white bg-primary-600 px-4 py-1.5 rounded-full hover:bg-primary-700 transition-colors">✏️ Edit & Resubmit</button>
+                      </div>
+                    )}
                     <div className="flex gap-2 mt-3 flex-wrap">
                       {ad.payment_receipt_url ? (
                         <button onClick={() => setViewImg(ad.payment_receipt_url)} className="text-[11px] font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 px-3 py-1.5 rounded-full">🧾 View receipt</button>
@@ -345,7 +460,9 @@ export default function AdsPage() {
         {showForm && (
           <div className="max-w-lg mx-auto">
             <div className="bg-white rounded-2xl border border-gray-100 p-6 md:p-8 shadow-sm">
-              <h3 className="text-lg font-semibold text-gray-900 mb-4">Advertise Your Business</h3>
+              <h3 className="text-lg font-semibold text-gray-900 mb-1">Advertise Your Business</h3>
+              {editId && <p className="text-[11px] font-semibold text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-2 py-1 mb-3">✏️ Editing your declined ad — submitting replaces it and sends it back for review (created date stays).</p>}
+              {!editId && <div className="mb-3" />}
 
               {submitted ? (
                 <div className="text-center py-6">
@@ -382,11 +499,20 @@ export default function AdsPage() {
                     {mediaFiles.length > 0 && (
                       <div className="flex gap-2 mt-2 flex-wrap">
                         {mediaFiles.map((m, i) => (
-                          <div key={i} className="relative w-16 h-16">
+                          <div key={i} className="relative w-24">
                             {m.startsWith('data:video')
-                              ? <video src={m} muted playsInline className="w-16 h-16 rounded-lg object-cover border bg-black" />
-                              : <img src={m} alt="" className="w-16 h-16 rounded-lg object-cover border" />}
-                            <button type="button" onClick={() => setMediaFiles(prev => prev.filter((_, x) => x !== i))} className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-red-500 text-white rounded-full text-[10px] shadow">✕</button>
+                              ? <video src={m} muted playsInline className="w-24 h-16 rounded-lg object-cover border bg-black" />
+                              : <img src={m} alt={mediaAlts[i] || `media ${i + 1}`} className="w-24 h-16 rounded-lg object-cover border" />}
+                            <button type="button" onClick={() => { setMediaFiles(prev => prev.filter((_, x) => x !== i)); setMediaAlts(prev => prev.filter((_, x) => x !== i)); }} className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-red-500 text-white rounded-full text-[10px] shadow z-10">✕</button>
+                            <input
+                              type="text"
+                              value={mediaAlts[i] || ''}
+                              onChange={e => setMediaAlts(prev => { const n = [...prev]; n[i] = e.target.value; return n; })}
+                              placeholder="Alt text (optional)"
+                              maxLength={70}
+                              title="Describe this photo/video — optional, e.g. 'Ankara gown, size 12'. Shown if the picture can't load and used as the image label."
+                              className="mt-1 w-24 px-1.5 py-1 border border-gray-200 rounded-lg text-[9px] text-gray-600 focus:outline-none focus:ring-1 focus:ring-primary-400"
+                            />
                           </div>
                         ))}
                       </div>

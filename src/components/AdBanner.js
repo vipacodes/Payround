@@ -14,6 +14,14 @@ export function parseAdMedia(raw) {
     return arr.map(x => (typeof x === 'string' ? x : x?.src)).filter(Boolean);
   } catch { return []; }
 }
+// Optional per-media alt text provided by the advertiser (index-aligned with media_urls)
+export function parseAdAlts(raw) {
+  try {
+    const arr = JSON.parse(raw || '[]');
+    if (!Array.isArray(arr)) return [];
+    return arr.map(x => String(x || ''));
+  } catch { return []; }
+}
 // Full items with optional name + price attached (business profile shop items)
 export function parseAdItems(raw) {
   try {
@@ -59,7 +67,7 @@ export default function AdBanner({ ad: raw, variant = 'card', big = false }) {
       {isVideoSrc(current) ? (
         <AdVideo src={current} className={`w-full ${big ? 'h-48' : 'h-36'} object-cover rounded-xl bg-black`} />
       ) : (
-        <img src={current} alt="" className={`w-full ${big ? 'h-48' : 'h-36'} object-cover rounded-xl`} />
+        <img src={current} alt={parseAdAlts(raw?.media_alts)[idx] || `${ad.businessName} photo ${idx + 1}`} className={`w-full ${big ? 'h-48' : 'h-36'} object-cover rounded-xl`} />
       )}
       <span className="absolute inset-0 rounded-xl bg-black/0 group-hover:bg-black/15 transition-all"></span>
       {media.length > 1 && (

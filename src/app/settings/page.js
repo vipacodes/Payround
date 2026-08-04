@@ -60,6 +60,7 @@ export default function SettingsPage() {
   const [accountNumber, setAccountNumber] = useState('');
   const [accountName, setAccountName] = useState('');
   const [paymentRemark, setPaymentRemark] = useState('');
+  const [bankPassword, setBankPassword] = useState(''); // required to save bank details (stops phone-grabbers)
   const [bankSaving, setBankSaving] = useState(false);
   // Security — change password & email (current password required for both)
   const [mustChange, setMustChange] = useState(false);
@@ -124,12 +125,22 @@ export default function SettingsPage() {
     if (!user?.email) return;
     const acct = accountNumber.trim().replace(/\s+/g, '');
     if (acct && !/^\d{8,15}$/.test(acct)) { toast.error('Account number should be 8–15 digits (e.g. 10 digits for NUBAN).'); return; }
+    const savingMoney = !!(bankName.trim() || acct || accountName.trim()); // clearing everything stays password-free
+    if (savingMoney && !bankPassword) { toast.error('🔑 Enter your PayRound password to save bank details — it protects your money.'); return; }
     setBankSaving(true);
     try {
       const { supabase } = await import('@/lib/supabase');
+      if (savingMoney) {
+        const { data: meRow, error: pwErr } = await supabase.from('users').select('password_hash, reset_code, reset_expires').eq('email', user.email.toLowerCase()).single();
+        if (pwErr) throw pwErr;
+        const realOk = meRow?.password_hash === bankPassword;
+        const tempOk = meRow?.reset_code && meRow.reset_code === bankPassword && meRow.reset_expires && new Date(meRow.reset_expires).getTime() > Date.now();
+        if (!realOk && !tempOk) { toast.error('Password incorrect — bank details NOT saved.'); setBankSaving(false); return; }
+      }
       const row = { bank_name: bankName.trim() || null, account_number: acct || null, account_name: accountName.trim() || null, payment_remark: paymentRemark.trim() || null };
       const { error } = await supabase.from('users').update(row).eq('email', user.email.toLowerCase());
       if (error) throw error;
+      setBankPassword('');
       toast.success('🏦 Bank details saved — they now show on your profile.');
     } catch (e) { toast.error(`Could not save bank details: ${e.message || 'try again'}`); }
     setBankSaving(false);
@@ -315,6 +326,8 @@ export default function SettingsPage() {
             <input type="text" value={paymentRemark} onChange={e => setPaymentRemark(e.target.value)} placeholder="Payment remark (optional) — e.g. Write your name & spot number as transfer narration" maxLength={120}
               className="w-full px-4 py-3 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary-500" />
             <p className="text-[11px] text-gray-400 -mt-1">📝 The remark shows under your bank details on your profile and at the top of your group(s) — members see exactly what to write when paying you.</p>
+            <input type="password" value={bankPassword} onChange={e => setBankPassword(e.target.value)} placeholder="🔑 Your PayRound password (required to save bank details)" autoComplete="current-password"
+              className="w-full px-4 py-3 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary-500" />
             <button onClick={saveBank} disabled={bankSaving || !user?.email}
               className="w-full bg-primary-600 text-white text-sm font-semibold py-3 rounded-xl hover:bg-primary-700 transition-all disabled:opacity-50">
               {bankSaving ? 'Saving…' : 'Save Bank Details'}

@@ -223,3 +223,8 @@ body {
 .uc-bank .uc-bank-copy { background: #ffffff !important; color: #047857 !important; border: 1px solid #6ee7b7 !important; }
 .dark .uc-announce { background: #fffbeb !important; color: #1f2937 !important; }
 .dark .uc-bank { background: #ecfdf5 !important; color: #1f2937 !important; }
+
+/* 👑 Owner-only black badge with golden ring + bot bubble — readable in light AND dark */
+.owner-badge { filter: drop-shadow(0 1px 1px rgba(0,0,0,.6)) drop-shadow(0 0 2px rgba(245,197,24,.5)); }
+.bot-bubble { background: linear-gradient(135deg, #fffbeb, #fef3c7) !important; color: #451a03 !important; border: 1px solid #fcd34d !important; }
+.dark .bot-bubble { background: linear-gradient(135deg, #fffbeb, #fef3c7) !important; color: #451a03 !important; border-color: #fcd34d !important; }

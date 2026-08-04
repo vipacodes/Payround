@@ -11,6 +11,15 @@ const VIDEO_MS = 10000; // video ads play max 10 seconds
 const KEY = 'payround_slot_'; // per-slot cursor, remembered across visits
 
 // Measure every media item's real shape: portrait goes to the 2 portrait slots, landscape to the landscape slot
+// alt text: advertiser's own words for that photo when provided, else the business name
+function altOf(ad, idx, fallback) {
+  try {
+    const arr = JSON.parse(ad?.media_alts || '[]');
+    if (Array.isArray(arr) && arr[idx]) return arr[idx];
+  } catch {}
+  return fallback || 'Sponsored photo';
+}
+
 function useMediaFeed(ads) {
   const [feed, setFeed] = useState(null); // null = still measuring
   useEffect(() => {
@@ -139,7 +148,7 @@ function AdSlot({ items, slotKey, startOffset = 0, ratio }) {
         ) : (
           <div key={`${cur.ad.id}-${cur.idx}`} className="ad-slide-media absolute inset-0">
             <div aria-hidden="true" className="absolute inset-0 scale-125 blur-2xl opacity-60 bg-center bg-cover" style={{ backgroundImage: `url("${cur.src}")` }} />
-            <img src={cur.src} alt={name} className="relative w-full h-full object-contain" />
+            <img src={cur.src} alt={altOf(cur.ad, cur.idx, name)} className="relative w-full h-full object-contain" />
           </div>
         )}
       </Link>
