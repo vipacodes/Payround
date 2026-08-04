@@ -204,3 +204,22 @@ body {
     drop-shadow(0 -1px 1px rgba(0, 0, 0, 0.35))
     drop-shadow(0 2px 3px rgba(0, 0, 0, 0.22));
 }
+
+/* 📢 Announcement box & 🏦 Admin bank card — FORCED bright in both light and dark mode
+   (same trick as the broadcast popup, so dark mode can never dim or hide them) */
+.uc-announce { background: #fffbeb !important; border: 2px solid #f59e0b !important; color: #1f2937 !important; }
+.uc-announce .uc-ann-title { color: #92400e !important; }
+.uc-announce .uc-ann-body { color: #451a03 !important; }
+.uc-announce .uc-ann-empty { color: #78716c !important; }
+.uc-announce .uc-ann-input { background: #ffffff !important; color: #111827 !important; border: 1px solid #fcd34d !important; }
+.uc-announce .uc-ann-edit { background: #ffffff !important; color: #b45309 !important; border: 1px solid #fcd34d !important; }
+.uc-announce .uc-ann-clear { background: #ffffff !important; color: #dc2626 !important; border: 1px solid #fca5a5 !important; }
+.uc-announce .uc-ann-cancel { background: #ffffff !important; color: #4b5563 !important; border: 1px solid #e5e7eb !important; }
+.uc-announce .uc-ann-post { background: #f59e0b !important; color: #ffffff !important; }
+.uc-bank { background: #ecfdf5 !important; color: #1f2937 !important; border-bottom: 1px solid #a7f3d0 !important; }
+.uc-bank .uc-bank-title { color: #047857 !important; }
+.uc-bank .uc-bank-label { color: #4b5563 !important; }
+.uc-bank .uc-bank-val { color: #111827 !important; }
+.uc-bank .uc-bank-copy { background: #ffffff !important; color: #047857 !important; border: 1px solid #6ee7b7 !important; }
+.dark .uc-announce { background: #fffbeb !important; color: #1f2937 !important; }
+.dark .uc-bank { background: #ecfdf5 !important; color: #1f2937 !important; }

@@ -15,7 +15,7 @@ function LoginForm() {
   // After login, send the user back to where they were headed (e.g. joining a group)
   const redirect = searchParams.get('redirect') || '/dashboard';
   const [showPassword, setShowPassword] = useState(false);
-  const [formData, setFormData] = useState({ email: '', password: '' });
+  const [formData, setFormData] = useState({ email: searchParams.get('email') || '', password: '' });
   const [errors, setErrors] = useState({});
   const [loading, setLoading] = useState(false);
 
@@ -43,6 +43,25 @@ function LoginForm() {
       const { supabase } = await import('@/lib/supabase');
       const { data: users, error } = await supabase.from('users').select('*').eq('email', formData.email.trim().toLowerCase()).single();
       if (users && !error) {
+        // ⏳ Temporary password from "Forgot password" — valid for 20 minutes, then must be changed
+        const tempOk = users.reset_code && users.reset_code === formData.password
+          && users.reset_expires && new Date(users.reset_expires).getTime() > Date.now();
+        if (tempOk) {
+          localStorage.setItem('payround_user', JSON.stringify({
+            id: users.id, name: users.name, email: users.email, phone: users.phone,
+            role: users.role || 'member', faceVerified: true,
+          }));
+          localStorage.setItem('payround_must_change_pw', '1');
+          toast('Logged in with your temporary password — set your NEW password now. ⏳', { icon: '🔑' });
+          router.push('/settings?mustChange=1');
+          setLoading(false);
+          return;
+        }
+        if (users.reset_code === formData.password && users.reset_expires && new Date(users.reset_expires).getTime() <= Date.now()) {
+          toast.error('That temporary password has expired (20 min limit) — tap "Forgot password?" for a new one.');
+          setLoading(false);
+          return;
+        }
         if (users.password_hash === formData.password) {
           localStorage.setItem('payround_user', JSON.stringify({
             id: users.id,

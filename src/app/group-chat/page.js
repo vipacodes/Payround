@@ -284,20 +284,56 @@ function GroupChatInner() {
               </div>
             </div>
 
-            {/* 🏦 Admin bank card — ALWAYS open so members can see where to pay without tapping anything */}
-            {hasBank && (
-              <div className="px-4 py-3 border-b border-emerald-100 bg-emerald-50/70">
-                <p className="text-[10px] font-bold text-emerald-800 mb-1">🏦 ADMIN BANK — send contributions here</p>
-                <div className="text-xs text-gray-900 space-y-0.5">
-                  {adminBank.bank_name && <p><span className="text-gray-500">Bank:</span> <b>{adminBank.bank_name}</b></p>}
+            {/* 📢 ANNOUNCEMENT BOX — pinned at the very TOP of the chat, bright in light AND dark mode;
+                admin posts/edits/clears, members read-only. Stays until the admin clears it. */}
+            {!denied && (isRoomAdmin || g?.announcement) && (
+              <div className="px-4 pt-3 pb-1">
+                <div className="rounded-xl p-3 uc-announce">
+                  <div className="flex items-center justify-between gap-2 mb-1">
+                    <p className="text-[10px] font-bold tracking-wide uc-ann-title">📢 ANNOUNCEMENT BOX</p>
+                    {isRoomAdmin && !annEdit && g?.announcement && (
+                      <span className="flex gap-1.5">
+                        <button onClick={() => { setAnnDraft(g.announcement || ''); setAnnEdit(true); }} className="text-[10px] font-bold px-2 py-0.5 rounded-full uc-ann-edit">✏️ Edit</button>
+                        <button onClick={clearAnnouncement} disabled={annBusy} className="text-[10px] font-bold px-2 py-0.5 rounded-full uc-ann-clear disabled:opacity-50">🗑 Clear</button>
+                      </span>
+                    )}
+                  </div>
+                  {isRoomAdmin && (annEdit || !g?.announcement) ? (
+                    <div>
+                      <textarea
+                        value={annDraft}
+                        onChange={e => setAnnDraft(e.target.value)}
+                        rows={2}
+                        maxLength={500}
+                        placeholder="Type an announcement here — every member sees it pinned at the TOP of this chat until YOU clear it…"
+                        className="w-full px-3 py-2 rounded-lg text-sm focus:outline-none uc-ann-input"
+                      />
+                      <div className="flex gap-2 mt-2">
+                        <button onClick={saveAnnouncement} disabled={annBusy || !annDraft.trim()} className="text-xs font-bold px-4 py-2 rounded-lg uc-ann-post disabled:opacity-50">{annBusy ? 'Posting…' : '📢 Post announcement'}</button>
+                        {annEdit && <button onClick={() => { setAnnEdit(false); setAnnDraft(''); }} className="text-xs px-4 py-2 rounded-lg uc-ann-cancel">Cancel</button>}
+                      </div>
+                    </div>
+                  ) : g?.announcement ? (
+                    <p className="text-sm whitespace-pre-line uc-ann-body">{g.announcement}</p>
+                  ) : null}
+                </div>
+              </div>
+            )}
+
+            {/* 🏦 Admin bank card — ALWAYS open (below the announcement), forced-bright in dark mode too */}
+            {!denied && hasBank && (
+              <div className="px-4 py-3 uc-bank">
+                <p className="text-[10px] font-bold mb-1 uc-bank-title">🏦 ADMIN BANK — send contributions here</p>
+                <div className="text-xs space-y-0.5">
+                  {adminBank.bank_name && <p><span className="uc-bank-label">Bank:</span> <b className="uc-bank-val">{adminBank.bank_name}</b></p>}
                   {adminBank.account_number && (
                     <p className="flex items-center gap-2 flex-wrap">
-                      <span className="text-gray-500">Account No:</span> <b className="font-mono text-sm tracking-wide">{adminBank.account_number}</b>
-                      <button onClick={() => { try { navigator.clipboard.writeText(adminBank.account_number); toast.success('Account number copied!'); } catch {} }} className="text-[10px] font-semibold text-emerald-700 border border-emerald-200 bg-white px-2 py-0.5 rounded-full">Copy</button>
+                      <span className="uc-bank-label">Account No:</span> <b className="uc-bank-val font-mono text-sm tracking-wide">{adminBank.account_number}</b>
+                      <button onClick={() => { try { navigator.clipboard.writeText(adminBank.account_number); toast.success('Account number copied!'); } catch {} }} className="text-[10px] font-semibold px-2 py-0.5 rounded-full uc-bank-copy">Copy</button>
                     </p>
                   )}
-                  {adminBank.account_name && <p><span className="text-gray-500">Name:</span> <b>{adminBank.account_name}</b></p>}
-                  {adminBank.payment_remark && <p><span className="text-gray-500">📝 Remark:</span> <b>{adminBank.payment_remark}</b></p>}
+                  {adminBank.account_name && <p><span className="uc-bank-label">Name:</span> <b className="uc-bank-val">{adminBank.account_name}</b></p>}
+                  {adminBank.payment_remark && <p><span className="uc-bank-label">📝 Remark:</span> <b className="uc-bank-val">{adminBank.payment_remark}</b></p>}
                 </div>
               </div>
             )}
@@ -370,41 +406,6 @@ function GroupChatInner() {
                       </div>
                     );
                   })}
-                </div>
-
-                {/* 📢 ANNOUNCEMENT BOX — the admin's pinned note for every member; stays until they clear it */}
-                <div className="px-4 pt-3 border-t border-gray-100">
-                  <div className={`rounded-xl p-3 ${g?.announcement ? 'border-2 border-amber-300 bg-amber-50' : 'border border-dashed border-gray-200 bg-gray-50/60'}`}>
-                    <div className="flex items-center justify-between gap-2 mb-1">
-                      <p className={`text-[10px] font-bold tracking-wide ${g?.announcement ? 'text-amber-800' : 'text-gray-500'}`}>📢 ANNOUNCEMENT BOX</p>
-                      {isRoomAdmin && !annEdit && g?.announcement && (
-                        <span className="flex gap-1.5">
-                          <button onClick={() => { setAnnDraft(g.announcement || ''); setAnnEdit(true); }} className="text-[10px] font-bold text-amber-700 bg-white border border-amber-200 px-2 py-0.5 rounded-full">✏️ Edit</button>
-                          <button onClick={clearAnnouncement} disabled={annBusy} className="text-[10px] font-bold text-red-600 bg-white border border-red-200 px-2 py-0.5 rounded-full disabled:opacity-50">🗑 Clear</button>
-                        </span>
-                      )}
-                    </div>
-                    {isRoomAdmin && (annEdit || !g?.announcement) ? (
-                      <div>
-                        <textarea
-                          value={annDraft}
-                          onChange={e => setAnnDraft(e.target.value)}
-                          rows={2}
-                          maxLength={500}
-                          placeholder="Type an announcement here — every member sees it above the chat box, and it stays until YOU clear it…"
-                          className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-amber-400"
-                        />
-                        <div className="flex gap-2 mt-2">
-                          <button onClick={saveAnnouncement} disabled={annBusy || !annDraft.trim()} className="bg-amber-500 hover:bg-amber-600 text-white text-xs font-bold px-4 py-2 rounded-lg disabled:opacity-50">{annBusy ? 'Posting…' : '📢 Post announcement'}</button>
-                          {annEdit && <button onClick={() => { setAnnEdit(false); setAnnDraft(''); }} className="text-xs text-gray-500 border border-gray-200 px-4 py-2 rounded-lg">Cancel</button>}
-                        </div>
-                      </div>
-                    ) : g?.announcement ? (
-                      <p className="text-sm text-amber-950 whitespace-pre-line">{g.announcement}</p>
-                    ) : (
-                      <p className="text-xs text-gray-400">No announcement right now.</p>
-                    )}
-                  </div>
                 </div>
 
                 {/* composer — admin always types; members type only while the admin has opened the chat */}

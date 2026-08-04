@@ -61,11 +61,23 @@ export default function SettingsPage() {
   const [accountName, setAccountName] = useState('');
   const [paymentRemark, setPaymentRemark] = useState('');
   const [bankSaving, setBankSaving] = useState(false);
+  // Security — change password & email (current password required for both)
+  const [mustChange, setMustChange] = useState(false);
+  const [curPw, setCurPw] = useState('');
+  const [newPw, setNewPw] = useState('');
+  const [newPw2, setNewPw2] = useState('');
+  const [pwBusy, setPwBusy] = useState(false);
+  const [newEmail, setNewEmail] = useState('');
+  const [emailPw, setEmailPw] = useState('');
+  const [emailBusy, setEmailBusy] = useState(false);
 
   useEffect(() => {
     const stored = localStorage.getItem('payround_user');
     if (stored) { try { setUser(JSON.parse(stored)); } catch {} }
     setTheme(localStorage.getItem('payround_theme') || 'light');
+    try {
+      if (localStorage.getItem('payround_must_change_pw') === '1' || (window.location.search || '').includes('mustChange=1')) setMustChange(true);
+    } catch {}
   }, []);
 
   // Load current profile photo from the database
@@ -164,6 +176,84 @@ export default function SettingsPage() {
     setDeleting(false);
   };
 
+  // 🔑 Change password — needs the CURRENT password (a valid temporary one also works)
+  const changePassword = async () => {
+    if (!user?.email) { toast.error('Log in first.'); return; }
+    if (newPw.length < 6) { toast.error('New password must be at least 6 characters.'); return; }
+    if (newPw !== newPw2) { toast.error('New passwords do not match.'); return; }
+    if (newPw === curPw) { toast.error('New password must be different from the current one.'); return; }
+    setPwBusy(true);
+    try {
+      const { supabase } = await import('@/lib/supabase');
+      const { data: row, error } = await supabase.from('users').select('password_hash, reset_code, reset_expires').eq('email', user.email.toLowerCase()).single();
+      if (error) throw error;
+      const realOk = row?.password_hash === curPw;
+      const tempOk = row?.reset_code && row.reset_code === curPw && row.reset_expires && new Date(row.reset_expires).getTime() > Date.now();
+      if (!realOk && !tempOk) { toast.error('Current password is incorrect.'); setPwBusy(false); return; }
+      const { error: upErr } = await supabase.from('users').update({ password_hash: newPw, reset_code: null, reset_expires: null }).eq('email', user.email.toLowerCase());
+      if (upErr) throw upErr;
+      try { localStorage.removeItem('payround_must_change_pw'); } catch {}
+      setMustChange(false);
+      setCurPw(''); setNewPw(''); setNewPw2('');
+      try { const { sounds } = await import('@/lib/sounds'); sounds.success(); } catch {}
+      toast.success('Password changed! Use the new one next time you log in. 🔑');
+    } catch (e) { toast.error(`Could not change password: ${e.message || 'try again'}`); }
+    setPwBusy(false);
+  };
+
+  // ✉️ Change email — needs the current password; rewrites the address EVERYWHERE it appears
+  const changeEmail = async () => {
+    if (!user?.email) { toast.error('Log in first.'); return; }
+    const em = newEmail.trim().toLowerCase();
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(em)) { toast.error('Enter a valid email address.'); return; }
+    if (em === user.email.toLowerCase()) { toast.error('That is already your email.'); return; }
+    setEmailBusy(true);
+    const t = toast.loading('Updating your email everywhere…');
+    try {
+      const { supabase } = await import('@/lib/supabase');
+      const oldE = user.email.toLowerCase();
+      const { data: row, error } = await supabase.from('users').select('password_hash, reset_code, reset_expires').eq('email', oldE).single();
+      if (error) throw error;
+      const realOk = row?.password_hash === emailPw;
+      const tempOk = row?.reset_code && row.reset_code === emailPw && row.reset_expires && new Date(row.reset_expires).getTime() > Date.now();
+      if (!realOk && !tempOk) { toast.error('Password incorrect — email not changed.', { id: t }); setEmailBusy(false); return; }
+      const { data: taken } = await supabase.from('users').select('email').eq('email', em).maybeSingle();
+      if (taken) { toast.error('Another account already uses that email.', { id: t }); setEmailBusy(false); return; }
+      // every table + column that stores the user's address
+      const spots = [
+        ['users', 'email'],
+        ['members', 'member_email'],
+        ['payments', 'user_email'],
+        ['payouts', 'user_email'],
+        ['messages', 'from_email'],
+        ['messages', 'to_email'],
+        ['group_messages', 'from_email'],
+        ['groups', 'admin_email'],
+        ['group_edit_requests', 'admin_email'],
+        ['group_reviews', 'reviewer_email'],
+        ['member_receipts', 'member_email'],
+        ['member_reviews', 'member_email'],
+        ['member_reviews', 'admin_email'],
+        ['notifications', 'user_email'],
+        ['verification_requests', 'user_email'],
+        ['follows', 'follower_email'],
+        ['follows', 'following_email'],
+        ['ads', 'submitter_email'],
+      ];
+      for (const [table, col] of spots) {
+        await supabase.from(table).update({ [col]: em }).eq(col, oldE); // best-effort per table
+      }
+      const stored = JSON.parse(localStorage.getItem('payround_user') || '{}');
+      stored.email = em;
+      localStorage.setItem('payround_user', JSON.stringify(stored));
+      setUser(prev => ({ ...prev, email: em }));
+      setNewEmail(''); setEmailPw('');
+      try { const { sounds } = await import('@/lib/sounds'); sounds.success(); } catch {}
+      toast.success('Email changed everywhere — log in with the new one next time. ✉️', { id: t });
+    } catch (e) { toast.error(`Could not change email: ${e.message || 'try again'}`, { id: t }); }
+    setEmailBusy(false);
+  };
+
   return (
     <div className="min-h-screen bg-gray-50">
       <Header />
@@ -230,6 +320,54 @@ export default function SettingsPage() {
               {bankSaving ? 'Saving…' : 'Save Bank Details'}
             </button>
             <p className="text-[11px] text-gray-400">Tip: leave a field empty and save to clear it.</p>
+          </div>
+        </div>
+
+        {/* 🔐 Security — visible always; highlighted when a temporary password must be replaced */}
+        {mustChange && (
+          <div className="mb-4 rounded-2xl border-2 border-amber-400 bg-amber-100 p-4">
+            <p className="text-sm font-bold text-amber-900">⏳ You logged in with a TEMPORARY password</p>
+            <p className="text-xs text-amber-800 mt-0.5">It stops working soon. Set your own new password below right now — use the temporary one as the &quot;current password&quot;.</p>
+          </div>
+        )}
+        <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2 ml-1">Security</p>
+        <div className="bg-white rounded-2xl border border-gray-100 mb-6 p-4">
+          <div className="flex items-center gap-3 mb-3">
+            <span className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0 bg-gray-100 text-gray-600"><HiLockClosed className="w-5 h-5" /></span>
+            <span className="flex-1 min-w-0">
+              <span className="block text-sm font-medium text-gray-900">Change Password</span>
+              <span className="block text-xs text-gray-500 mt-0.5">You must enter your current password to set a new one.</span>
+            </span>
+          </div>
+          <div className="space-y-3">
+            <input type="password" value={curPw} onChange={e => setCurPw(e.target.value)} placeholder="Current password (temporary one works too)" autoComplete="current-password"
+              className="w-full px-4 py-3 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary-500" />
+            <input type="password" value={newPw} onChange={e => setNewPw(e.target.value)} placeholder="New password (min 6 characters)" autoComplete="new-password"
+              className="w-full px-4 py-3 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary-500" />
+            <input type="password" value={newPw2} onChange={e => setNewPw2(e.target.value)} placeholder="Repeat new password" autoComplete="new-password"
+              className="w-full px-4 py-3 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary-500" />
+            <button onClick={changePassword} disabled={pwBusy || !curPw || !newPw || !user?.email}
+              className="w-full bg-gray-900 text-white text-sm font-semibold py-3 rounded-xl hover:bg-black transition-all disabled:opacity-50">
+              {pwBusy ? 'Updating…' : '🔑 Change Password'}
+            </button>
+          </div>
+          <div className="border-t border-gray-100 my-4" />
+          <div className="flex items-center gap-3 mb-3">
+            <span className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0 bg-gray-100 text-gray-600"><HiMail className="w-5 h-5" /></span>
+            <span className="flex-1 min-w-0">
+              <span className="block text-sm font-medium text-gray-900">Change Email</span>
+              <span className="block text-xs text-gray-500 mt-0.5">Current: <b>{user?.email || '—'}</b> — your new address is updated everywhere (groups, chats, payments…).</span>
+            </span>
+          </div>
+          <div className="space-y-3">
+            <input type="email" value={newEmail} onChange={e => setNewEmail(e.target.value)} placeholder="New email address"
+              className="w-full px-4 py-3 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary-500" />
+            <input type="password" value={emailPw} onChange={e => setEmailPw(e.target.value)} placeholder="Your current password (to confirm it is you)" autoComplete="current-password"
+              className="w-full px-4 py-3 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary-500" />
+            <button onClick={changeEmail} disabled={emailBusy || !newEmail.trim() || !emailPw || !user?.email}
+              className="w-full bg-gray-900 text-white text-sm font-semibold py-3 rounded-xl hover:bg-black transition-all disabled:opacity-50">
+              {emailBusy ? 'Updating everywhere…' : '✉️ Change Email'}
+            </button>
           </div>
         </div>
 
