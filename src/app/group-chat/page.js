@@ -28,6 +28,7 @@ function GroupChatInner() {
   const [body, setBody] = useState('');
   const [sending, setSending] = useState(false);
   const [sel, setSel] = useState('');
+  const [roomQuery, setRoomQuery] = useState(''); // 🔍 search group rooms
   const [deleting, setDeleting] = useState(false);
   const [zoomImg, setZoomImg] = useState(null);    // tap any chat image → fullscreen
   const [adminBank, setAdminBank] = useState(null); // the admin's bank details (🏦 chip in the header)
@@ -448,7 +449,21 @@ function GroupChatInner() {
       <Header />
       <div className="max-w-2xl mx-auto px-4 py-6 md:py-8">
         <h1 className="text-2xl font-bold text-gray-900 mb-1 flex items-center gap-2"><HiUserGroup className="w-7 h-7 text-primary-600" /> Group chats</h1>
-        <p className="text-sm text-gray-500 mb-5">Private rooms for the groups you run or belong to — only admins and members can see them.</p>
+        <p className="text-sm text-gray-500 mb-3">Private rooms for the groups you run or belong to — only admins and members can see them.</p>
+
+        {/* 🔍 search your group rooms — by group name or words from the last message */}
+        {rows !== null && rows.length > 0 && (
+          <div className="relative mb-4">
+            <input
+              value={roomQuery}
+              onChange={e => setRoomQuery(e.target.value)}
+              placeholder="Search group chats…"
+              maxLength={60}
+              className="w-full pl-10 pr-4 py-2.5 bg-white border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 transition-all"
+            />
+            <svg viewBox="0 0 20 20" fill="currentColor" className="w-5 h-5 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2"><path fillRule="evenodd" d="M9 3.5a5.5 5.5 0 1 0 0 11 5.5 5.5 0 0 0 0-11ZM2 9a7 7 0 1 1 12.452 4.391l3.328 3.329a.75.75 0 1 1-1.06 1.06l-3.329-3.328A7 7 0 0 1 2 9Z" clipRule="evenodd" /></svg>
+          </div>
+        )}
 
         {rows === null ? (
           <p className="text-center text-sm text-gray-400 py-10">Loading group chats…</p>
@@ -461,7 +476,13 @@ function GroupChatInner() {
           </div>
         ) : (
           <div className="bg-white rounded-2xl border border-gray-100 overflow-hidden divide-y divide-gray-50">
-            {rows.map(r => (
+            {(() => {
+              const rq = roomQuery.trim().toLowerCase();
+              const visible = !rq ? rows : rows.filter(r => [r.group?.name || '', r.last?.body || '', r.last?.from_email || ''].join(' ').toLowerCase().includes(rq));
+              if (visible.length === 0) {
+                return <p className="px-4 py-8 text-center text-sm text-gray-400">No group chat matches “{roomQuery.trim()}”.</p>;
+              }
+              return visible.map(r => (
               <button key={r.group.id} onClick={() => setActiveId(r.group.id)} className="w-full flex items-center gap-3 px-4 py-3.5 hover:bg-gray-50 transition-colors text-left">
                 {r.group.avatar_url ? (
                   <img src={r.group.avatar_url} alt="" className="w-11 h-11 rounded-xl object-cover border border-gray-100 shrink-0" />
@@ -483,7 +504,8 @@ function GroupChatInner() {
                   <span className="min-w-[20px] h-5 px-1.5 bg-primary-600 text-white text-[10px] font-bold rounded-full flex items-center justify-center shrink-0">{r.unread > 9 ? '9+' : r.unread}</span>
                 )}
               </button>
-            ))}
+            ));
+            })()}
           </div>
         )}
       </div>

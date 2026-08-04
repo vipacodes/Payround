@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import { HiMenu, HiX, HiSearch, HiBell, HiHome, HiUserGroup, HiCurrencyDollar, HiUser, HiLogout, HiChartBar, HiCog, HiChatAlt2, HiCalculator } from 'react-icons/hi';
 import QuickCalc from '@/components/QuickCalc';
+import GlobalSearch from '@/components/GlobalSearch';
 import { logoutUser } from '@/lib/data';
 import { sounds } from '@/lib/sounds';
 import toast from 'react-hot-toast';
@@ -11,6 +12,7 @@ import toast from 'react-hot-toast';
 export default function Header() {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const [showSearch, setShowSearch] = useState(false); // 🔍 search-anything overlay
   const router = useRouter();
   const pathname = usePathname();
 
@@ -185,18 +187,17 @@ export default function Header() {
           </button>
 
           {/* Search Bar (Desktop) */}
-          <form onSubmit={handleSearch} className="hidden md:flex items-center flex-1 max-w-md mx-8">
-            <div className="relative w-full">
-              <input
-                type="text"
-                placeholder="Search by Group Name or ID..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full pl-10 pr-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent transition-all"
-              />
+          {/* 🔍 Desktop search trigger — opens the search-anything overlay (groups, people, businesses, pages) */}
+          <button
+            onClick={() => setShowSearch(true)}
+            aria-label="Search PayRound"
+            className="hidden md:flex items-center flex-1 max-w-md mx-8"
+          >
+            <span className="relative w-full text-left">
+              <span className="w-full block pl-10 pr-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-sm text-gray-400 hover:bg-gray-100 hover:border-gray-300 transition-all">Search anything on PayRound…</span>
               <HiSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 w-5 h-5" />
-            </div>
-          </form>
+            </span>
+          </button>
 
           {/* Nav Items (Desktop) */}
           <nav className="hidden md:flex items-center gap-6">
@@ -319,8 +320,16 @@ export default function Header() {
             )}
           </nav>
 
-          {/* Mobile: 🔔 bell sits directly beside the ☰ hamburger */}
+          {/* Mobile: 🔍 search, 🔔 bell & the rest sit beside the ☰ hamburger */}
           <div className="md:hidden flex items-center gap-1">
+            <button
+              onClick={() => setShowSearch(true)}
+              aria-label="Search PayRound"
+              title="Search PayRound"
+              className="relative p-2 text-gray-600 hover:text-primary-600 transition-colors"
+            >
+              <HiSearch className="w-6 h-6" />
+            </button>
             <button
               onClick={() => setShowCalc(true)}
               aria-label="Quick calculator"
@@ -419,6 +428,7 @@ export default function Header() {
         </div>
       )}
       <QuickCalc open={showCalc} onClose={() => setShowCalc(false)} />
+      {showSearch && <GlobalSearch onClose={() => setShowSearch(false)} />}
     </header>
   );
 }

@@ -106,7 +106,7 @@ function botReply(text, ctx = {}) {
       ['💳', `💳 Payment recap:\n• Pay only the ADMIN account pinned at the top of your group chat.\n• Screenshot the transfer receipt.\n• Upload it in the group — admin approval turns your box green ✅.\n• Never pay any account someone sends you in private DMs.`, ['Where is the bank to pay?', 'Receipt still pending', HUMAN_CHIP]],
       ['🔵', `🔵 Verification recap:\n• Profile → Apply for Verification → ID front & back photos.\n• Review usually completes within 48 hours.\n• Declined? Re-apply after 7 days with clearer photos.\n• Badges are FREE — only PayRound can give them.`, [HUMAN_CHIP]],
       ['📢', `📢 Ads recap:\n• Up to 5 media per ad + optional alt text on each.\n• AI can write the description from your media, or type your own.\n• Pay & upload receipt → ad goes live after confirmation.\n• Declined ads carry the reason — edit & resubmit free, your paid time is kept.`, ['Ad prices?', 'My ad is not showing', HUMAN_CHIP]],
-      ['👥', `👥 Groups recap:\n• Browse or create groups from your Dashboard.\n• Spots are numbered; the rotation clock starts when the group is full.\n• Everyone keeps contributing until the last spot collects.\n• Group admins earn interest for managing the group.`, ['When do I get paid?', 'How do I pay?', HUMAN_CHIP]],
+      ['👥', `👥 Groups recap:\n• Browse or create groups from your Dashboard.\n• Spots are numbered; the rotation clock starts when the group is full.\n• Everyone keeps contributing until the last spot collects.\n• Your contribution is always the group amount shown on the group page — nothing more.`, ['When do I get paid?', 'How do I pay?', HUMAN_CHIP]],
       ['🔑', `🔑 Password recap:\n• Login page → "Forgot password?" → temporary password lands in your EMAIL (20 minutes valid).\n• Log in with it → set your own new password immediately.\n• Check Spam/Junk if the email hides, and search "PayRound".`, [HUMAN_CHIP]],
     ];
     for (const [marker, body, chips] of MORE) { if (prevBot.includes(marker)) return withChips(body, chips); }
@@ -120,7 +120,7 @@ function botReply(text, ctx = {}) {
     return withChips(`🙋 The PayRound team has your messages — everything typed here is saved for them and they reply IN THIS CHAT (usually within a few hours).\n• Fastest line: the green WhatsApp button below my messages.\n• Adding details + screenshots here helps them solve it quicker.`, ['Receipt still pending', 'I forgot my password', 'My ad is not showing']);
 
   if (has('how does payround', 'what is payround', 'how it works', 'how does it work', 'about payround', 'explain payround', 'what is this app', 'how do you people work'))
-    return withChips(`💡 PayRound = a digital Ajo (rotating savings) platform 🇳🇬:\n• Members join a group and take numbered spots.\n• Every round, ALL spots pay the contribution to the admin's bank account.\n• Spots collect the full pot one after another — #1 first … last spot last.\n• The rotation clock starts only when the group is FULL.\n• Group admins earn interest for managing the group.${plansLine ? `\n\n💎 Group plans:${plansLine}` : ''}`, ['When do I get paid?', 'How do I join a group?', 'How do I pay?']);
+    return withChips(`💡 PayRound = a digital Ajo (rotating savings) platform 🇳🇬:\n• Members join a group and take numbered spots.\n• Every round, ALL spots pay the contribution to the admin's bank account.\n• Spots collect the full pot one after another — #1 first … last spot last.\n• The rotation clock starts only when the group is FULL.${plansLine ? `\n\n💎 Group-CREATION plans — a one-off fee for STARTING your own group:${plansLine}\n⚠️ If you only hold a spot, you NEVER pay these plans — your payment is just the group contribution shown on the group page.` : ''}`, ['When do I get paid?', 'How do I join a group?', 'How do I pay?']);
 
   if (has('payout', 'collect', 'my turn', 'rotation', 'when will i get', 'when do i get', 'when am i getting', 'cash out', 'my money', 'pot'))
     return withChips(`🤑 Payouts — how collecting works:\n• Once the group is FULL the clock starts. Each round, every spot pays the contribution.\n• Spot #1 collects the full pot first, then #2, then #3… each spot collects exactly ONCE per cycle.\n• After you pay, upload the receipt — green boxes tick ✅ as the admin approves.\n• Your group page shows your spot number and the exact amount you collect.\n⏳ Someone delaying the round? Report it here — only the group admin (and us) can follow up with them.`, ['How do I pay?', 'Receipt still pending', HUMAN_CHIP]);
@@ -180,13 +180,13 @@ function botReply(text, ctx = {}) {
     return withChips(`🛡 Staying safe on PayRound:\n• Pay ONLY the admin account shown INSIDE your group — never personal accounts sent in DMs.\n• PayRound staff will NEVER ask for your password or OTP.\n• Badges & verification are FREE and only come from inside the app.\n• Suspicious user? Open their profile and report — or type "human" right now and we'll step in.`, [HUMAN_CHIP]);
 
   if (has('price', 'cost', 'how much', 'plan', 'subscription', 'fee'))
-    return withChips(`💎 Costs at a glance:\n• Registering & joining groups: FREE — you only contribute the group amount shown on its page.\n• Creating a group:${plansLine || ' 1, 6 & 12-month plans — shown in the app'}\n• Ads: 1 Day ${money(adD)} · 1 Week ${money(adW)} · 1 Month ${money(adM)}\n• Verification & badges: FREE`, ['How does PayRound work?', 'Ad prices?', HUMAN_CHIP]);
+    return withChips(`💎 Costs at a glance:\n• Registering & joining groups: FREE\n• Holding a spot: just the group contribution shown on the group page (e.g. the weekly amount) — nothing else.\n• Starting your OWN group (one-off group fee, NOT a spot payment):${plansLine || ' 1, 6 & 12-month plans — shown in the app'}\n• Ads: 1 Day ${money(adD)} · 1 Week ${money(adW)} · 1 Month ${money(adM)}\n• Verification & badges: FREE`, ['How does PayRound work?', 'Ad prices?', HUMAN_CHIP]);
 
   if (has('profile', 'my photo', 'avatar', 'change name', 'edit name', 'picture', 'bio'))
     return withChips(`👤 Your profile: Profile → Edit — change your name, photo, bio & occupation.\n📸 New photos go live after a quick safety review; you get notified the moment they're approved.`, ['How do I get verified?', HUMAN_CHIP]);
 
   if (has('group', 'ajo', 'join', 'save'))
-    return withChips(`👥 Groups:\n• Browse open groups from your Dashboard (or Groups → search) and grab a spot.\n• Create your own group too — 1/6/12-month plans, and as admin you earn interest.\n• Everyone contributes each round until the last spot collects — that's the Ajo way 🤝.`, ['When do I get paid?', 'How do I pay?', HUMAN_CHIP]);
+    return withChips(`👥 Groups:\n• Browse open groups from your Dashboard (or Groups → search) and grab a spot — you only contribute the amount shown on that group's page.\n• Want to RUN one? Create your own group — that's a one-off 1/6/12-month group fee, totally separate from spot contributions.\n• Everyone contributes each round until the last spot collects — that's the Ajo way 🤝.`, ['When do I get paid?', 'How do I pay?', HUMAN_CHIP]);
 
   // fallback — honest, keeps the chat alive, and offers what I'm great at
   return withChips(`🤖 Hmm, I don't have a ready-made answer for that one yet — but it's saved for the team and they'll reply right here ASAP.\nMeanwhile, I'm really good at these 👇`, ['How does PayRound work?', 'When do I get paid?', 'How do I pay?', HUMAN_CHIP]);
@@ -213,6 +213,7 @@ function MessagesInner() {
   const [supSending, setSupSending] = useState(false);
   const [botSettings, setBotSettings] = useState(null); // live prices, plans & bank for the bot brain
   const [botTyping, setBotTyping] = useState(false);    // 🤖 "typing…" indicator
+  const [threadQuery, setThreadQuery] = useState('');   // 🔍 search conversations
   const listRef = useRef(null);        // the scrollable message box (never the page!)
   const nearBottom = useRef(true);    // true while the user is reading the newest messages
   const firstOpen = useRef(true);     // jump straight to the bottom the first time a chat opens
@@ -641,7 +642,21 @@ function MessagesInner() {
       <Header />
       <div className="max-w-2xl mx-auto px-4 py-6 md:py-8">
         <h1 className="text-2xl font-bold text-gray-900 mb-1 flex items-center gap-2"><HiChatAlt2 className="w-7 h-7 text-primary-600" /> Messages</h1>
-        <p className="text-sm text-gray-500 mb-5">Chat in-app with business owners, group admins — everyone.</p>
+        <p className="text-sm text-gray-500 mb-3">Chat in-app with business owners, group admins — everyone.</p>
+
+        {/* 🔍 search conversations — names, emails, even words inside the last message */}
+        {threads !== null && threads.length > 0 && (
+          <div className="relative mb-4">
+            <input
+              value={threadQuery}
+              onChange={e => setThreadQuery(e.target.value)}
+              placeholder="Search chats…"
+              maxLength={60}
+              className="w-full pl-10 pr-4 py-2.5 bg-white border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 transition-all"
+            />
+            <svg viewBox="0 0 20 20" fill="currentColor" className="w-5 h-5 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2"><path fillRule="evenodd" d="M9 3.5a5.5 5.5 0 1 0 0 11 5.5 5.5 0 0 0 0-11ZM2 9a7 7 0 1 1 12.452 4.391l3.328 3.329a.75.75 0 1 1-1.06 1.06l-3.329-3.328A7 7 0 0 1 2 9Z" clipRule="evenodd" /></svg>
+          </div>
+        )}
 
         {threads === null ? (
           <p className="text-center text-sm text-gray-400 py-10">Loading conversations…</p>
@@ -652,9 +667,19 @@ function MessagesInner() {
             <p className="text-xs text-gray-400 mb-4">Open someone's profile (People tab) or a business profile and tap the 💬 Message button.</p>
             <button onClick={() => router.push('/groups/search?tab=users')} className="bg-primary-600 text-white text-sm font-semibold px-5 py-2.5 rounded-xl hover:bg-primary-700 transition-colors">Find People</button>
           </div>
-        ) : (
+        ) : (() => {
+          const tq = threadQuery.trim().toLowerCase();
+          const visible = !tq ? threads : threads.filter(t => [t.support ? 'payround support' : '', t.user?.name || '', t.email || '', t.last?.body || '', t.last?.from_email || ''].join(' ').toLowerCase().includes(tq));
+          if (visible.length === 0) {
+            return (
+              <div className="bg-white rounded-2xl border border-dashed border-gray-200 p-8 text-center text-sm text-gray-400">
+                No chat matches “{threadQuery.trim()}” 🤷 — try a name, email or a word from the messages.
+              </div>
+            );
+          }
+          return (
           <div className="bg-white rounded-2xl border border-gray-100 overflow-hidden divide-y divide-gray-50">
-            {threads.map(t => t.support ? (
+            {visible.map(t => t.support ? (
               <button key="support" onClick={() => setActive(SUPPORT_ID)} className="w-full flex items-center gap-3 px-4 py-3.5 hover:bg-gray-50 transition-colors text-left bg-gradient-to-r from-yellow-50/70 to-transparent">
                 <span className="w-11 h-11 rounded-full bg-gray-900 text-yellow-400 font-bold flex items-center justify-center shrink-0 text-lg border-2 border-yellow-400 shadow">P</span>
                 <span className="flex-1 min-w-0">
@@ -694,7 +719,8 @@ function MessagesInner() {
               </button>
             ))}
           </div>
-        )}
+          );
+        })()}
       </div>
       <Footer />
     </div>
