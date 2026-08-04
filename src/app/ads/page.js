@@ -100,7 +100,7 @@ ${hashtag}`,
 
 export default function AdsPage() {
   const [showForm, setShowForm] = useState(false);
-  const [submitted, setSubmitted] = useState(false);
+
   const [formData, setFormData] = useState({ businessName: '', description: '', contact: '', whatsapp: '', website: '' });
   const [mediaFiles, setMediaFiles] = useState([]);
   const [mediaAlts, setMediaAlts] = useState([]);   // optional alt text per photo/video (advertiser's words)
@@ -116,6 +116,8 @@ export default function AdsPage() {
   const [settings, setSettings] = useState(null); // owner bank + ad prices (owner-editable)
   const [myEmail, setMyEmail] = useState('');
   const [myAds, setMyAds] = useState([]);
+  const [tab, setTab] = useState('create');           // 📑 'create' (📢) | 'mine' (📂 My Ads)
+  const [mineFilter, setMineFilter] = useState('all'); // all | live | review | await_receipt | declined
   const [activeAds, setActiveAds] = useState([]);
   const [viewImg, setViewImg] = useState('');
 
@@ -230,6 +232,7 @@ export default function AdsPage() {
     if (mediaFiles.length === 0) { toast.error('Add at least 1 photo or video of your business.'); return; }
     if (!receipt && !window.confirm(`No payment receipt attached!\n\nYour ad will be SAVED as "Awaiting payment". Pay ₦${plan.price.toLocaleString()} to the PayRound account shown and upload the receipt later from "My Ads" on this page — nothing will be lost.\n\nSave the ad now without the receipt?`)) return;
     setSending(true);
+    const t = toast.loading(receipt ? 'Submitting your ad for review…' : 'Saving your ad…');
     try {
       const { supabase } = await import('@/lib/supabase');
       const cover = mediaFiles[0];
@@ -264,20 +267,24 @@ export default function AdsPage() {
       if (error) throw error;
       toast.success(editId
         ? 'Updated ad sent for review again! 🎉 The reason it was declined is cleared.'
-        : receipt ? 'Ad + receipt submitted! PayRound will confirm your payment and set it LIVE. 🎉' : 'Ad saved! 💾 Pay and upload your receipt anytime from My Ads below.');
-      setSubmitted(true);
+        : receipt
+          ? 'Ad + receipt submitted! PayRound will confirm your payment and set it LIVE. 🎉'
+          : '✅ Ad SAVED! Nothing is lost — pay and upload your receipt anytime from the My Ads tab.', { id: t });
       setFormData({ businessName: '', description: '', contact: '', whatsapp: '', website: '' });
       setMediaFiles([]);
       setReceipt('');
       setAiUsed(false); setAiIdx(0);
       setMediaAlts([]);
       setEditId('');
+      setShowForm(false);
       loadMyAds(myEmail);
-      setTimeout(() => { setShowForm(false); setSubmitted(false); }, 2500);
+      // Straight to the My Ads tab, already filtered to where the new ad landed 🎯
+      if (!editId) setTimeout(() => { setTab('mine'); setMineFilter(receipt ? 'review' : 'await_receipt'); }, 450);
     } catch (err) {
-      toast.error(`Could not submit: ${err.message || 'try again'}`);
+      toast.error(`Could not submit: ${err.message || 'try again'}`, { id: t });
+    } finally {
+      setSending(false); // NEVER stuck at "Submitting…" again
     }
-    setSending(false);
   };
 
   // Upload/replace the payment receipt on a saved ad
@@ -291,6 +298,7 @@ export default function AdsPage() {
       const { error } = await supabase.from('ads').update({ payment_receipt_url: dataUrl, receipt_uploaded_at: new Date().toISOString() }).eq('id', ad.id);
       if (error) throw error;
       toast.success('Receipt uploaded! PayRound will review and set your ad LIVE. 🎉', { id: t });
+      setMineFilter('review'); // show it land under ⏳ Pending
       loadMyAds(myEmail);
     } catch (err) { toast.error(`Upload failed: ${err.message || 'try again'}`, { id: t }); }
   };
@@ -312,7 +320,7 @@ export default function AdsPage() {
     setPlanDays(ad.duration_days || 7);
     setReceipt(ad.payment_receipt_url || '');
     setEditId(ad.id);
-    setSubmitted(false);
+    setTab('create'); // jump to the Create Ad tab with the form loaded
     setShowForm(true);
     toast('Ad loaded into the form ✏️ — fix what PayRound flagged and resubmit below.');
     window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -345,6 +353,18 @@ export default function AdsPage() {
     return <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${cls}`}>{txt}</span>;
   };
 
+  // My Ads tab — live counters + filtered view
+  const mineCounts = { all: myAds.length, live: 0, review: 0, await_receipt: 0, declined: 0 };
+  myAds.forEach(a => { const s = statusOf(a); if (mineCounts[s] !== undefined) mineCounts[s] += 1; });
+  const shownAds = mineFilter === 'all' ? myAds : myAds.filter(a => statusOf(a) === mineFilter);
+  const mineEmpty = {
+    live: 'No live ads right now — once PayRound confirms your payment the ad appears here. 🟢',
+    review: 'Nothing under review. Submit an ad with its receipt and it queues here while PayRound confirms the payment. ⏳',
+    await_receipt: 'No saved ads waiting for payment. 💾 Save one from the Create Ad tab and it waits for you right here.',
+    declined: 'No declined ads — keep it up! 🎉',
+    all: '',
+  };
+
   return (
     <div className="min-h-screen bg-gray-50">
       <Header />
@@ -357,13 +377,46 @@ export default function AdsPage() {
           </p>
         </div>
 
-        {/* 📋 MY ADS — the advertiser's own saved ads (persist until THEY delete them) */}
-        {myEmail && myAds.length > 0 && (
+        {/* 📑 Tabs — Create Ad vs My Ads */}
+        {myEmail && (
+          <div className="flex justify-center gap-2 mb-6">
+            <button onClick={() => setTab('create')}
+              className={`px-5 py-2.5 rounded-full text-sm font-bold transition-all ${tab === 'create' ? 'bg-primary-600 text-white shadow-lg shadow-primary-200' : 'bg-white text-gray-600 border border-gray-200 hover:border-primary-300'}`}>
+              📢 Create Ad
+            </button>
+            <button onClick={() => setTab('mine')}
+              className={`px-5 py-2.5 rounded-full text-sm font-bold transition-all ${tab === 'mine' ? 'bg-primary-600 text-white shadow-lg shadow-primary-200' : 'bg-white text-gray-600 border border-gray-200 hover:border-primary-300'}`}>
+              📂 My Ads {myAds.length > 0 && <span className={`ml-1 text-[10px] px-1.5 py-0.5 rounded-full ${tab === 'mine' ? 'bg-white/25 text-white' : 'bg-primary-100 text-primary-700'}`}>{myAds.length}</span>}
+            </button>
+          </div>
+        )}
+
+        {/* 📂 MY ADS TAB — everything the advertiser ever submitted, grouped by status */}
+        {myEmail && tab === 'mine' && (
           <div className="mb-8">
-            <h2 className="text-lg font-semibold text-gray-900 mb-1">📋 My Ads ({myAds.length})</h2>
-            <p className="text-xs text-gray-500 mb-3">Your ads stay saved here forever — unless you delete them yourself. Left to pay? Your details are safe — come back and upload the receipt anytime.</p>
+            <h2 className="text-lg font-semibold text-gray-900 mb-1">📂 My Ads ({myAds.length})</h2>
+            <p className="text-xs text-gray-500 mb-3">Your ads stay saved here forever — unless you delete them yourself. Saved one to pay later? It waits under <b>💾 Saved</b> — upload the receipt whenever you're ready.</p>
+            {myAds.length === 0 ? (
+              <div className="bg-white rounded-2xl border border-dashed border-gray-200 p-10 text-center">
+                <p className="font-semibold text-gray-700 mb-1">You haven't submitted any ads yet</p>
+                <p className="text-xs text-gray-400 mb-4">Live, pending, saved and declined ads all appear here the moment you submit one.</p>
+                <button onClick={() => setTab('create')} className="bg-primary-600 text-white text-sm font-semibold px-5 py-2.5 rounded-xl hover:bg-primary-700 transition-colors">📢 Create Your First Ad</button>
+              </div>
+            ) : (
+            <>
+            <div className="flex flex-wrap gap-1.5 mb-4">
+              {[['all', '🗂 All'], ['live', '🟢 Live'], ['review', '⏳ Pending'], ['await_receipt', '💾 Saved'], ['declined', '❌ Declined']].map(([k, label]) => (
+                <button key={k} onClick={() => setMineFilter(k)}
+                  className={`text-[11px] font-bold px-3 py-1.5 rounded-full border transition-all ${mineFilter === k ? 'bg-gray-900 text-white border-gray-900 shadow' : 'bg-white text-gray-600 border-gray-200 hover:border-gray-400'}`}>
+                  {label} <span className={mineFilter === k ? 'text-white/70' : 'text-gray-400'}>· {mineCounts[k] || 0}</span>
+                </button>
+              ))}
+            </div>
+            {shownAds.length === 0 ? (
+              <div className="bg-white rounded-2xl border border-dashed border-gray-200 p-8 text-center text-xs text-gray-400">{mineEmpty[mineFilter]}</div>
+            ) : (
             <div className="space-y-3">
-              {myAds.map(ad => {
+              {shownAds.map(ad => {
                 let media = [];
                 try { const m = JSON.parse(ad.media_urls || '[]'); if (Array.isArray(m)) media = m; } catch {}
                 const cover = media[0] || ad.media_url || '';
@@ -423,11 +476,14 @@ export default function AdsPage() {
                 );
               })}
             </div>
+            )}
+            </>
+            )}
           </div>
         )}
 
         {/* Active Ads */}
-        {activeAds.length > 0 && (
+        {tab === 'create' && activeAds.length > 0 && (
           <div className="mb-10">
             <h2 className="text-lg font-semibold text-gray-900 mb-4">Featured Businesses</h2>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -439,7 +495,7 @@ export default function AdsPage() {
         )}
 
         {/* CTA */}
-        {!showForm && (
+        {tab === 'create' && !showForm && (
           <div className="text-center bg-gradient-to-br from-primary-600 to-primary-700 rounded-2xl p-8 md:p-12">
             <HiPhotograph className="w-12 h-12 text-primary-200 mx-auto mb-4" />
             <h2 className="text-2xl font-bold text-white mb-3">Advertise Your Business Here</h2>
@@ -457,23 +513,14 @@ export default function AdsPage() {
         )}
 
         {/* Form */}
-        {showForm && (
+        {tab === 'create' && showForm && (
           <div className="max-w-lg mx-auto">
             <div className="bg-white rounded-2xl border border-gray-100 p-6 md:p-8 shadow-sm">
               <h3 className="text-lg font-semibold text-gray-900 mb-1">Advertise Your Business</h3>
               {editId && <p className="text-[11px] font-semibold text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-2 py-1 mb-3">✏️ Editing your declined ad — submitting replaces it and sends it back for review (created date stays).</p>}
               {!editId && <div className="mb-3" />}
 
-              {submitted ? (
-                <div className="text-center py-6">
-                  <div className="w-16 h-16 bg-emerald-50 rounded-full flex items-center justify-center mx-auto mb-4">
-                    <HiCheckCircle className="w-10 h-10 text-emerald-500" />
-                  </div>
-                  <h4 className="font-semibold text-gray-900 mb-1">Ad Saved! 🎉</h4>
-                  <p className="text-sm text-gray-500">Track it in <b>My Ads</b> at the top of this page.</p>
-                </div>
-              ) : (
-                <form onSubmit={handleSubmit} className="space-y-4">
+              <form onSubmit={handleSubmit} className="space-y-4">
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1.5">Business Name *</label>
                     <input
@@ -634,7 +681,6 @@ export default function AdsPage() {
                   </button>
                   <p className="text-[10px] text-gray-400 text-center">Your ad details are stored safely — leaving this page to go pay will NOT delete anything.</p>
                 </form>
-              )}
             </div>
           </div>
         )}
