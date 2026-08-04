@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { HiSearch, HiX, HiChevronUp, HiChevronDown, HiCalendar } from 'react-icons/hi';
+import { HiX, HiChevronUp, HiChevronDown, HiCalendar } from 'react-icons/hi';
 import toast from 'react-hot-toast';
 
 // 🔍 WhatsApp-style "search in this chat": keyword matches with 1-of-N chevron
@@ -84,40 +84,36 @@ export function useChatSearch(msgs) {
   return { open, query, setQuery, pos, total, activeId, flash: String(flash || ''), goto, jumpToDate, close, toggle };
 }
 
-export default function ChatSearchBar({ cs, dark = false }) {
+export default function ChatSearchBar({ cs }) {
   if (!cs.open) return null;
   return (
-    <div className={`flex items-center gap-1 px-3 py-2 border-b ${dark ? 'border-gray-800 bg-gray-900/95' : 'border-gray-100 bg-yellow-50/70'}`}>
-      <HiSearch className="w-4 h-4 text-gray-400 shrink-0" />
+    <div className="chat-search-bar flex items-center gap-1.5 px-3 py-2.5">
       <input
         autoFocus
         value={cs.query}
         onChange={e => cs.setQuery(e.target.value)}
-        placeholder="Search in this chat…"
+        placeholder="🔍 Search in this chat…"
         maxLength={60}
-        className={`flex-1 min-w-0 bg-transparent text-sm focus:outline-none ${dark ? 'text-white placeholder-gray-500' : 'text-gray-900 placeholder-gray-400'}`}
+        className="flex-1 min-w-0 px-3.5 py-2 rounded-full text-sm font-medium focus:outline-none"
       />
       {cs.query.trim() && (
-        <span className={`text-[10px] font-bold shrink-0 ${dark ? 'text-gray-400' : 'text-gray-500'}`}>
+        <span className="cs-count text-[11px] shrink-0 whitespace-nowrap">
           {cs.total ? `${Math.min(cs.pos, cs.total - 1) + 1} of ${cs.total}` : '0 found'}
         </span>
       )}
-      <button type="button" onClick={() => cs.goto(-1)} disabled={!cs.total} aria-label="Previous match"
-        className={`p-1 rounded-full disabled:opacity-30 ${dark ? 'text-gray-300 hover:bg-white/10' : 'text-gray-600 hover:bg-yellow-100'}`}>
-        <HiChevronUp className="w-4 h-4" />
+      <button type="button" onClick={() => cs.goto(-1)} disabled={!cs.total} aria-label="Previous match" className="cs-btn p-1.5">
+        <HiChevronUp className="w-5 h-5" />
       </button>
-      <button type="button" onClick={() => cs.goto(1)} disabled={!cs.total} aria-label="Next match"
-        className={`p-1 rounded-full disabled:opacity-30 ${dark ? 'text-gray-300 hover:bg-white/10' : 'text-gray-600 hover:bg-yellow-100'}`}>
-        <HiChevronDown className="w-4 h-4" />
+      <button type="button" onClick={() => cs.goto(1)} disabled={!cs.total} aria-label="Next match" className="cs-btn p-1.5">
+        <HiChevronDown className="w-5 h-5" />
       </button>
-      <label title="Jump to a date 📅" className={`relative p-1 rounded-full cursor-pointer ${dark ? 'text-gray-300 hover:bg-white/10' : 'text-gray-600 hover:bg-yellow-100'}`}>
-        <HiCalendar className="w-4 h-4" />
+      <label title="Jump to a date 📅" className="cs-btn relative p-1.5 cursor-pointer">
+        <HiCalendar className="w-5 h-5" />
         <input type="date" aria-label="Jump to date" onChange={e => cs.jumpToDate(e.target.value)}
           className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" />
       </label>
-      <button type="button" onClick={cs.close} aria-label="Close search"
-        className={`p-1 rounded-full ${dark ? 'text-gray-300 hover:bg-white/10' : 'text-gray-600 hover:bg-yellow-100'}`}>
-        <HiX className="w-4 h-4" />
+      <button type="button" onClick={cs.close} aria-label="Close search" className="cs-btn p-1.5">
+        <HiX className="w-5 h-5" />
       </button>
     </div>
   );

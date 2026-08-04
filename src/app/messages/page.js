@@ -476,8 +476,8 @@ function MessagesInner() {
                 </button>
               </div>
             </div>
-            {/* 🔍 in-chat keyword/date search (WhatsApp-style) */}
-            <ChatSearchBar cs={cs} dark />
+            {/* 🔍 in-chat keyword/date search (WhatsApp-style) — forced bright in both themes */}
+            <ChatSearchBar cs={cs} />
 
             {/* messages */}
             <div ref={listRef} onScroll={(e) => { const el = e.currentTarget; nearBottom.current = el.scrollHeight - el.scrollTop - el.clientHeight < 120; }}

@@ -228,3 +228,14 @@ body {
 .owner-badge { filter: drop-shadow(0 1px 1px rgba(0,0,0,.6)) drop-shadow(0 0 2px rgba(245,197,24,.5)); }
 .bot-bubble { background: linear-gradient(135deg, #fffbeb, #fef3c7) !important; color: #451a03 !important; border: 1px solid #fcd34d !important; }
 .dark .bot-bubble { background: linear-gradient(135deg, #fffbeb, #fef3c7) !important; color: #451a03 !important; border-color: #fcd34d !important; }
+
+/* 🔍 In-chat search bar — FORCED bright & bold in BOTH themes (dark mode must never dim it,
+   same trick as the announcement box & bank card above) */
+.chat-search-bar { background: #fef3c7 !important; border-bottom: 2px solid #f59e0b !important; }
+.chat-search-bar input { background: #ffffff !important; color: #111827 !important; border: 2px solid #f59e0b !important; }
+.chat-search-bar input:focus { border-color: #d97706 !important; }
+.chat-search-bar input::placeholder { color: #92400e !important; opacity: 0.55 !important; }
+.chat-search-bar .cs-count { color: #78350f !important; font-weight: 800 !important; }
+.chat-search-bar .cs-btn { color: #78350f !important; border-radius: 9999px; }
+.chat-search-bar .cs-btn:hover:not(:disabled) { background: rgba(245, 158, 11, 0.28) !important; }
+.chat-search-bar .cs-btn:disabled { color: #d6b585 !important; }
