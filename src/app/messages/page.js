@@ -5,9 +5,10 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import Header from '@/components/Header';
 import Footer from '@/components/Footer';
 import LoadingScreen from '@/components/LoadingScreen';
-import { HiArrowLeft, HiBadgeCheck, HiChatAlt2, HiPaperAirplane } from 'react-icons/hi';
+import { HiArrowLeft, HiBadgeCheck, HiChatAlt2, HiPaperAirplane, HiSearch } from 'react-icons/hi';
 import toast from 'react-hot-toast';
 import { sounds } from '@/lib/sounds';
+import ChatSearchBar, { Mark, useChatSearch } from '@/components/ChatSearchBar';
 
 const SUPPORT_ID = 'payround-support';
 const BOT_NAME = 'PayRound Chat Bot';
@@ -214,6 +215,9 @@ function MessagesInner() {
   const [botSettings, setBotSettings] = useState(null); // live prices, plans & bank for the bot brain
   const [botTyping, setBotTyping] = useState(false);    // 🤖 "typing…" indicator
   const [threadQuery, setThreadQuery] = useState('');   // 🔍 search conversations
+  const cs = useChatSearch(active === SUPPORT_ID ? supMsgs : msgs); // 🔍 WhatsApp-style search INSIDE the open chat
+  // switching conversations closes any open in-chat search
+  useEffect(() => { cs.close(); }, [active]); // eslint-disable-line react-hooks/exhaustive-deps
   const listRef = useRef(null);        // the scrollable message box (never the page!)
   const nearBottom = useRef(true);    // true while the user is reading the newest messages
   const firstOpen = useRef(true);     // jump straight to the bottom the first time a chat opens
@@ -466,8 +470,14 @@ function MessagesInner() {
                     {ownerOnline ? 'Team is ONLINE — you\'re chatting with the owner directly' : `🤖 ${BOT_NAME} answers instantly while the team is away`}
                   </p>
                 </div>
+                <button onClick={cs.toggle} aria-label="Search in this chat" title="Search in this chat"
+                  className={`p-2 rounded-full transition-colors shrink-0 ${cs.open ? 'bg-yellow-400/30 text-yellow-300' : 'text-gray-300 hover:bg-white/10'}`}>
+                  <HiSearch className="w-5 h-5" />
+                </button>
               </div>
             </div>
+            {/* 🔍 in-chat keyword/date search (WhatsApp-style) */}
+            <ChatSearchBar cs={cs} dark />
 
             {/* messages */}
             <div ref={listRef} onScroll={(e) => { const el = e.currentTarget; nearBottom.current = el.scrollHeight - el.scrollTop - el.clientHeight < 120; }}
@@ -490,19 +500,19 @@ function MessagesInner() {
                 const prev = supMsgs[i - 1];
                 const showDate = !prev || new Date(prev.created_at).toDateString() !== new Date(m.created_at).toDateString();
                 return (
-                  <div key={m.id}>
+                  <div key={m.id} data-mid={m.id}>
                     {showDate && <p className="text-center text-[10px] text-gray-400 font-semibold my-2">{dateOf(m.created_at)}</p>}
                     <div className={`flex ${mine ? 'justify-end' : 'justify-start'}`}>
                       <div className={`max-w-[82%] px-3.5 py-2 rounded-2xl text-sm ${
                         mine ? 'bg-primary-600 text-white rounded-br-md'
                           : bot ? 'bot-bubble rounded-bl-md'
-                          : 'bg-gray-900 text-white rounded-bl-md border border-yellow-400/50'}`}>
+                          : 'bg-gray-900 text-white rounded-bl-md border border-yellow-400/50'}${String(cs.activeId) === String(m.id) || cs.flash === String(m.id) ? ' ring-2 ring-yellow-400' : ''}`}>
                         {!mine && (
                           <p className={`text-[10px] font-bold mb-0.5 flex items-center gap-1 ${bot ? 'text-amber-700' : 'text-yellow-400'}`}>
                             {bot ? <>🤖 {BOT_NAME}</> : <>PayRound Team <OwnerBadge className="w-3.5 h-3.5" /></>}
                           </p>
                         )}
-                        <p className="whitespace-pre-line break-words">{pc.text}</p>
+                        <p className="whitespace-pre-line break-words"><Mark text={pc.text} q={cs.open ? cs.query : ''} /></p>
                         {bot && <ChipRow items={pc.chips} onPick={(c) => sendSupport(null, c)} />}
                         {bot && <WaButton />}
                         <p className={`text-[9px] mt-0.5 ${mine ? 'text-primary-200 text-right' : bot ? 'text-amber-700/70' : 'text-gray-400'}`}>{timeOf(m.created_at)}</p>
@@ -576,7 +586,13 @@ function MessagesInner() {
                 )}
                 <p className="text-[10px] text-gray-400 mt-0.5">You&apos;re chatting as <span className="font-semibold text-gray-600">{meName || me}</span></p>
               </div>
+              <button onClick={cs.toggle} aria-label="Search in this chat" title="Search in this chat"
+                className={`p-2 rounded-full transition-colors shrink-0 ${cs.open ? 'bg-yellow-100 text-yellow-700' : 'text-gray-500 hover:bg-gray-100'}`}>
+                <HiSearch className="w-5 h-5" />
+              </button>
             </div>
+            {/* 🔍 in-chat keyword/date search (WhatsApp-style) */}
+            <ChatSearchBar cs={cs} />
 
             {/* messages */}
             <div ref={listRef} onScroll={(e) => { const el = e.currentTarget; nearBottom.current = el.scrollHeight - el.scrollTop - el.clientHeight < 120; }}
@@ -592,14 +608,14 @@ function MessagesInner() {
                 const prev = msgs[i - 1];
                 const showDate = !prev || new Date(prev.created_at).toDateString() !== new Date(m.created_at).toDateString();
                 return (
-                  <div key={m.id}>
+                  <div key={m.id} data-mid={m.id}>
                     {showDate && <p className="text-center text-[10px] text-gray-400 font-semibold my-2">{dateOf(m.created_at)}</p>}
                     <div className={`flex ${mine ? 'justify-end' : 'justify-start'}`}>
                       <div
                         onClick={mine && !String(m.id).startsWith('local-') ? () => setSel(sel === m.id ? '' : m.id) : undefined}
-                        className={`max-w-[78%] px-3.5 py-2 rounded-2xl text-sm ${mine ? 'bg-primary-600 text-white rounded-br-md' : 'bg-gray-100 text-gray-900 rounded-bl-md'} ${mine ? 'cursor-pointer' : ''} ${sel === m.id ? 'ring-2 ring-red-300' : ''}`}
+                        className={`max-w-[78%] px-3.5 py-2 rounded-2xl text-sm ${mine ? 'bg-primary-600 text-white rounded-br-md' : 'bg-gray-100 text-gray-900 rounded-bl-md'} ${mine ? 'cursor-pointer' : ''} ${sel === m.id ? 'ring-2 ring-red-300' : ''}${String(cs.activeId) === String(m.id) || cs.flash === String(m.id) ? ' ring-2 ring-yellow-400' : ''}`}
                       >
-                        <p className="whitespace-pre-line break-words">{m.body}</p>
+                        <p className="whitespace-pre-line break-words"><Mark text={m.body} q={cs.open ? cs.query : ''} /></p>
                         <p className={`text-[9px] mt-0.5 ${mine ? 'text-primary-200 text-right' : 'text-gray-400'}`}>{timeOf(m.created_at)}{mine && m.read ? ' · read' : ''}</p>
                       </div>
                     </div>

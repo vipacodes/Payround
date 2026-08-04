@@ -7,9 +7,10 @@ import Footer from '@/components/Footer';
 import LoadingScreen from '@/components/LoadingScreen';
 import GroupBadge from '@/components/GroupBadge';
 import ImageLightbox from '@/components/ImageLightbox';
-import { HiArrowLeft, HiBadgeCheck, HiUserGroup, HiPaperAirplane } from 'react-icons/hi';
+import { HiArrowLeft, HiBadgeCheck, HiUserGroup, HiPaperAirplane, HiSearch } from 'react-icons/hi';
 import toast from 'react-hot-toast';
 import { sounds } from '@/lib/sounds';
+import ChatSearchBar, { Mark, useChatSearch } from '@/components/ChatSearchBar';
 
 // Real group chat rooms — every group gets its own in-app conversation.
 // Rooms are visible (and openable) ONLY by that group's admin and its approved members.
@@ -29,6 +30,9 @@ function GroupChatInner() {
   const [sending, setSending] = useState(false);
   const [sel, setSel] = useState('');
   const [roomQuery, setRoomQuery] = useState(''); // 🔍 search group rooms
+  const cs = useChatSearch(msgs); // 🔍 search INSIDE the open room (keywords + dates)
+  // switching rooms closes any open in-chat search
+  useEffect(() => { cs.close(); }, [activeId]); // eslint-disable-line react-hooks/exhaustive-deps
   const [deleting, setDeleting] = useState(false);
   const [zoomImg, setZoomImg] = useState(null);    // tap any chat image → fullscreen
   const [adminBank, setAdminBank] = useState(null); // the admin's bank details (🏦 chip in the header)
@@ -264,6 +268,14 @@ function GroupChatInner() {
                 <button onClick={() => router.push(`/groups/${activeId}`)} className="text-[11px] text-primary-600 font-medium hover:text-primary-700">View group →</button>
               </div>
               <div className="shrink-0 flex items-center gap-1.5">
+                <button
+                  onClick={cs.toggle}
+                  aria-label="Search in this chat"
+                  title="Search in this chat"
+                  className={`p-1.5 rounded-full transition-colors ${cs.open ? 'bg-yellow-100 text-yellow-700' : 'text-gray-500 hover:bg-gray-100'}`}
+                >
+                  <HiSearch className="w-5 h-5" />
+                </button>
                 {hasBank && (
                   <button
                     onClick={() => { try { navigator.clipboard.writeText(adminBank.account_number || ''); toast.success('Account number copied! 📋'); } catch { toast.error('Copy failed — long-press the number below instead'); } }}
@@ -284,6 +296,9 @@ function GroupChatInner() {
                 )}
               </div>
             </div>
+
+            {/* 🔍 in-chat keyword/date search (WhatsApp-style) */}
+            <ChatSearchBar cs={cs} />
 
             {/* 📢 ANNOUNCEMENT BOX — pinned at the very TOP of the chat, bright in light AND dark mode;
                 admin posts/edits/clears, members read-only. Stays until the admin clears it. */}
@@ -363,7 +378,7 @@ function GroupChatInner() {
                     const prev = msgs[i - 1];
                     const showDate = !prev || new Date(prev.created_at).toDateString() !== new Date(m.created_at).toDateString();
                     return (
-                      <div key={m.id}>
+                      <div key={m.id} data-mid={m.id}>
                         {showDate && <p className="text-center text-[10px] text-gray-400 font-semibold my-2">{dateOf(m.created_at)}</p>}
                         <div className={`flex ${mine ? 'justify-end' : 'justify-start'} items-end gap-1.5`}>
                           {!mine && (
@@ -373,7 +388,7 @@ function GroupChatInner() {
                           )}
                           <div
                             onClick={mine && !String(m.id).startsWith('local-') ? () => setSel(sel === m.id ? '' : m.id) : undefined}
-                            className={`max-w-[78%] px-3.5 py-2 rounded-2xl text-sm ${mine ? 'bg-primary-600 text-white rounded-br-md' : 'bg-gray-100 text-gray-900 rounded-bl-md'} ${mine ? 'cursor-pointer' : ''} ${sel === m.id ? 'ring-2 ring-red-300' : ''}`}
+                            className={`max-w-[78%] px-3.5 py-2 rounded-2xl text-sm ${mine ? 'bg-primary-600 text-white rounded-br-md' : 'bg-gray-100 text-gray-900 rounded-bl-md'} ${mine ? 'cursor-pointer' : ''} ${sel === m.id ? 'ring-2 ring-red-300' : ''}${String(cs.activeId) === String(m.id) || cs.flash === String(m.id) ? ' ring-2 ring-yellow-400' : ''}`}
                           >
                             {!mine && (
                               <p className="text-[10px] font-bold text-emerald-600 flex items-center gap-1">
@@ -395,7 +410,7 @@ function GroupChatInner() {
                                 )}
                               </span>
                             )}
-                            <p className="whitespace-pre-line break-words">{m.body}</p>
+                            <p className="whitespace-pre-line break-words"><Mark text={m.body} q={cs.open ? cs.query : ''} /></p>
                             <p className={`text-[9px] mt-0.5 ${mine ? 'text-primary-200 text-right' : 'text-gray-400'}`}>{timeOf(m.created_at)}</p>
                           </div>
                         </div>
