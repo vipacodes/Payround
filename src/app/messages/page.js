@@ -10,7 +10,7 @@ import toast from 'react-hot-toast';
 import { sounds } from '@/lib/sounds';
 
 const SUPPORT_ID = 'payround-support';
-const BOT_NAME = 'Ada — PayRound Assistant';
+const BOT_NAME = 'PayRound Chat Bot';
 const OWNER_WA = 'https://wa.me/2349151723199?text=' + encodeURIComponent('Hello PayRound 👋 I need help with: ');
 
 // 👑 OWNER-ONLY black badge with a golden ring — never awarded to any user; marks official PayRound accounts
