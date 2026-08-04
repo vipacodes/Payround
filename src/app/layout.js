@@ -1,6 +1,7 @@
 import './globals.css';
 import { Toaster } from 'react-hot-toast';
 import BootLoader from '@/components/BootLoader';
+import SupportChatFab from '@/components/SupportChatFab';
 
 export const viewport = {
   width: 'device-width',
@@ -58,6 +59,7 @@ export default function RootLayout({ children }) {
           }}
         />
         {children}
+        <SupportChatFab />
       </body>
     </html>
   );
