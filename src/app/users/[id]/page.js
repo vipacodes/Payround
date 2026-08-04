@@ -153,6 +153,11 @@ export default function PublicUserProfilePage() {
     </button>
   );
 
+  // Admins are often members of their own group too — count each group ONCE,
+  // exactly like the list below renders it (deduped), so the number always matches the cards.
+  const groupsMemberOnly = groupsMember.filter(g => !groupsAdmin.find(x => x.id === g.id));
+  const groupsTotal = groupsAdmin.length + groupsMemberOnly.length;
+
   return (
     <div className="min-h-screen bg-gray-50">
       <Header />
@@ -255,12 +260,12 @@ export default function PublicUserProfilePage() {
         {/* Their groups */}
         <div className="mb-3 flex items-center gap-2">
           <HiUserGroup className="w-5 h-5 text-primary-600" />
-          <h2 className="font-bold text-gray-900">Groups ({groupsAdmin.length + groupsMember.length})</h2>
+          <h2 className="font-bold text-gray-900">Groups ({groupsTotal})</h2>
         </div>
-        {groupsAdmin.length + groupsMember.length > 0 ? (
+        {groupsTotal > 0 ? (
           <div className="space-y-3">
             {groupsAdmin.map(g => <GroupRow key={`a-${g.id}`} g={g} admin />)}
-            {groupsMember.filter(g => !groupsAdmin.find(x => x.id === g.id)).map(g => <GroupRow key={`m-${g.id}`} g={g} />)}
+            {groupsMemberOnly.map(g => <GroupRow key={`m-${g.id}`} g={g} />)}
           </div>
         ) : (
           <div className="bg-white rounded-2xl border border-dashed border-gray-200 p-8 text-center text-sm text-gray-400">
