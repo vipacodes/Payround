@@ -34,30 +34,162 @@ function WaButton() {
   );
 }
 
-// 🤖 Chatbot brain — instant answer based on what the user asks
-function botReply(text, name) {
-  const t = (text || '').toLowerCase();
-  const hi = (name || '').split(' ')[0] || 'there';
-  const wa = '\n\n💬 For a FASTER reply, tap the green WhatsApp button below this message — the team answers quickly there. 👇';
-  if (/^(hi|hello|hey|good (morning|afternoon|evening)|yo|how far)\b/.test(t))
-    return `👋 Hello ${hi}! I'm ${BOT_NAME} 🤖. The team is offline right now, but I can help instantly with payouts 🤑, payments 💳, verification 🔵, ads 📢 or groups 👥 — just ask!` + wa;
-  if (t.includes('payout') || t.includes('collect') || t.includes('rotation') || t.includes('my turn'))
-    return `🤑 Payouts: every spot pays each round, and each spot COLLECTS once, in order. Once the group is full the clock starts — spot #1 collects after everyone contributes, then #2, and so on until the last spot. Your exact "you collect ₦X per spot" shows on your group page.` + wa;
-  if (t.includes('pay') || t.includes('receipt') || t.includes('transfer') || t.includes('contribute') || t.includes('contribution'))
-    return `💳 Paying contributions: open your group → pick your spot(s) + week(s) → transfer to the ADMIN bank pinned at the top of the group chat → upload the receipt pic. The admin approves and your green boxes tick ✅. You can upload straight from the group chat too.` + wa;
-  if (t.includes('verif') || t.includes('badge') || t.includes('blue tick') || t.includes('blue mark'))
-    return `🔵 Verification: open your profile → Apply for Verification → upload your ID front & back. Review usually takes under 48 hours. If it's declined you can re-apply after 7 days.` + wa;
-  if (t.includes('ad ') || t.includes('advert') || t.includes('sponsor'))
-    return `📢 Advertising: open the Advertise page → business name + up to 5 photos/videos → pick 1 Day / 1 Week / 1 Month (price shown on each) → pay to the PayRound account → upload your receipt. Once payment is confirmed the ad goes LIVE on the home page & every dashboard!` + wa;
-  if (t.includes('group') || t.includes('ajo') || t.includes('join') || t.includes('save'))
-    return `👥 Groups: browse groups from your Dashboard (or create yours — 1/6/12-month plans). Contributions run in rounds and everyone keeps paying until the last spot collects. Group admin earns interest on the savings.` + wa;
-  if (t.includes('password') || t.includes('log in') || t.includes('login') || t.includes('sign in') || t.includes('forgot'))
-    return `🔑 Login help: tap "Forgot password?" on the login page — a temporary password is emailed to you (works for 20 minutes) and you'll set your own new one right after logging in.` + wa;
-  if (t.includes('human') || t.includes('owner') || t.includes('admin') || t.includes('person') || t.includes('someone'))
-    return `🙋 Noted — the PayRound team has been flagged and will personally reply IN THIS CHAT as soon as they're back (usually within a few hours). Everything you typed here is saved for them.` + wa;
-  if (t.includes('thank') || t.startsWith('ok') || t.includes('nice') || t.includes('great'))
-    return `😊 Anytime! Anything else, just type it here — I'm around 24/7.` + wa;
-  return `🤖 Got it! I've saved your message for the team — they'll reply right here ASAP. Quick topics in the meantime: payouts 🤑, payments 💳, verification 🔵, ads 📢, groups 👥 — ask me about any of them!` + wa;
+// 💡 Suggested-question chips under bot answers — tap one and it's sent as if you typed it
+function ChipRow({ items, onPick }) {
+  if (!items?.length) return null;
+  return (
+    <div className="flex flex-wrap gap-1.5 mt-2">
+      {items.map(c => (
+        <button key={c} type="button" onClick={() => onPick(c)}
+          className="text-[11px] font-semibold bg-white/80 border border-amber-300 text-amber-800 px-2.5 py-1 rounded-full hover:bg-amber-100 active:scale-95 transition-all">
+          {c}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+// 🤖 PayRound Chat Bot — AI-style helper: understands many ways of asking, knows the
+// LIVE ad prices, group plans & PayRound bank account, walks users through fixes
+// step by step, and suggests follow-up questions (tap a chip to ask instantly).
+const money = (n) => `₦${Number(n || 0).toLocaleString()}`;
+const pickSet = (s, ...keys) => { for (const k of keys) { const v = s?.[k]; if (v !== undefined && v !== null && v !== '') return v; } return null; };
+
+// Follow-up chips travel inside the bot text as a small token, stripped at render time
+function parseChips(body = '') {
+  const m = String(body).match(/\n?\[\[CHIPS:([^\]]*)\]\]\s*$/);
+  if (!m) return { text: body, chips: [] };
+  return { text: String(body).slice(0, String(body).length - m[0].length), chips: m[1].split('|').map(x => x.trim()).filter(Boolean).slice(0, 4) };
+}
+const withChips = (body, chips) => (chips && chips.length ? `${body}\n[[CHIPS:${chips.join('|')}]]` : body);
+
+function botReply(text, ctx = {}) {
+  const t = String(text || '').toLowerCase().trim();
+  const s = ctx.settings || null;
+  const hi = (ctx.name || '').split(' ')[0] || 'there';
+
+  // live numbers straight from PayRound settings (fallbacks = standard prices)
+  const adD = pickSet(s, 'ad_1day', 'ad1day') ?? 500;
+  const adW = pickSet(s, 'ad_1week', 'ad1week') ?? 3325;
+  const adM = pickSet(s, 'ad_1month', 'ad1month') ?? 13500;
+  const p1 = pickSet(s, 'plan_1m', 'plan1m');
+  const p6 = pickSet(s, 'plan_6m', 'plan6m');
+  const p12 = pickSet(s, 'plan_12m', 'plan12m');
+  const bankName = pickSet(s, 'bank_name', 'bankName');
+  const acctNo = pickSet(s, 'account_number', 'accountNumber');
+  const acctName = pickSet(s, 'account_name', 'accountName');
+  const hasBank = !!(bankName || acctNo);
+  const plansLine = p1 == null ? '' : `\n• 1 Month — ${money(p1)}\n• 6 Months — ${money(p6)}\n• 12 Months — ${money(p12)}`;
+  const bankBlock = hasBank ? `\n\n🏦 PayRound account:\n${bankName || ''}\n${acctNo || ''}\n${acctName || ''}` : '';
+  const HUMAN_CHIP = '🙋 Talk to a human';
+
+  /* ---------- small talk & flow control ---------- */
+  if (/^(hi|hello|hey|yo|hiya|helo|how far|good (morning|afternoon|evening|day))\b/.test(t))
+    return withChips(`👋 Hello ${hi}! I'm ${BOT_NAME} — your 24/7 PayRound assistant 🤖.\nI can walk you through groups, payments 💳, payouts 🤑, verification 🔵, ads 📢, passwords 🔑 and plenty more. What do you need?`, ['How does PayRound work?', 'When do I get paid?', 'Ad prices?', HUMAN_CHIP]);
+  if (/^(how are you|how far na|wetin dey|sup|what'?s up|how is it going)\b/.test(t))
+    return withChips(`😊 Running smooth, thanks for asking! What can I sort out for you today?`, ['How do groups work?', 'How do I pay?', HUMAN_CHIP]);
+  if (/thank|tanks|thx|appreciate|nice one|well done/.test(t))
+    return withChips(`😊 Anytime, ${hi}! I'm awake 24/7 — just come back whenever you need help.`, ['How does PayRound work?', HUMAN_CHIP]);
+  if (/^(bye|goodbye|good ?night|later|see you)\b/.test(t))
+    return withChips(`👋 Take care, ${hi}! I'll be right here whenever you need help again.`);
+  if (/are you (a )?(bot|robot|real|human|ai)|who are you/.test(t))
+    return withChips(`🤖 I'm ${BOT_NAME} — PayRound's automated assistant. Not human, but I know this app inside-out and I never sleep 😄. Anything I can't fix goes straight to the team in this same chat.`, ['How does PayRound work?', HUMAN_CHIP]);
+
+  /* ---------- "yes / tell me more / how?" → continue the previous topic ---------- */
+  const prevBot = [...(ctx.msgs || [])].reverse().find(m => m.sender_type === 'bot')?.body || '';
+  const hasAny = (...ws) => ws.some(w => t.includes(w));
+  const shortFollowUp = (/^(yes|yeah|yep|ok(ay)?|sure|pls|please|go on|more|tell me more|explain|continue)\b/.test(t) && t.length <= 20) || /^(how|why|and then)\??$/.test(t);
+  const hasTopic = hasAny('pay', 'ad', 'group', 'password', 'verify', 'verif', 'payout', 'collect', 'receipt', 'price', 'cost', 'bank', 'email', 'refer', 'badge', 'scam', 'delete', 'palm', 'transfer');
+  if (shortFollowUp && !hasTopic) {
+    const MORE = [
+      ['🤑', `🤑 Payout recap:\n• Group fills up → the clock starts.\n• Every round, ALL spots pay.\n• Spot #1 collects the full pot, then #2… down to the last spot — each spot collects exactly once.\n• Green boxes ✅ show which payments are already approved.`, ['How do I pay?', 'Receipt still pending', HUMAN_CHIP]],
+      ['💳', `💳 Payment recap:\n• Pay only the ADMIN account pinned at the top of your group chat.\n• Screenshot the transfer receipt.\n• Upload it in the group — admin approval turns your box green ✅.\n• Never pay any account someone sends you in private DMs.`, ['Where is the bank to pay?', 'Receipt still pending', HUMAN_CHIP]],
+      ['🔵', `🔵 Verification recap:\n• Profile → Apply for Verification → ID front & back photos.\n• Review usually completes within 48 hours.\n• Declined? Re-apply after 7 days with clearer photos.\n• Badges are FREE — only PayRound can give them.`, [HUMAN_CHIP]],
+      ['📢', `📢 Ads recap:\n• Up to 5 media per ad + optional alt text on each.\n• AI can write the description from your media, or type your own.\n• Pay & upload receipt → ad goes live after confirmation.\n• Declined ads carry the reason — edit & resubmit free, your paid time is kept.`, ['Ad prices?', 'My ad is not showing', HUMAN_CHIP]],
+      ['👥', `👥 Groups recap:\n• Browse or create groups from your Dashboard.\n• Spots are numbered; the rotation clock starts when the group is full.\n• Everyone keeps contributing until the last spot collects.\n• Group admins earn interest for managing the group.`, ['When do I get paid?', 'How do I pay?', HUMAN_CHIP]],
+      ['🔑', `🔑 Password recap:\n• Login page → "Forgot password?" → temporary password lands in your EMAIL (20 minutes valid).\n• Log in with it → set your own new password immediately.\n• Check Spam/Junk if the email hides, and search "PayRound".`, [HUMAN_CHIP]],
+    ];
+    for (const [marker, body, chips] of MORE) { if (prevBot.includes(marker)) return withChips(body, chips); }
+    return withChips(`Sure 👍 — what exactly should I dig into? Pick one 👇`, ['When do I get paid?', 'How do I pay?', 'Ad prices?', 'Verification 🔵']);
+  }
+
+  const has = (...ws) => ws.some(w => t.includes(w));
+
+  /* ---------- the knowledge base ---------- */
+  if (has('human', 'real person', 'agent', 'customer care', 'customer service') || (has('talk', 'chat', 'speak') && has('admin', 'support', 'person', 'human', 'owner', 'staff')))
+    return withChips(`🙋 The PayRound team has your messages — everything typed here is saved for them and they reply IN THIS CHAT (usually within a few hours).\n• Fastest line: the green WhatsApp button below my messages.\n• Adding details + screenshots here helps them solve it quicker.`, ['Receipt still pending', 'I forgot my password', 'My ad is not showing']);
+
+  if (has('how does payround', 'what is payround', 'how it works', 'how does it work', 'about payround', 'explain payround', 'what is this app', 'how do you people work'))
+    return withChips(`💡 PayRound = a digital Ajo (rotating savings) platform 🇳🇬:\n• Members join a group and take numbered spots.\n• Every round, ALL spots pay the contribution to the admin's bank account.\n• Spots collect the full pot one after another — #1 first … last spot last.\n• The rotation clock starts only when the group is FULL.\n• Group admins earn interest for managing the group.${plansLine ? `\n\n💎 Group plans:${plansLine}` : ''}`, ['When do I get paid?', 'How do I join a group?', 'How do I pay?']);
+
+  if (has('payout', 'collect', 'my turn', 'rotation', 'when will i get', 'when do i get', 'when am i getting', 'cash out', 'my money', 'pot'))
+    return withChips(`🤑 Payouts — how collecting works:\n• Once the group is FULL the clock starts. Each round, every spot pays the contribution.\n• Spot #1 collects the full pot first, then #2, then #3… each spot collects exactly ONCE per cycle.\n• After you pay, upload the receipt — green boxes tick ✅ as the admin approves.\n• Your group page shows your spot number and the exact amount you collect.\n⏳ Someone delaying the round? Report it here — only the group admin (and us) can follow up with them.`, ['How do I pay?', 'Receipt still pending', HUMAN_CHIP]);
+
+  if (has('how do i pay', 'how to pay', 'i want to pay', 'contribute', 'contribution', 'make payment', 'pay my spot', 'pay for my spot'))
+    return withChips(`💳 Paying your contribution — step by step:\n1️⃣ Open your group → choose your spot(s) & week(s).\n2️⃣ Transfer to the ADMIN bank pinned at the top of the group chat (the green card, members only).\n3️⃣ Screenshot/photo the transfer receipt.\n4️⃣ Upload it in the group — the admin approves and your box turns green ✅.\n⚠️ Only ever pay the account shown INSIDE your group — never accounts sent in private DMs.`, ['Where is the bank to pay?', 'Receipt still pending', HUMAN_CHIP]);
+
+  if (has('bank detail', 'account to pay', 'which account', 'admin account', 'where is the bank', 'cant see the bank', "can't see the bank", 'account number to pay', 'where do i pay'))
+    return withChips(`🏦 The admin's bank details sit at the very TOP of your group chat (green card).\n• Only approved members of that group can see it — join first.\n• Member already but no card? The admin hasn't added their bank yet — ask in the group chat or DM them from their profile.`, ['How do I pay?', HUMAN_CHIP]);
+
+  if (has('receipt', 'proof of payment', 'not approved', 'pending payment', 'approve my payment', 'payment declined', 'payment rejected'))
+    return withChips(`🧾 Receipt still pending?\n• Only your GROUP ADMIN approves receipts — ping them in the group chat.\n• Make sure the photo clearly shows the amount, date, and receiving account.\n• Declined? Re-upload a clearer photo — declined receipts never count as paid.\n• Been waiting many hours? Type "human" and the team will nudge your admin.`, ['How do I pay?', HUMAN_CHIP]);
+
+  if (has('verif', 'blue tick', 'blue mark', 'blue badge', 'id card', 'nin ', 'identity'))
+    return withChips(`🔵 Getting the blue badge:\n1️⃣ Open Profile → Apply for Verification.\n2️⃣ Upload clear photos of your ID (front & back).\n3️⃣ Review usually finishes within 48 hours — you'll get a notification.\n• Declined? Re-apply after 7 days with sharper photos.\n• Verification is FREE and only PayRound can approve it — anyone "selling" badges is a scammer, report them here.`, [HUMAN_CHIP]);
+
+  if (has('black badge', 'gold badge', 'golden badge', 'golden circle', 'official badge', 'badge mean', 'badges mean', 'types of badge'))
+    return withChips(`🏅 Badge guide:\n🔵 Blue badge — verified user (ID checked by PayRound).\n⚫ Black badge with golden ring — official PayRound team ONLY; never given to regular users.\n🥉🥈🥇 Bronze/Silver/Gold group badges — trusted groups, awarded by PayRound after review.`, ['How do I get verified?', HUMAN_CHIP]);
+
+  if (has('ad not showing', 'ad declined', 'ad rejected', 'ad pending', 'my ad', 'ad status', 'ad approved'))
+    return withChips(`📉 Check your ad status — Advertise → My Ads (each ad shows its created date too):\n• ⏳ PENDING — receipt awaiting confirmation; ads go live only after payment confirms.\n• 🟢 LIVE — showing now, fairly shuffled with other advertisers. Expired ads hide automatically.\n• ❌ DECLINED — the reason is saved on the ad. Fix the media/text and resubmit FREE — your paid time is kept.`, ['Ad prices?', 'How do I pay for ads?', HUMAN_CHIP]);
+
+  if (has('advert', ' ad ', 'ads', 'sponsor', 'promote my', 'ad prices', 'price of ad', 'advertising'))
+    return withChips(`📢 Advertising on PayRound:\n1️⃣ Advertise → business name, then add up to 5 photos/videos (optional alt text each).\n2️⃣ Let the AI write a description from your media — or type your own.\n3️⃣ Pick how long it runs:\n• 1 Day — ${money(adD)}\n• 1 Week — ${money(adW)}\n• 1 Month — ${money(adM)}\n4️⃣ Transfer to the PayRound account & upload your receipt.${bankBlock}\n5️⃣ Payment confirmed → ad goes LIVE on the home page & dashboards, shuffled fairly with others.\nℹ️ Your draft stays saved if you leave to make the transfer — nothing is lost.`, ['My ad is not showing', 'Ad prices?', HUMAN_CHIP]);
+
+  if (has('password', 'forgot', 'cant login', "can't login", 'cant log in', 'login problem', 'log in issue', 'sign in problem', 'reset'))
+    return withChips(`🔑 Password help:\n• Change it: Settings → Security → Change Password (current password required).\n• Forgot it: login page → "Forgot password?" → a temporary password is EMAILED to you ⏳ valid 20 minutes. Log in with it, then set your own new one immediately.\n📧 Email not showing? Check Spam/Junk, search "PayRound", and make sure you typed the exact email you registered with.`, [HUMAN_CHIP]);
+
+  if (has('change email', 'new email', 'update email', 'wrong email', 'change my email', 'email address'))
+    return withChips(`📧 Changing your login email:\nSettings → Security → Change Email — your password is required.\n• Everything moves with you: groups, messages, ads, profile.\n• Afterwards log in with the NEW email; your password stays the same.`, ['I forgot my password', HUMAN_CHIP]);
+
+  if (has('refer', 'invite', 'bonus', 'earn money', 'earn from', '200 per'))
+    return withChips(`🎁 Referral bonus:\n• Share your personal referral link (Dashboard) — earn ₦200 for EVERY person who registers through it.\n• Withdraw once you reach ₦1,000 (that's 5+ referrals).\n• You must be a member or admin of a group to cash referral earnings.\nYour Dashboard lists everyone who joined through you.`, ['How do groups work?', HUMAN_CHIP]);
+
+  if (has('announcement'))
+    return withChips(`📣 Group announcements:\n• Posted by the group admin — shown in a bright box at the very TOP of the group chat.\n• They stay there until the admin clears them — always check there first for deadlines & rule changes.`, ['How do I pay?', HUMAN_CHIP]);
+
+  if (has('message', 'inbox', 'dm ', 'chat with a member', 'private chat'))
+    return withChips(`✉️ Messages: open Messages from the menu to chat privately with any member — or tap their profile → Message.\n• Unread chats get a green count.\n• This Support chat stays pinned at the very top of your list 💚.`, [HUMAN_CHIP]);
+
+  if (has('notif', 'sound', 'bell', 'alert', 'mute'))
+    return withChips(`🔔 Notifications & sounds:\n• Payment approvals, verification results, new followers, support replies — all land under the bell icon.\n• Too noisy? Settings → App sounds toggle.\n• Video ads have their own 🔊/🔇 button, separate from app sounds.`, [HUMAN_CHIP]);
+
+  if (has('dark mode', 'dark theme', 'light mode', 'theme', 'too bright', 'night mode'))
+    return withChips(`🌙 Dark mode: Settings → appearance toggle. The app remembers your choice on this phone — ads & chat boxes stay readable either way.`, [HUMAN_CHIP]);
+
+  if (has('frozen', 'freeze', 'blocked account', 'suspended', 'banned'))
+    return withChips(`❄️ A frozen account means a payment dispute or rule check is under review.\n• Your savings are NOT lost — it's a safety hold.\n• Tell me what happened here (or type "human") and the team will personally review your case in this chat.`, [HUMAN_CHIP]);
+
+  if (has('delete my account', 'close my account', 'deactivate', 'delete account', 'remove my account'))
+    return withChips(`🗑 Account closure is handled by the team so your active spots & savings stay protected.\nType "human" or tap the WhatsApp button and ask to close your account — they'll guide you safely.`, [HUMAN_CHIP]);
+
+  if (has('delete ad', 'remove ad', 'take down my ad'))
+    return withChips(`🗑 Removing an ad: Advertise → My Ads → delete. The ad & its media are removed; time already paid for isn't refunded.`, ['Ad prices?', HUMAN_CHIP]);
+
+  if (has('scam', 'fraud', 'fake', 'hacker', 'stole', 'safe', 'trust', 'duped'))
+    return withChips(`🛡 Staying safe on PayRound:\n• Pay ONLY the admin account shown INSIDE your group — never personal accounts sent in DMs.\n• PayRound staff will NEVER ask for your password or OTP.\n• Badges & verification are FREE and only come from inside the app.\n• Suspicious user? Open their profile and report — or type "human" right now and we'll step in.`, [HUMAN_CHIP]);
+
+  if (has('price', 'cost', 'how much', 'plan', 'subscription', 'fee'))
+    return withChips(`💎 Costs at a glance:\n• Registering & joining groups: FREE — you only contribute the group amount shown on its page.\n• Creating a group:${plansLine || ' 1, 6 & 12-month plans — shown in the app'}\n• Ads: 1 Day ${money(adD)} · 1 Week ${money(adW)} · 1 Month ${money(adM)}\n• Verification & badges: FREE`, ['How does PayRound work?', 'Ad prices?', HUMAN_CHIP]);
+
+  if (has('profile', 'my photo', 'avatar', 'change name', 'edit name', 'picture', 'bio'))
+    return withChips(`👤 Your profile: Profile → Edit — change your name, photo, bio & occupation.\n📸 New photos go live after a quick safety review; you get notified the moment they're approved.`, ['How do I get verified?', HUMAN_CHIP]);
+
+  if (has('group', 'ajo', 'join', 'save'))
+    return withChips(`👥 Groups:\n• Browse open groups from your Dashboard (or Groups → search) and grab a spot.\n• Create your own group too — 1/6/12-month plans, and as admin you earn interest.\n• Everyone contributes each round until the last spot collects — that's the Ajo way 🤝.`, ['When do I get paid?', 'How do I pay?', HUMAN_CHIP]);
+
+  // fallback — honest, keeps the chat alive, and offers what I'm great at
+  return withChips(`🤖 Hmm, I don't have a ready-made answer for that one yet — but it's saved for the team and they'll reply right here ASAP.\nMeanwhile, I'm really good at these 👇`, ['How does PayRound work?', 'When do I get paid?', 'How do I pay?', HUMAN_CHIP]);
 }
 
 // Real direct messages between users — business owners, group admins, everyone
@@ -79,6 +211,8 @@ function MessagesInner() {
   const [supMsgs, setSupMsgs] = useState([]);
   const [ownerOnline, setOwnerOnline] = useState(false);
   const [supSending, setSupSending] = useState(false);
+  const [botSettings, setBotSettings] = useState(null); // live prices, plans & bank for the bot brain
+  const [botTyping, setBotTyping] = useState(false);    // 🤖 "typing…" indicator
   const listRef = useRef(null);        // the scrollable message box (never the page!)
   const nearBottom = useRef(true);    // true while the user is reading the newest messages
   const firstOpen = useRef(true);     // jump straight to the bottom the first time a chat opens
@@ -175,8 +309,8 @@ function MessagesInner() {
         const { data: th } = await supabase.from('support_threads').select('*').eq('user_email', me).maybeSingle();
         if (!alive) return;
         setSupThread(th || null);
-        const { data: st } = await supabase.from('owner_settings').select('is_online').eq('id', 1).single();
-        if (alive) setOwnerOnline(!!st?.is_online);
+        const { data: st } = await supabase.from('owner_settings').select('*').eq('id', 1).single();
+        if (alive) { setOwnerOnline(!!st?.is_online); setBotSettings(st || null); }
         if (!th) { if (alive) setSupMsgs([]); return; }
         const { data: ms } = await supabase.from('support_messages').select('*').eq('thread_id', th.id).order('created_at', { ascending: true }).limit(300);
         if (!alive) return;
@@ -199,9 +333,9 @@ function MessagesInner() {
   }, [active, me]);
 
   // 💚 send to support — creates the thread on first message; bot answers instantly if the team is offline
-  const sendSupport = async (e) => {
+  const sendSupport = async (e, textOverride) => {
     e?.preventDefault();
-    const text = body.trim();
+    const text = String(textOverride ?? body).trim();
     if (!text || supSending) return;
     setSupSending(true);
     try {
@@ -225,8 +359,9 @@ function MessagesInner() {
       setSupMsgs(prev => [...prev, { ...row, created_at: now }]);
       scrollToEnd();
       if (!ownerOnline) {
-        const reply = botReply(text, meName);
+        const reply = botReply(text, { name: meName, settings: botSettings, msgs: supMsgs, email: me });
         const theTid = tid;
+        setBotTyping(true);
         setTimeout(async () => {
           try {
             const { supabase: sb } = await import('@/lib/supabase');
@@ -236,7 +371,8 @@ function MessagesInner() {
             sounds.pop();
             scrollToEnd();
           } catch {}
-        }, 900);
+          setBotTyping(false);
+        }, 1100);
       }
     } catch (err) { toast.error(`Could not send: ${err.message || 'try again'}`); }
     setSupSending(false);
@@ -340,7 +476,8 @@ function MessagesInner() {
                 <div className="flex justify-start">
                   <div className="max-w-[84%] px-3.5 py-2.5 rounded-2xl rounded-bl-md text-sm bot-bubble">
                     <p className="text-[10px] font-bold text-amber-700 mb-0.5">🤖 {BOT_NAME}</p>
-                    <p className="whitespace-pre-line">👋 Hi{meName ? ' ' + meName.split(' ')[0] : ''}! Welcome to PayRound Support.{'\n'}Ask me anything — payouts 🤑, payments 💳, verification 🔵, ads 📢, groups 👥.{'\n'}If you need a human, the PayRound team replies in this chat ASAP.</p>
+                    <p className="whitespace-pre-line">👋 Hi{meName ? ' ' + meName.split(' ')[0] : ''}! Welcome to PayRound Support.{'\n'}Ask me anything — I know live prices 💎, payouts 🤑, payments 💳, verification 🔵, ads 📢, groups 👥 and more.{'\n'}If you need a human, the PayRound team replies in this chat ASAP.</p>
+                    <ChipRow items={['How does PayRound work?', 'When do I get paid?', 'Ad prices?']} onPick={(c) => sendSupport(null, c)} />
                     <WaButton />
                   </div>
                 </div>
@@ -348,6 +485,7 @@ function MessagesInner() {
               {supMsgs.map((m, i) => {
                 const mine = m.sender_type === 'user';
                 const bot = m.sender_type === 'bot';
+                const pc = bot ? parseChips(m.body) : { text: m.body, chips: [] };
                 const prev = supMsgs[i - 1];
                 const showDate = !prev || new Date(prev.created_at).toDateString() !== new Date(m.created_at).toDateString();
                 return (
@@ -363,7 +501,8 @@ function MessagesInner() {
                             {bot ? <>🤖 {BOT_NAME}</> : <>PayRound Team <OwnerBadge className="w-3.5 h-3.5" /></>}
                           </p>
                         )}
-                        <p className="whitespace-pre-line break-words">{m.body}</p>
+                        <p className="whitespace-pre-line break-words">{pc.text}</p>
+                        {bot && <ChipRow items={pc.chips} onPick={(c) => sendSupport(null, c)} />}
                         {bot && <WaButton />}
                         <p className={`text-[9px] mt-0.5 ${mine ? 'text-primary-200 text-right' : bot ? 'text-amber-700/70' : 'text-gray-400'}`}>{timeOf(m.created_at)}</p>
                       </div>
@@ -371,6 +510,19 @@ function MessagesInner() {
                   </div>
                 );
               })}
+              {/* 🤖 typing indicator while the bot composes its answer */}
+              {botTyping && (
+                <div className="flex justify-start">
+                  <div className="px-3.5 py-2.5 rounded-2xl rounded-bl-md text-sm bot-bubble">
+                    <p className="text-[10px] font-bold text-amber-700 mb-0.5">🤖 {BOT_NAME}</p>
+                    <p className="flex items-center gap-1.5 text-amber-700/80 text-xs font-semibold">thinking
+                      <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-bounce inline-block" style={{ animationDelay: '0ms' }} />
+                      <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-bounce inline-block" style={{ animationDelay: '150ms' }} />
+                      <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-bounce inline-block" style={{ animationDelay: '300ms' }} />
+                    </p>
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* composer */}
