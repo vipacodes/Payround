@@ -3,8 +3,11 @@ import { NextResponse } from 'next/server';
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
+// Fallbacks keep the route working even when env vars are missing server-side.
+// (The anon key is a PUBLIC key by design — the same one already shipped in the client bundle.)
 const SUPA_URL = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://biqutnjvhkvldrihywdb.supabase.co';
-const SUPA_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
+const SUPA_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+  || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJpcXV0bmp2aGt2bGRyaWh5d2RiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODU0Nzk1NjMsImV4cCI6MjEwMTA1NTU2M30.zLffszHcCGRFmnGW0iXSp6BNJ_BMPqQv1W6TXQNxYLU';
 
 const TEMP_MINUTES = 20;
 const COOLDOWN_MS = 2 * 60 * 1000; // never spam one inbox — one fresh code per 2 minutes
