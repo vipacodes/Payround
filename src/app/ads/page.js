@@ -8,6 +8,41 @@ import { HiPhotograph, HiCheckCircle, HiSparkles, HiRefresh, HiTrash, HiClock, H
 import toast from 'react-hot-toast';
 
 const MAX_MEDIA = 5;
+const MAX_VIDEO_MB = 3.5;      // raw videos are stored inside the ad row — keep clips small so mobile data uploads FAST
+const MAX_PAYLOAD_KB = 5200;   // absolute safety ceiling for one submit (~7MB of base64 text)
+
+// 🌐 Direct PostgREST save with a HARD timeout — unlike fire-and-hope this ALWAYS comes back,
+// so the button can never sit at "Submitting…" forever on shaky mobile networks.
+// (Anon key is public-by-design; fallbacks mirror the ones in /api/send-reset.)
+const SUPA_FALLBACK_URL = 'https://biqutnjvhkvldrihywdb.supabase.co';
+const SUPA_FALLBACK_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJpcXV0bmp2aGt2bGRyaWh5d2RiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODU0Nzk1NjMsImV4cCI6MjEwMTA1NTU2M30.zLffszHcCGRFmnGW0iXSp6BNJ_BMPqQv1W6TXQNxYLU';
+const postgrestSave = async (method, path, body, timeoutMs) => {
+  const base = process.env.NEXT_PUBLIC_SUPABASE_URL || SUPA_FALLBACK_URL;
+  const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || SUPA_FALLBACK_KEY;
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), timeoutMs);
+  let res;
+  try {
+    res = await fetch(`${base}/rest/v1/${path}`, {
+      method,
+      headers: { apikey: key, Authorization: `Bearer ${key}`, 'Content-Type': 'application/json', Prefer: 'return=minimal' },
+      body: body ? JSON.stringify(body) : undefined,
+      signal: ctrl.signal,
+    });
+  } catch (err) {
+    clearTimeout(timer);
+    if (err?.name === 'AbortError') {
+      throw new Error(`Network too slow — nothing was saved (gave up after ${Math.round(timeoutMs / 1000)}s). Try again on stronger data/Wi-Fi, and keep videos under ${MAX_VIDEO_MB}MB.`);
+    }
+    throw new Error('No connection — check your data/Wi-Fi and try again. Nothing was saved.');
+  }
+  clearTimeout(timer);
+  if (!res.ok) {
+    const txt = await res.text().catch(() => '');
+    if (res.status === 413) throw new Error('That upload is too heavy — remove a video (or use a much shorter clip) and try again.');
+    throw new Error((txt || `Save failed (HTTP ${res.status})`).slice(0, 160));
+  }
+};
 
 // ✨ Local "AI" description writer — builds a tailored advert from the business name + the photos/videos uploaded.
 const AI_PATTERNS = [
@@ -119,6 +154,17 @@ export default function AdsPage() {
   const [tab, setTab] = useState('create');           // 📑 'create' (📢) | 'mine' (📂 My Ads)
   const [mineFilter, setMineFilter] = useState('all'); // all | live | review | await_receipt | declined
   const [activeAds, setActiveAds] = useState([]);
+
+  // 🔗 Deep link: /ads?tab=mine (&f=live|review|await_receipt|declined) opens straight on the My Ads tab
+  useEffect(() => {
+    try {
+      const q = new URLSearchParams(window.location.search);
+      if (q.get('tab') === 'mine') setTab('mine');
+      const f = (q.get('f') || '').trim();
+      if (['all', 'live', 'review', 'await_receipt', 'declined'].includes(f)) setMineFilter(f);
+    } catch {}
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const [viewImg, setViewImg] = useState('');
 
   const plans = [
@@ -163,7 +209,7 @@ export default function AdsPage() {
       if (mediaFiles.length + list.length >= MAX_MEDIA) { setMediaError(`Maximum is ${MAX_MEDIA} photos/videos per ad — extra files skipped.`); break; }
       const isVideo = file.type.startsWith('video/');
       if (!isVideo && !file.type.startsWith('image/')) { setMediaError('Only images and videos are allowed.'); continue; }
-      if (isVideo && file.size > 6 * 1024 * 1024) { setMediaError(`"${file.name}" is over 6MB — videos must be 6MB or less.`); continue; }
+      if (isVideo && file.size > MAX_VIDEO_MB * 1024 * 1024) { setMediaError(`"${file.name}" is over ${MAX_VIDEO_MB}MB — please use a shorter clip (big videos take forever to upload on mobile data).`); continue; }
       try {
         if (isVideo) {
           const dataUrl = await new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(r.result); r.onerror = rej; r.readAsDataURL(file); });
@@ -231,11 +277,21 @@ export default function AdsPage() {
     if (!formData.contact.trim()) { toast.error('Contact phone is required.'); return; }
     if (mediaFiles.length === 0) { toast.error('Add at least 1 photo or video of your business.'); return; }
     if (!receipt && !window.confirm(`No payment receipt attached!\n\nYour ad will be SAVED as "Awaiting payment". Pay ₦${plan.price.toLocaleString()} to the PayRound account shown and upload the receipt later from "My Ads" on this page — nothing will be lost.\n\nSave the ad now without the receipt?`)) return;
+    const cover = mediaFiles[0];
+    const payloadKB = Math.round((mediaFiles.join('').length + (receipt || '').length) / 1024);
+    if (payloadKB > MAX_PAYLOAD_KB) {
+      toast.error(`This ad is too heavy to send at once (~${(payloadKB / 1024).toFixed(1)}MB). Remove a video or use a much shorter clip (≤ ${MAX_VIDEO_MB}MB) and try again.`);
+      return;
+    }
+    const hasVideo = mediaFiles.some(m => m.startsWith('data:video'));
     setSending(true);
-    const t = toast.loading(receipt ? 'Submitting your ad for review…' : 'Saving your ad…');
+    const t = toast.loading(
+      payloadKB > 1400
+        ? `📤 Sending your ad (~${(payloadKB / 1024).toFixed(1)}MB${hasVideo ? ', includes video' : ''}) — big uploads take 1–2 min on mobile data. Please don’t close this page…`
+        : receipt ? 'Submitting your ad for review…' : 'Saving your ad…',
+      { duration: Infinity }
+    );
     try {
-      const { supabase } = await import('@/lib/supabase');
-      const cover = mediaFiles[0];
       const payload = {
         id: `ad-${Date.now()}`,
         business_name: formData.businessName.trim(),
@@ -256,15 +312,15 @@ export default function AdsPage() {
         status: 'pending',
         submitted_at: new Date().toISOString(),
       };
-      let error;
+      // Save through a hard-timeout fetch so the button ALWAYS comes back (never stuck on "Submitting…")
+      const timeoutMs = payloadKB > 1400 ? 120000 : 60000;
       if (editId) {
         // fixing a declined ad — UPDATE the same row (keeps its original created date) and clear the rejection
         const { submitted_at, ...rest } = payload;
-        ({ error } = await supabase.from('ads').update({ ...rest, reject_reason: null }).eq('id', editId));
+        await postgrestSave('PATCH', `ads?id=eq.${encodeURIComponent(editId)}`, { ...rest, reject_reason: null }, timeoutMs);
       } else {
-        ({ error } = await supabase.from('ads').insert(payload));
+        await postgrestSave('POST', 'ads', payload, timeoutMs);
       }
-      if (error) throw error;
       toast.success(editId
         ? 'Updated ad sent for review again! 🎉 The reason it was declined is cleared.'
         : receipt
@@ -290,13 +346,11 @@ export default function AdsPage() {
   // Upload/replace the payment receipt on a saved ad
   const uploadReceiptFor = async (ad, file) => {
     if (!file || !file.type.startsWith('image/')) { toast.error('Receipt must be an image.'); return; }
-    const t = toast.loading('Uploading receipt…');
+    const t = toast.loading('Uploading receipt…', { duration: Infinity });
     try {
       const { compressImage } = await import('@/lib/image');
       const dataUrl = await compressImage(file, 1000, 0.82);
-      const { supabase } = await import('@/lib/supabase');
-      const { error } = await supabase.from('ads').update({ payment_receipt_url: dataUrl, receipt_uploaded_at: new Date().toISOString() }).eq('id', ad.id);
-      if (error) throw error;
+      await postgrestSave('PATCH', `ads?id=eq.${encodeURIComponent(ad.id)}`, { payment_receipt_url: dataUrl, receipt_uploaded_at: new Date().toISOString() }, 60000);
       toast.success('Receipt uploaded! PayRound will review and set your ad LIVE. 🎉', { id: t });
       setMineFilter('review'); // show it land under ⏳ Pending
       loadMyAds(myEmail);
@@ -540,7 +594,7 @@ export default function AdsPage() {
                     <label className="w-full border-2 border-dashed border-gray-200 rounded-xl p-4 flex flex-col items-center gap-1 cursor-pointer hover:border-primary-300 hover:bg-primary-50/40 transition-all">
                       <input type="file" accept="image/*,video/*" multiple className="hidden" onChange={e => { pickMedia(e.target.files); e.target.value = ''; }} />
                       <HiPhotograph className="w-6 h-6 text-gray-400" />
-                      <span className="text-xs text-gray-500">Tap to add photos or short videos (images auto-compressed, videos ≤ 6MB) — {mediaFiles.length}/{MAX_MEDIA} added</span>
+                      <span className="text-xs text-gray-500">Tap to add photos or short videos (images auto-compressed, videos ≤ {MAX_VIDEO_MB}MB) — {mediaFiles.length}/{MAX_MEDIA} added</span>
                     </label>
                     {mediaError && <p className="text-xs text-red-500 mt-1">{mediaError}</p>}
                     {mediaFiles.length > 0 && (

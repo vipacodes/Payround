@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
-import { HiMenu, HiX, HiSearch, HiBell, HiHome, HiUserGroup, HiCurrencyDollar, HiUser, HiLogout, HiChartBar, HiCog, HiChatAlt2, HiCalculator } from 'react-icons/hi';
+import { HiMenu, HiX, HiSearch, HiBell, HiHome, HiUserGroup, HiCurrencyDollar, HiUser, HiLogout, HiChartBar, HiCog, HiChatAlt2, HiCalculator, HiSpeakerphone } from 'react-icons/hi';
 import QuickCalc from '@/components/QuickCalc';
 import GlobalSearch from '@/components/GlobalSearch';
 import { logoutUser } from '@/lib/data';
@@ -232,6 +232,17 @@ export default function Header() {
                 </button>
 
                 <button
+                  onClick={() => router.push('/ads?tab=mine')}
+                  title="My Ads — live, pending, saved & declined ads"
+                  className={`flex items-center gap-1.5 text-sm font-medium transition-colors ${
+                    isActive('/ads') ? 'text-primary-600' : 'text-gray-600 hover:text-primary-600'
+                  }`}
+                >
+                  <HiSpeakerphone className="w-5 h-5" />
+                  My Ads
+                </button>
+
+                <button
                   onClick={() => setShowCalc(true)}
                   aria-label="Quick calculator"
                   title="Quick calculator"
@@ -402,6 +413,7 @@ export default function Header() {
                   <MobileNavItem icon={<HiHome className="w-5 h-5" />} label="Dashboard" onClick={() => { router.push('/dashboard'); setIsMenuOpen(false); }} active={isActive('/dashboard')} />
                   <MobileNavItem icon={<HiUserGroup className="w-5 h-5" />} label="Join Group" onClick={() => { router.push('/groups/search'); setIsMenuOpen(false); }} active={isActive('/groups/search')} />
                   <MobileNavItem icon={<HiChartBar className="w-5 h-5" />} label="Create Group" onClick={() => { router.push('/groups/create'); setIsMenuOpen(false); }} active={isActive('/groups/create')} />
+                  <MobileNavItem icon={<HiSpeakerphone className="w-5 h-5" />} label="My Ads" onClick={() => { router.push('/ads?tab=mine'); setIsMenuOpen(false); }} active={isActive('/ads')} />
                   <MobileNavItem icon={<HiBell className="w-5 h-5" />} label={`Notifications${unreadCount > 0 ? ` (${unreadCount})` : ''}`} onClick={() => { router.push('/notifications'); setIsMenuOpen(false); }} active={isActive('/notifications')} />
                   <MobileNavItem icon={<HiChatAlt2 className="w-5 h-5" />} label={`Messages${unreadMsgs > 0 ? ` (${unreadMsgs})` : ''}`} onClick={() => { router.push('/messages'); setIsMenuOpen(false); }} active={isActive('/messages')} />
                   {gchatShow && (
