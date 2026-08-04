@@ -140,7 +140,7 @@ export async function POST(req) {
       }
     } catch (mailErr) {
       console.error('mail send failed:', mailErr?.message);
-      // fall through to dev fallback so the user is never locked out
+      return NextResponse.json({ ok: true, sent: false, dev_fallback: true, code, mail_debug: String(mailErr?.message || mailErr).slice(0, 160) });
     }
     // No email service connected (or send failed) — return code so the app shows it on-screen as a bridge
     return NextResponse.json({ ok: true, sent: false, dev_fallback: true, code });
