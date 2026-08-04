@@ -73,7 +73,8 @@ export async function getAdsFromSupabase() {
     if (!supabaseClient) return [];
     const { data, error } = await supabase.from('ads').select('*').eq('status', 'approved').order('submitted_at', { ascending: false });
     if (error) throw error;
-    return data || [];
+    // only ads still inside their paid time window are shown
+    return (data || []).filter((a) => !a.expires_at || new Date(a.expires_at).getTime() > Date.now());
   } catch {
     return [];
   }

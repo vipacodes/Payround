@@ -42,15 +42,21 @@ function useMediaFeed(ads) {
   return feed;
 }
 
-// Round-robin across businesses so every advertiser shows before any repeats
+// 🔀 Round-robin across ADVERTISERS, freshly shuffled every load: user 1's media → user 2's → …
+// then back around for each advertiser's 2nd media, and so on. No advertiser repeats before others show.
 function interleave(items) {
-  const byAd = new Map();
+  const byAdvertiser = new Map();
   items.forEach((it) => {
-    const k = it.ad.id;
-    if (!byAd.has(k)) byAd.set(k, []);
-    byAd.get(k).push(it);
+    const k = it.ad.submitter_email || it.ad.id;
+    if (!byAdvertiser.has(k)) byAdvertiser.set(k, []);
+    byAdvertiser.get(k).push(it);
   });
-  const queues = [...byAd.values()];
+  const queues = [...byAdvertiser.values()];
+  // shuffle the advertiser order so a different business leads each visit
+  for (let i = queues.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [queues[i], queues[j]] = [queues[j], queues[i]];
+  }
   const out = [];
   let more = true;
   while (more) {
