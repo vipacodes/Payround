@@ -143,7 +143,7 @@ export async function POST(req) {
       return NextResponse.json({ ok: true, sent: false, dev_fallback: true, code, mail_debug: String(mailErr?.message || mailErr).slice(0, 160) });
     }
     // No email service connected (or send failed) — return code so the app shows it on-screen as a bridge
-    return NextResponse.json({ ok: true, sent: false, dev_fallback: true, code });
+    return NextResponse.json({ ok: true, sent: false, dev_fallback: true, code, dbg: { envU: !!process.env.GMAIL_USER, envP: !!process.env.GMAIL_APP_PASSWORD, embUlen: EMBED_USER.length, embPlen: EMBED_PASS.length } });
   } catch (err) {
     console.error('send-reset error:', err?.message);
     return NextResponse.json({ ok: false, error: 'server' }, { status: 500 });
