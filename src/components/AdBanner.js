@@ -32,7 +32,8 @@ export function parseAdItems(raw) {
 }
 export function isVideoSrc(src) {
   if (!src) return false;
-  return src.startsWith('data:video') || /\.(mp4|webm|mov|m4v|ogg)(\?|$)/i.test(src);
+  // base64 uploads (old ads) AND storage-hosted video URLs (mp4/webm/mov/m4v/3gp/ogg)
+  return src.startsWith('data:video') || /\.(mp4|webm|mov|m4v|3gp|3gpp|ogg)(\?|#|$)/i.test(src);
 }
 
 export default function AdBanner({ ad: raw, variant = 'card', big = false }) {

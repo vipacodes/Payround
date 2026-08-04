@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import Header from '@/components/Header';
 import Footer from '@/components/Footer';
 import AdBanner from '@/components/AdBanner';
@@ -8,8 +8,30 @@ import { HiPhotograph, HiCheckCircle, HiSparkles, HiRefresh, HiTrash, HiClock, H
 import toast from 'react-hot-toast';
 
 const MAX_MEDIA = 5;
-const MAX_VIDEO_MB = 3.5;      // raw videos are stored inside the ad row — keep clips small so mobile data uploads FAST
-const MAX_PAYLOAD_KB = 5200;   // absolute safety ceiling for one submit (~7MB of base64 text)
+const MAX_VIDEO_MB = 12;        // videos fly to Supabase Storage (ads-media bucket) as real files — proper clips welcome!
+const MAX_PAYLOAD_KB = 5200;    // safety ceiling for the (light) ad row itself once videos live in storage
+
+// 🎬 True for base64 video strings AND hosted video URLs (uploaded to Supabase Storage)
+const isVideoSrc = (m) => typeof m === 'string'
+  && (m.startsWith('data:video') || /\.(mp4|webm|mov|m4v|3gp|3gpp|ogg)(\?|#|$)/i.test(m));
+
+// ⬆️ Upload one video to the public `ads-media` storage bucket — returns its public https URL.
+// Hard timeout so slow networks fail with a clear message instead of spinning forever.
+const uploadAdVideo = async (file, path, timeoutMs = 180000) => {
+  const { supabase } = await import('@/lib/supabase');
+  const timer = new Promise((_, rej) => setTimeout(
+    () => rej(new Error('Video upload is taking too long on this network — try stronger data/Wi-Fi or a shorter clip.')),
+    timeoutMs
+  ));
+  const up = await Promise.race([
+    supabase.storage.from('ads-media').upload(path, file, { contentType: file.type || 'video/mp4', upsert: true }),
+    timer,
+  ]);
+  if (up?.error) throw up.error;
+  const { data } = supabase.storage.from('ads-media').getPublicUrl(path);
+  if (!data?.publicUrl) throw new Error('Storage did not return a link for the video.');
+  return data.publicUrl;
+};
 
 // 🌐 Direct PostgREST save with a HARD timeout — unlike fire-and-hope this ALWAYS comes back,
 // so the button can never sit at "Submitting…" forever on shaky mobile networks.
@@ -59,7 +81,7 @@ const AI_PATTERNS = [
 function analyzeMedia(files) {
   const out = { count: files.length, videos: 0, portraits: 0, landscapes: 0, squares: 0, bright: 0, dark: 0, colorful: 0, images: 0 };
   return Promise.all(files.map(m => new Promise(res => {
-    if (m.startsWith('data:video')) { out.videos++; return res(); }
+    if (isVideoSrc(m)) { out.videos++; return res(); }
     out.images++;
     const img = new Image();
     img.onload = () => {
@@ -138,6 +160,7 @@ export default function AdsPage() {
 
   const [formData, setFormData] = useState({ businessName: '', description: '', contact: '', whatsapp: '', website: '' });
   const [mediaFiles, setMediaFiles] = useState([]);
+  const rawVid = useRef({});   // dataUrl -> original video File (uploaded to Supabase Storage on submit)
   const [mediaAlts, setMediaAlts] = useState([]);   // optional alt text per photo/video (advertiser's words)
   const [mediaError, setMediaError] = useState('');
   const [editId, setEditId] = useState('');         // set while fixing a declined ad (UPDATE instead of INSERT)
@@ -209,10 +232,11 @@ export default function AdsPage() {
       if (mediaFiles.length + list.length >= MAX_MEDIA) { setMediaError(`Maximum is ${MAX_MEDIA} photos/videos per ad — extra files skipped.`); break; }
       const isVideo = file.type.startsWith('video/');
       if (!isVideo && !file.type.startsWith('image/')) { setMediaError('Only images and videos are allowed.'); continue; }
-      if (isVideo && file.size > MAX_VIDEO_MB * 1024 * 1024) { setMediaError(`"${file.name}" is over ${MAX_VIDEO_MB}MB — please use a shorter clip (big videos take forever to upload on mobile data).`); continue; }
+      if (isVideo && file.size > MAX_VIDEO_MB * 1024 * 1024) { setMediaError(`"${file.name}" is over ${MAX_VIDEO_MB}MB — please trim the clip a little (about 30 seconds max) and try again.`); continue; }
       try {
         if (isVideo) {
           const dataUrl = await new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(r.result); r.onerror = rej; r.readAsDataURL(file); });
+          rawVid.current[dataUrl] = file; // keep the real file — it goes to fast Storage on submit (not inside the ad text)
           list.push(dataUrl);
         } else {
           const { compressImage } = await import('@/lib/image');
@@ -277,32 +301,40 @@ export default function AdsPage() {
     if (!formData.contact.trim()) { toast.error('Contact phone is required.'); return; }
     if (mediaFiles.length === 0) { toast.error('Add at least 1 photo or video of your business.'); return; }
     if (!receipt && !window.confirm(`No payment receipt attached!\n\nYour ad will be SAVED as "Awaiting payment". Pay ₦${plan.price.toLocaleString()} to the PayRound account shown and upload the receipt later from "My Ads" on this page — nothing will be lost.\n\nSave the ad now without the receipt?`)) return;
-    const cover = mediaFiles[0];
-    const payloadKB = Math.round((mediaFiles.join('').length + (receipt || '').length) / 1024);
-    if (payloadKB > MAX_PAYLOAD_KB) {
-      toast.error(`This ad is too heavy to send at once (~${(payloadKB / 1024).toFixed(1)}MB). Remove a video or use a much shorter clip (≤ ${MAX_VIDEO_MB}MB) and try again.`);
-      return;
-    }
-    const hasVideo = mediaFiles.some(m => m.startsWith('data:video'));
     setSending(true);
-    const t = toast.loading(
-      payloadKB > 1400
-        ? `📤 Sending your ad (~${(payloadKB / 1024).toFixed(1)}MB${hasVideo ? ', includes video' : ''}) — big uploads take 1–2 min on mobile data. Please don’t close this page…`
-        : receipt ? 'Submitting your ad for review…' : 'Saving your ad…',
-      { duration: Infinity }
-    );
+    const t = toast.loading('Preparing your ad…', { duration: Infinity });
     try {
+      const adId = editId || `ad-${Date.now()}`;
+      // 🎬 Videos go to Supabase Storage as REAL files (fast on mobile) — the ad row itself stays light & quick.
+      const finalMedia = [];
+      let i = 0;
+      for (const m of mediaFiles) {
+        i++;
+        const file = rawVid.current[m];
+        if (!file) { finalMedia.push(m); continue; } // photos & previously-saved items stay as they are
+        toast.loading(`📤 Uploading video ${i} of ${mediaFiles.length} to storage… please don’t close this page`, { id: t });
+        try {
+          const ext = (file.name.split('.').pop() || 'mp4').toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 5) || 'mp4';
+          finalMedia.push(await uploadAdVideo(file, `ads/${adId}/media-${i}-${Date.now()}.${ext}`));
+        } catch (vErr) {
+          // Backup plan: a small clip can still ride inside the ad; a big one must give up with a clear message
+          if (file.size <= 3.5 * 1024 * 1024) { finalMedia.push(m); toast.loading('💾 Saving your ad…', { id: t }); }
+          else throw vErr;
+        }
+      }
+      toast.loading(receipt ? '💾 Saving ad + receipt…' : '💾 Saving your ad…', { id: t });
+      const cover = finalMedia[0];
       const payload = {
-        id: `ad-${Date.now()}`,
+        id: adId,
         business_name: formData.businessName.trim(),
         description: formData.description.trim(),
         phone: formData.contact.trim(),
         contact: formData.contact.trim(),
         whatsapp: formData.whatsapp.trim() || formData.contact.trim(),
         website: formData.website.trim() || null,
-        media_urls: JSON.stringify(mediaFiles),
+        media_urls: JSON.stringify(finalMedia),
         media_url: cover,
-        media_type: cover.startsWith('data:video') ? 'video' : 'image',
+        media_type: isVideoSrc(cover) ? 'video' : 'image',
         media_alts: mediaAlts.some(a => (a || '').trim()) ? JSON.stringify(mediaAlts.map(a => (a || '').trim())) : null,
         duration_days: plan.days,
         price: plan.price,
@@ -313,7 +345,9 @@ export default function AdsPage() {
         submitted_at: new Date().toISOString(),
       };
       // Save through a hard-timeout fetch so the button ALWAYS comes back (never stuck on "Submitting…")
-      const timeoutMs = payloadKB > 1400 ? 120000 : 60000;
+      const bodyKB = Math.round(JSON.stringify(payload).length / 1024);
+      if (bodyKB > MAX_PAYLOAD_KB) throw new Error(`This ad is still too heavy (~${(bodyKB / 1024).toFixed(1)}MB) — remove a photo or two and try again.`);
+      const timeoutMs = bodyKB > 1400 ? 120000 : 60000;
       if (editId) {
         // fixing a declined ad — UPDATE the same row (keeps its original created date) and clear the rejection
         const { submitted_at, ...rest } = payload;
@@ -328,6 +362,7 @@ export default function AdsPage() {
           : '✅ Ad SAVED! Nothing is lost — pay and upload your receipt anytime from the My Ads tab.', { id: t });
       setFormData({ businessName: '', description: '', contact: '', whatsapp: '', website: '' });
       setMediaFiles([]);
+      rawVid.current = {};
       setReceipt('');
       setAiUsed(false); setAiIdx(0);
       setMediaAlts([]);
@@ -370,6 +405,7 @@ export default function AdsPage() {
       website: ad.website || '',
     });
     setMediaFiles(media);
+    rawVid.current = {}; // already-saved media are strings (no re-upload needed)
     setMediaAlts(media.map((_, i) => alts[i] || ''));
     setPlanDays(ad.duration_days || 7);
     setReceipt(ad.payment_receipt_url || '');
@@ -481,7 +517,7 @@ export default function AdsPage() {
                     <div className="flex gap-3">
                       {cover && (
                         <button onClick={() => setViewImg(cover)} className="shrink-0" title="Tap to view">
-                          {String(cover).startsWith('data:video')
+                          {isVideoSrc(cover)
                             ? <video src={cover} muted playsInline className="w-16 h-16 rounded-xl object-cover border bg-black" />
                             : <img src={cover} alt="" className="w-16 h-16 rounded-xl object-cover border" />}
                         </button>
@@ -594,17 +630,17 @@ export default function AdsPage() {
                     <label className="w-full border-2 border-dashed border-gray-200 rounded-xl p-4 flex flex-col items-center gap-1 cursor-pointer hover:border-primary-300 hover:bg-primary-50/40 transition-all">
                       <input type="file" accept="image/*,video/*" multiple className="hidden" onChange={e => { pickMedia(e.target.files); e.target.value = ''; }} />
                       <HiPhotograph className="w-6 h-6 text-gray-400" />
-                      <span className="text-xs text-gray-500">Tap to add photos or short videos (images auto-compressed, videos ≤ {MAX_VIDEO_MB}MB) — {mediaFiles.length}/{MAX_MEDIA} added</span>
+                      <span className="text-xs text-gray-500">Tap to add photos or videos 🎬 — images auto-compressed, videos up to <b>{MAX_VIDEO_MB}MB</b> fly to fast file storage ({mediaFiles.length}/{MAX_MEDIA} added)</span>
                     </label>
                     {mediaError && <p className="text-xs text-red-500 mt-1">{mediaError}</p>}
                     {mediaFiles.length > 0 && (
                       <div className="flex gap-2 mt-2 flex-wrap">
                         {mediaFiles.map((m, i) => (
                           <div key={i} className="relative w-24">
-                            {m.startsWith('data:video')
+                            {isVideoSrc(m)
                               ? <video src={m} muted playsInline className="w-24 h-16 rounded-lg object-cover border bg-black" />
                               : <img src={m} alt={mediaAlts[i] || `media ${i + 1}`} className="w-24 h-16 rounded-lg object-cover border" />}
-                            <button type="button" onClick={() => { setMediaFiles(prev => prev.filter((_, x) => x !== i)); setMediaAlts(prev => prev.filter((_, x) => x !== i)); }} className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-red-500 text-white rounded-full text-[10px] shadow z-10">✕</button>
+                            <button type="button" onClick={() => { const gone = mediaFiles[i]; if (rawVid.current[gone]) delete rawVid.current[gone]; setMediaFiles(prev => prev.filter((_, x) => x !== i)); setMediaAlts(prev => prev.filter((_, x) => x !== i)); }} className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-red-500 text-white rounded-full text-[10px] shadow z-10">✕</button>
                             <input
                               type="text"
                               value={mediaAlts[i] || ''}
@@ -744,7 +780,7 @@ export default function AdsPage() {
       {viewImg && (
         <div className="fixed inset-0 z-[100] bg-black/90 flex items-center justify-center p-4" onClick={() => setViewImg('')}>
           <button className="absolute top-4 right-4 text-white text-2xl font-bold bg-white/10 w-10 h-10 rounded-full">✕</button>
-          {String(viewImg).startsWith('data:video')
+          {isVideoSrc(viewImg)
             ? <video src={viewImg} controls autoPlay playsInline className="max-h-[85vh] max-w-full rounded-xl" onClick={e => e.stopPropagation()} />
             : <img src={viewImg} alt="view" className="max-h-[85vh] max-w-full rounded-xl object-contain" onClick={e => e.stopPropagation()} />}
         </div>
