@@ -56,6 +56,12 @@ export default function NotificationsPage() {
     return () => clearInterval(t);
   }, []);
 
+  // Follower notifications carry the follower in a hidden [[FOL:email]] token — strip it for display, use it for deep links
+  const parseFol = (msg = '') => {
+    const m = String(msg).match(/\[\[FOL:([^\]]*)\]\]\s*$/);
+    return { text: m ? String(msg).slice(0, String(msg).length - m[0].length) : String(msg), fol: m ? m[1].toLowerCase() : '' };
+  };
+
   // Where should tapping a notification take you? Every notification type has a sensible home.
   const destinationFor = (n) => {
     const t = n?.type || '';
@@ -92,7 +98,10 @@ export default function NotificationsPage() {
       case 'verification_approved':
       case 'verification_declined':
         return g || '/profile'; // group verifications → the group; personal blue badge → profile (re-apply there)
-      case 'new_follower':
+      case 'new_follower': {
+        const f = parseFol(n.message).fol; // who followed → open MY followers list with them highlighted
+        return f ? `/profile?followers=1&hl=${encodeURIComponent(f)}` : '/profile';
+      }
       case 'referral_bonus':
         return '/profile';
       case 'ad_review':
@@ -199,7 +208,7 @@ export default function NotificationsPage() {
                     {typeIcon(n.type)}
                   </span>
                   <span className="flex-1 min-w-0">
-                    <span className="block text-sm text-gray-900 leading-snug">{n.message}</span>
+                    <span className="block text-sm text-gray-900 leading-snug">{parseFol(n.message).text}</span>
                     <span className="block text-xs text-gray-400 mt-1">
                       {personal ? 'For you • ' : ''}{n.created_at ? new Date(n.created_at).toLocaleString() : ''}
                       {n.group_id ? ` • Group ${n.group_id}` : ''}

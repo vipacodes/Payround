@@ -27,6 +27,7 @@ export default function ProfilePage() {
   const [myBiz, setMyBiz] = useState([]); // my approved business profile(s)
   const [followersCount, setFollowersCount] = useState(0);
   const [showFollowers, setShowFollowers] = useState(false);
+  const [followerHighlight, setFollowerHighlight] = useState(''); // who to glow in the list (deep-link)
   const [showStartBiz, setShowStartBiz] = useState(false); // business-profile popup when they have none
 
   useEffect(() => {
@@ -77,6 +78,20 @@ export default function ProfilePage() {
       }
     })();
   }, [router]);
+
+  // 🎯 Deep-link from a follower notification (/profile?followers=1&hl=<email>):
+  // pop the followers list open with that person scrolled into view & highlighted
+  useEffect(() => {
+    try {
+      const sp = new URLSearchParams(window.location.search);
+      if (sp.get('followers') === '1') {
+        setShowFollowers(true);
+        const h = (sp.get('hl') || '').toLowerCase();
+        if (h) setFollowerHighlight(h);
+        window.history.replaceState({}, '', '/profile'); // clean URL so it doesn't re-trigger
+      }
+    } catch {}
+  }, []);
 
   if (!user) return null;
 
@@ -441,7 +456,7 @@ export default function ProfilePage() {
       </div>
       <Footer />
       {zoomPhoto && <ImageLightbox src={zoomPhoto} alt="profile photo" onClose={() => setZoomPhoto(null)} />}
-      {showFollowers && <FollowersList userEmail={user.email} userName={account?.name || user.name} onClose={() => setShowFollowers(false)} />}
+      {showFollowers && <FollowersList userEmail={user.email} userName={account?.name || user.name} onClose={() => { setShowFollowers(false); setFollowerHighlight(''); }} highlight={followerHighlight} />}
       {showStartBiz && (
         <div className="fixed inset-0 z-50 bg-black/60 flex items-end sm:items-center justify-center" onClick={() => setShowStartBiz(false)}>
           <div className="bg-white w-full sm:max-w-sm sm:mx-4 rounded-t-2xl sm:rounded-2xl p-6 text-center" onClick={e => e.stopPropagation()}>

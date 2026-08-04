@@ -104,10 +104,17 @@ export default function PublicUserProfilePage() {
         });
         if (error) throw error;
         setIsFollowing(true); setFollowers(c => c + 1);
+        // name the follower in their notification + carry the email so tapping opens
+        // THEIR followers list with this person scrolled into view & highlighted 🎉
+        let followerName = '';
+        try {
+          const { data: meRow } = await supabase.from('users').select('name').eq('email', meEmail).maybeSingle();
+          followerName = (meRow?.name || '').trim();
+        } catch {}
         await supabase.from('notifications').insert({
           id: `foll-${Date.now()}`, type: 'new_follower', is_read: false,
           user_email: (person.email || '').toLowerCase(),
-          message: `➕ Someone started following you on PayRound — your followers count is now visible on your profile.`,
+          message: `➕ ${followerName || 'Someone'} started following you on PayRound — tap to see them in your followers list.[[FOL:${meEmail}]]`,
         });
       }
     } catch (e) { toast.error(`Could not update follow: ${e.message || 'try again'}`); }
