@@ -20,20 +20,13 @@ export default function AdVideo({ src, className, btnClass = 'bottom-2 left-12',
     setPlaying(true);
   }, [src]);
 
-  // Apply (un)mute live; if a browser blocks unmuted playback, fall back to muted
+  // 🔇/🔊 Flip ONLY the mute flag — instant (the video keeps playing/paused exactly as it was,
+  // NO re-play, NO re-buffer stall). Sound control is a tap, never a reload.
   useEffect(() => {
     const v = ref.current;
     if (!v) return;
     v.muted = !sound;
-    if (sound) {
-      try { v.volume = 1; } catch {}
-      const p = v.play();
-      if (p && p.catch) p.catch(() => {
-        v.muted = true;
-        setSound(false);
-        const p2 = v.play(); if (p2 && p2.catch) p2.catch(() => {});
-      });
-    }
+    if (sound) { try { v.volume = 1; } catch {} }
   }, [sound, src]);
 
   // 👆 First tap on the clip = play WITH sound… unless the viewer muted ads on purpose
@@ -48,7 +41,14 @@ export default function AdVideo({ src, className, btnClass = 'bottom-2 left-12',
     e.stopPropagation();
     const v = ref.current;
     if (!v) return;
-    if (v.paused || v.ended) { unmuteKick(); const p = v.play(); if (p && p.catch) p.catch(() => {}); }
+    if (v.paused || v.ended) {
+      unmuteKick();
+      const p = v.play();
+      if (p && p.catch) p.catch(() => {
+        v.muted = true; setSound(false);
+        try { const p2 = v.play(); if (p2 && p2.catch) p2.catch(() => {}); } catch {}
+      });
+    }
     else v.pause();
   };
 
