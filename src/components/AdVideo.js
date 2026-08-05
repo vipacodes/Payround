@@ -3,20 +3,21 @@
 import { useEffect, useRef, useState } from 'react';
 
 // 🎬 Video ad with viewer controls:
+//  • 🔊 sound ON by default (unless the viewer muted ads before) — browsers that block
+//    unmuted autoplay fall back to silent + 🔇 for that clip
 //  • ⏸/▶ pause & play — the viewer is the boss (taps never reach the ad's link)
 //  • 🔊/🔇 sound toggle — remembered for every ad video (localStorage 'payround_ad_sound')
 //  • onEnded — parents advance their slideshow only when the clip has COMPLETELY finished
 //  • loop — off when a parent drives rotation, so the clip ends exactly once
-// Browsers only allow autoplay when muted, so every ad starts silent.
 export default function AdVideo({ src, className, btnClass = 'bottom-2 left-12', loop = true, onEnded, onPlayEv, onPauseEv, showPlayPause = true }) {
   const ref = useRef(null);
   const [sound, setSound] = useState(false);
   const [playing, setPlaying] = useState(true);
 
-  // Restore the viewer's sound choice whenever the clip changes
+  // Restore the viewer's sound choice whenever the clip changes — SOUND IS THE DEFAULT now
   useEffect(() => {
-    let on = false;
-    try { on = localStorage.getItem('payround_ad_sound') === 'on'; } catch {}
+    let on = true;
+    try { on = localStorage.getItem('payround_ad_sound') !== 'off'; } catch {}
     setSound(on);
     setPlaying(true);
   }, [src]);
@@ -28,15 +29,12 @@ export default function AdVideo({ src, className, btnClass = 'bottom-2 left-12',
     v.muted = !sound;
     if (sound) {
       try { v.volume = 1; } catch {}
-      if (v.paused) {
-        const p = v.play();
-        if (p && p.catch) p.catch(() => {
-          v.muted = true;
-          setSound(false);
-          try { localStorage.setItem('payround_ad_sound', 'off'); } catch {}
-          const p2 = v.play(); if (p2 && p2.catch) p2.catch(() => {});
-        });
-      }
+      const p = v.play();
+      if (p && p.catch) p.catch(() => {
+        v.muted = true;
+        setSound(false);
+        const p2 = v.play(); if (p2 && p2.catch) p2.catch(() => {});
+      });
     }
   }, [sound, src]);
 

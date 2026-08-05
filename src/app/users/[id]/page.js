@@ -53,9 +53,9 @@ export default function PublicUserProfilePage() {
         if (!mounted) return;
         setGroupsAdmin(ag || []);
 
-        // Their approved business profile(s) on PayRound — linked from their personal profile
+        // Their PUBLIC business profile(s) on PayRound — only after the owner approved the business
         try {
-          const { data: biz } = await supabase.from('ads').select('id, business_name').eq('submitter_email', email).eq('status', 'approved');
+          const { data: biz } = await supabase.from('ads').select('id, business_name').eq('submitter_email', email).eq('biz_status', 'approved');
           if (mounted) setBizAds(biz || []);
         } catch {}
 
