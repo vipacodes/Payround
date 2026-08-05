@@ -19,6 +19,21 @@ function viewerEmail() {
   } catch { return null; }
 }
 
+// Logged-out visitors still count as PEOPLE — give each device/browser a stable, anonymous
+// guest id so "6 views by 1 guest" no longer reads as "0 accounts reached".
+function viewerId() {
+  const email = viewerEmail();
+  if (email) return email;
+  try {
+    let g = localStorage.getItem('pr_guest');
+    if (!g) {
+      g = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+      localStorage.setItem('pr_guest', g);
+    }
+    return `g:${g}`;
+  } catch { return null; }
+}
+
 // Light housekeeping: drop stale dedupe keys from previous days so storage stays clean
 let pruned = false;
 function pruneOldKeys() {
@@ -40,7 +55,7 @@ export async function trackAdEvent(kind, ad, mediaIndex = null) {
   try {
     if (typeof window === 'undefined' || !ad || !ad.id) return;
     pruneOldKeys();
-    const viewer = viewerEmail();
+    const viewer = viewerId();
     // Never count the advertiser looking at their own ad
     const owner = (ad.submitter_email || '').toLowerCase();
     if (viewer && owner && viewer === owner) return;
@@ -70,12 +85,17 @@ export async function fetchAdEvents(adId) {
   } catch { return null; }
 }
 
-/** Turn raw rows into rich stats: totals, unique accounts, per-media, per-day, tap-through. */
+/** Turn raw rows into rich stats: totals, PEOPLE (accounts + guest devices), per-media, per-day, tap-through. */
 export function aggregateAdEvents(rows) {
   const views = (rows || []).filter(r => r.kind === 'view');
   const clicks = (rows || []).filter(r => r.kind === 'click');
-  const uniq = (rs) => new Set(rs.map(r => r.viewer).filter(Boolean)).size;
-  const guests = (rs) => rs.filter(r => !r.viewer).length;
+
+  // Legacy rows have viewer=null (counted as guest views, one row each — can't be de-duplicated).
+  // New rows always carry an id: account email, or 'g:<device>' for logged-out visitors.
+  const people = (rs) => new Set(rs.map(r => r.viewer).filter(Boolean));
+  const accounts = (rs) => new Set(rs.map(r => r.viewer).filter(v => v && !v.startsWith('g:')));
+  const guestDevices = (rs) => new Set(rs.map(r => r.viewer).filter(v => v && v.startsWith('g:')));
+  const legacyGuests = (rs) => rs.filter(r => !r.viewer).length;
 
   const byMedia = new Map();
   for (const v of views) {
@@ -93,18 +113,21 @@ export function aggregateAdEvents(rows) {
     byDay.set(d, (byDay.get(d) || 0) + 1);
   }
 
-  const uniqueAccounts = uniq(views);
-  const uniqueClickers = uniq(clicks);
+  const peopleReached = people(views).size;
+  const uniqueClickers = people(clicks).size;
 
   return {
     totalViews: views.length,
-    uniqueAccounts,
-    guestViews: guests(views),
+    peopleReached,                       // accounts + guest devices (legacy guest rows excluded)
+    accountsReached: accounts(views).size,
+    guestDevices: guestDevices(views).size,
+    legacyGuests: legacyGuests(views),   // older anonymous rows (shown as "guest views")
     totalClicks: clicks.length,
-    uniqueClickers,
-    tapRate: uniqueAccounts > 0 ? Math.round((uniqueClickers / uniqueAccounts) * 100) : 0,
+    uniqueClickers,                      // distinct people (accounts + guest devices)
+    legacyClickGuests: legacyGuests(clicks),
+    tapRate: peopleReached > 0 ? Math.round((uniqueClickers / peopleReached) * 100) : 0,
     perMedia: [...byMedia.entries()].sort((a, b) => a[0] - b[0])
-      .map(([idx, b]) => ({ idx, views: b.views, accounts: b.viewers.size, guests: b.guests })),
+      .map(([idx, b]) => ({ idx, views: b.views, people: b.viewers.size, guests: b.guests })),
     perDay: [...byDay.entries()].sort((a, b) => (a[0] < b[0] ? -1 : 1)),
   };
 }

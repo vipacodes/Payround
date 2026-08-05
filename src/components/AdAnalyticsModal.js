@@ -33,7 +33,6 @@ export default function AdAnalyticsModal({ ad, onClose }) {
 
   const media = parseAdMedia(ad?.media_urls);
   const days = Number(ad?.duration_days) || null;
-  const maxPerMedia = state === 'ok' ? Math.max(1, ...stats.perMedia.map(m => m.views)) : 1;
   const maxPerDay = state === 'ok' ? Math.max(1, ...stats.perDay.map(d => d[1])) : 1;
   const bestDay = state === 'ok' && stats.perDay.length
     ? stats.perDay.reduce((a, b) => (b[1] > a[1] ? b : a)) : null;
@@ -92,21 +91,23 @@ export default function AdAnalyticsModal({ ad, onClose }) {
               <div className="grid grid-cols-2 gap-2">
                 <div className="rounded-2xl p-3.5" style={{ background: '#ecfdf5', border: '1px solid #a7f3d0' }}>
                   <p className="text-xl mb-0.5">👥</p>
-                  <p className="text-2xl font-black leading-none" style={{ color: '#047857' }}>{stats.uniqueAccounts.toLocaleString()}</p>
-                  <p className="text-[10px] font-bold mt-1" style={{ color: '#065f46' }}>ACCOUNTS REACHED</p>
-                  <p className="text-[10px]" style={{ color: '#047857' }}>different PayRound accounts saw this ad</p>
+                  <p className="text-2xl font-black leading-none" style={{ color: '#047857' }}>{(stats.peopleReached + stats.legacyGuests).toLocaleString()}</p>
+                  <p className="text-[10px] font-bold mt-1" style={{ color: '#065f46' }}>PEOPLE REACHED</p>
+                  <p className="text-[10px]" style={{ color: '#047857' }}>
+                    {stats.accountsReached > 0 ? `${stats.accountsReached} account${stats.accountsReached === 1 ? '' : 's'}` : 'no logged-in accounts yet'}{(stats.guestDevices + stats.legacyGuests) > 0 ? ` · ${stats.guestDevices + stats.legacyGuests} guest${(stats.guestDevices + stats.legacyGuests) === 1 ? '' : 's'}` : ''} saw this ad
+                  </p>
                 </div>
                 <div className="rounded-2xl p-3.5" style={{ background: '#eff6ff', border: '1px solid #bfdbfe' }}>
                   <p className="text-xl mb-0.5">👀</p>
                   <p className="text-2xl font-black leading-none" style={{ color: '#1d4ed8' }}>{stats.totalViews.toLocaleString()}</p>
                   <p className="text-[10px] font-bold mt-1" style={{ color: '#1e40af' }}>TOTAL VIEWS</p>
-                  <p className="text-[10px]" style={{ color: '#1d4ed8' }}>every appearance counted — no tap needed{stats.guestViews ? ` (+${stats.guestViews} guest views)` : ''}</p>
+                  <p className="text-[10px]" style={{ color: '#1d4ed8' }}>every on-screen appearance — no tap needed (each photo/video counts separately)</p>
                 </div>
                 <div className="rounded-2xl p-3.5" style={{ background: '#fffbeb', border: '1px solid #fde68a' }}>
                   <p className="text-xl mb-0.5">👆</p>
-                  <p className="text-2xl font-black leading-none" style={{ color: '#b45309' }}>{stats.uniqueClickers.toLocaleString()}</p>
+                  <p className="text-2xl font-black leading-none" style={{ color: '#b45309' }}>{(stats.uniqueClickers + stats.legacyClickGuests).toLocaleString()}</p>
                   <p className="text-[10px] font-bold mt-1" style={{ color: '#92400e' }}>OPENED YOUR PAGE</p>
-                  <p className="text-[10px]" style={{ color: '#b45309' }}>accounts that tapped through to your business</p>
+                  <p className="text-[10px]" style={{ color: '#b45309' }}>people who tapped through to your business page</p>
                 </div>
                 <div className="rounded-2xl p-3.5" style={{ background: '#f5f3ff', border: '1px solid #ddd6fe' }}>
                   <p className="text-xl mb-0.5">⚡</p>
@@ -136,10 +137,10 @@ export default function AdAnalyticsModal({ ad, onClose }) {
                           <div className="flex-1 min-w-0">
                             <p className="text-[11px] font-extrabold" style={{ color: '#0f172a' }}>{isVid ? 'Video' : 'Photo'} {m.idx + 1}</p>
                             <div className="mt-1 h-2 rounded-full overflow-hidden" style={{ background: '#e2e8f0' }}>
-                              <div className="h-full rounded-full" style={{ width: `${Math.max(4, Math.round((m.views / maxPerMedia) * 100))}%`, background: 'linear-gradient(90deg,#34d399,#059669)' }} />
+                              <div className="h-full rounded-full" style={{ width: `${Math.max(4, Math.round((m.views / Math.max(1, stats.totalViews)) * 100))}%`, background: 'linear-gradient(90deg,#34d399,#059669)' }} />
                             </div>
                             <p className="text-[10px] mt-1 font-semibold" style={{ color: '#334155' }}>
-                              {m.views.toLocaleString()} view{m.views === 1 ? '' : 's'} · {m.accounts.toLocaleString()} account{m.accounts === 1 ? '' : 's'}{m.guests ? ` · +${m.guests} guest` : ''}
+                              {m.views.toLocaleString()} view{m.views === 1 ? '' : 's'} · {m.people.toLocaleString()} {m.people === 1 ? 'person' : 'people'}{m.guests ? ` · +${m.guests} guest view${m.guests === 1 ? '' : 's'}` : ''}
                             </p>
                           </div>
                         </div>
@@ -174,7 +175,7 @@ export default function AdAnalyticsModal({ ad, onClose }) {
               )}
 
               <p className="text-[10px] leading-relaxed rounded-xl p-2.5" style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', color: '#166534' }}>
-                💡 Views count each account once per day per photo/video — honest reach, never inflated. Opened-your-page taps are counted when someone lands on your business page.
+                💡 Views count each person once per day per photo/video — honest reach, never inflated. Guests are counted per device (they have no account yet). Opened-your-page taps are counted when someone lands on your business page.
               </p>
 
               <button onClick={onClose} className="w-full text-sm font-extrabold py-3 rounded-xl text-white" style={{ background: '#059669' }}>Done 🎉</button>

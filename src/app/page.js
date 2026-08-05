@@ -368,11 +368,11 @@ export default function HomePage() {
               <p className="text-primary-200 text-sm">Active Groups</p>
             </div>
             <div>
-              <p className="text-3xl md:text-4xl font-bold text-white mb-1">{`₦${Intl.NumberFormat('en', { notation: 'compact', maximumFractionDigits: 1 }).format(stats.saved)}`}</p>
+              <p className="text-3xl md:text-4xl font-bold text-white mb-1">{typeof stats.saved === 'string' && stats.saved.trim() !== '' ? stats.saved : `₦${Intl.NumberFormat('en', { notation: 'compact', maximumFractionDigits: 1 }).format(Number(stats.saved) || 0)}`}</p>
               <p className="text-primary-200 text-sm">Saved Through Platform</p>
             </div>
             <div>
-              <p className="text-3xl md:text-4xl font-bold text-white mb-1">{stats.satisfaction !== null && stats.satisfaction !== undefined ? `${stats.satisfaction}%` : '—'}</p>
+              <p className="text-3xl md:text-4xl font-bold text-white mb-1">{stats.satisfaction !== null && stats.satisfaction !== undefined ? (String(stats.satisfaction).includes('%') ? stats.satisfaction : `${stats.satisfaction}%`) : '—'}</p>
               <p className="text-primary-200 text-sm">Member Satisfaction</p>
             </div>
           </div>
