@@ -6,8 +6,7 @@ import Link from 'next/link';
 import { HiChevronLeft, HiChevronRight } from 'react-icons/hi';
 import { parseAdMedia, isVideoSrc } from './AdBanner';
 
-const IMAGE_MS = 5000;  // image ads show max 5 seconds
-const VIDEO_MS = 10000; // video ads play max 10 seconds
+const IMAGE_MS = 5000;  // image ads show ~5 seconds; videos always play to the very end
 const KEY = 'payround_slot_'; // per-slot cursor, remembered across visits
 
 // Measure every media item's real shape: portrait goes to the 2 portrait slots, landscape to the landscape slot
@@ -109,13 +108,25 @@ function AdSlot({ items, slotKey, startOffset = 0, ratio }) {
     try { localStorage.setItem(KEY + slotKey, String(pos)); } catch {}
   }, [pos, slotKey]);
 
-  // Auto slide — images 5s max, videos 10s max
+  // Auto slide — IMAGES 5s. VIDEOS play COMPLETELY: they advance only on 'ended' (never chopped at 10s)
+  const advance = () => setPos((p) => (((p % len) + len) % len + 1) % len);
+  const [vidPaused, setVidPaused] = useState(false);
   useEffect(() => {
     if (!len || pos === null || stopped) return;
     const it = itemsRef.current[((pos % len) + len) % len];
-    const t = setTimeout(() => setPos((p) => (((p % len) + len) % len + 1) % len), it?.video ? VIDEO_MS : IMAGE_MS);
+    if (it?.video) return; // video items advance via onEnded below
+    const t = setTimeout(advance, IMAGE_MS);
     return () => clearTimeout(t);
   }, [len, pos, stopped]);
+
+  // 🛟 Safety net: if a video never fires 'ended', still move on after 60s — but NEVER while the viewer paused it
+  useEffect(() => {
+    if (!len || pos === null || stopped || vidPaused) return;
+    const it = itemsRef.current[((pos % len) + len) % len];
+    if (!it?.video) return;
+    const t = setTimeout(advance, 60000);
+    return () => clearTimeout(t);
+  }, [len, pos, stopped, vidPaused]);
 
   const step = (d) => {
     setStopped(true);
@@ -143,7 +154,14 @@ function AdSlot({ items, slotKey, startOffset = 0, ratio }) {
       <Link href={href} className="absolute inset-0 block" title={`Open ${name}`}>
         {cur.video ? (
           <div key={`${cur.ad.id}-${cur.idx}`} className="ad-slide-media absolute inset-0 flex items-center justify-center bg-black">
-            <AdVideo src={cur.src} className="w-full h-full object-contain" />
+            <AdVideo
+              src={cur.src}
+              className="w-full h-full object-contain"
+              loop={len < 2}
+              onEnded={len > 1 && !stopped ? advance : undefined}
+              onPlayEv={() => setVidPaused(false)}
+              onPauseEv={() => setVidPaused(true)}
+            />
           </div>
         ) : (
           <div key={`${cur.ad.id}-${cur.idx}`} className="ad-slide-media absolute inset-0">

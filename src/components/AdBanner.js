@@ -39,13 +39,24 @@ export function isVideoSrc(src) {
 export default function AdBanner({ ad: raw, variant = 'card', big = false }) {
   const media = parseAdMedia(raw?.media_urls);
   const [idx, setIdx] = useState(0);
+  const [vidPaused, setVidPaused] = useState(false);
+  const curIsVideo = isVideoSrc(media[idx]);
+  const nextItem = () => setIdx(i => (i + 1) % media.length);
 
-  // Slideshow — auto-advance every 3.5s when the ad has multiple items
+  // Slideshow — images advance every 5s… VIDEOS play COMPLETELY and advance on 'ended' (never mid-clip!)
   useEffect(() => {
     if (media.length < 2) return;
-    const t = setInterval(() => setIdx(i => (i + 1) % media.length), 3500);
-    return () => clearInterval(t);
-  }, [media.length]);
+    if (curIsVideo) return; // video items advance via AdVideo's onEnded below
+    const t = setTimeout(nextItem, 5000);
+    return () => clearTimeout(t);
+  }, [idx, media.length, curIsVideo]);
+
+  // 🛟 Safety net: if a video stalls/fails to fire 'ended', still move on after 60s (but never while the viewer paused it)
+  useEffect(() => {
+    if (media.length < 2 || !curIsVideo || vidPaused) return;
+    const t = setTimeout(nextItem, 60000);
+    return () => clearTimeout(t);
+  }, [idx, media.length, curIsVideo, vidPaused]);
 
   if (!raw) return null;
   // Normalize: works with bundled demo ads AND real ads from the database
@@ -66,7 +77,14 @@ export default function AdBanner({ ad: raw, variant = 'card', big = false }) {
   const mediaBox = current ? (
     <Link href={`/business/${raw.id}${itemParam}`} className="block relative group mb-3" title="Open business profile">
       {isVideoSrc(current) ? (
-        <AdVideo src={current} className={`w-full ${big ? 'h-48' : 'h-36'} object-cover rounded-xl bg-black`} />
+        <AdVideo
+          src={current}
+          className={`w-full ${big ? 'h-48' : 'h-36'} object-cover rounded-xl bg-black`}
+          loop={media.length < 2}
+          onEnded={media.length > 1 ? nextItem : undefined}
+          onPlayEv={() => setVidPaused(false)}
+          onPauseEv={() => setVidPaused(true)}
+        />
       ) : (
         <img src={current} alt={parseAdAlts(raw?.media_alts)[idx] || `${ad.businessName} photo ${idx + 1}`} className={`w-full ${big ? 'h-48' : 'h-36'} object-cover rounded-xl`} />
       )}
