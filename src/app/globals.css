@@ -256,3 +256,22 @@ body {
 .ad-dropzone { background: #f0fdf4 !important; border-color: #86efac !important; }
 .ad-dropzone span { color: #374151 !important; }
 .ad-dropzone .ad-drop-sub { color: #6b7280 !important; }
+
+/* 👓 Ads-page contrast sweep — NOTHING may look "almost invisible", light OR dark */
+.ad-label { color: #374151 !important; } .dark .ad-label { color: #e5e7eb !important; }
+.ad-hint { color: #6b7280 !important; } .dark .ad-hint { color: #cbd5e1 !important; }
+.ad-status-amber { background: #fef3c7 !important; color: #78350f !important; }
+.ad-status-blue { background: #dbeafe !important; color: #1e3a8a !important; }
+.ad-status-green { background: #d1fae5 !important; color: #065f46 !important; }
+.ad-status-gray { background: #e5e7eb !important; color: #374151 !important; }
+.ad-status-red { background: #fee2e2 !important; color: #991b1b !important; }
+.ad-amber { background: #fffbeb !important; border-color: #fcd34d !important; color: #78350f !important; }
+.ad-redbox { background: #fef2f2 !important; border-color: #fca5a5 !important; }
+.ad-redbox .ad-red-title { color: #b91c1c !important; }
+.ad-redbox .ad-red-text { color: #7f1d1d !important; }
+.ad-note-green { color: #047857 !important; } .dark .ad-note-green { color: #6ee7b7 !important; }
+.ad-note-blue { color: #1d4ed8 !important; } .dark .ad-note-blue { color: #93c5fd !important; }
+/* pay-to card: deeper mint, chunkier border, extra-bold values + BIG account number */
+.ad-paycard { background: #d1fae5 !important; border-color: #34d399 !important; border-width: 2px !important; }
+.ad-paycard .ad-pay-label { color: #374151 !important; font-weight: 600 !important; }
+.ad-paycard .ad-pay-number { color: #052e16 !important; font-weight: 800 !important; font-size: 15px !important; letter-spacing: 1.5px !important; }

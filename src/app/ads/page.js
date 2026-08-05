@@ -153,26 +153,16 @@ function analyzeMedia(files) {
 }
 
 function visualStory(a) {
+  // No media counts, no "swipe through" — just a confident line that matches the media kind & look
   if (!a || !a.count) return '';
-  const shapes = [];
-  if (a.portraits) shapes.push(`${a.portraits} portrait (tall) shot${a.portraits > 1 ? 's' : ''}`);
-  if (a.landscapes) shapes.push(`${a.landscapes} wide shot${a.landscapes > 1 ? 's' : ''}`);
-  if (a.squares) shapes.push(`${a.squares} square shot${a.squares > 1 ? 's' : ''}`);
-  if (a.videos) shapes.push(`${a.videos} short video${a.videos > 1 ? 's' : ''}`);
-  let head;
-  if (a.images === 0 && a.videos > 0) {
-    // Video-only ad — don't call them "photos"! (count is in the head, so skip the shapes suffix)
-    head = `▶️ Press play — ${a.videos === 1 ? 'a real short video' : `${a.videos} real short videos`} of the ACTUAL items`;
-    return `${head}. What you see is EXACTLY what arrives. 💯`;
+  const hasV = a.videos > 0, hasI = a.images > 0;
+  const mediaWords = hasI && hasV ? 'photos & videos' : hasV ? 'short videos' : 'photos';
+  let mood = '';
+  if (hasI) {
+    const half = Math.max(1, Math.ceil(a.images / 2));
+    mood = a.dark >= half ? 'clean, classy ' : a.colorful >= half ? 'bright, colourful ' : 'clear, well-lit ';
   }
-  const half = Math.max(1, Math.ceil(a.images / 2));
-  const mood = a.dark >= half
-    ? 'clean, classy shots'
-    : a.colorful >= half
-      ? 'bright, colourful photos'
-      : 'clear, well-lit photos';
-  head = `Swipe through ${a.count} real ${mood}`;
-  return `${head}${shapes.length ? ' — ' + shapes.join(' + ') : ''}. What you see is EXACTLY what arrives. 💯`;
+  return `Real ${mood}${mediaWords} of the ACTUAL items — what you see is exactly what arrives. 💯`;
 }
 
 function aiDescriptions(name, a, opts = {}) {
@@ -517,11 +507,11 @@ export default function AdsPage() {
   const StatusChip = ({ ad }) => {
     const s = statusOf(ad);
     const map = {
-      await_receipt: ['💰 AWAITING PAYMENT', 'bg-amber-100 text-amber-800'],
-      review: ['⏳ PAYMENT UNDER REVIEW', 'bg-blue-100 text-blue-800'],
-      live: ['🟢 LIVE', 'bg-emerald-100 text-emerald-800'],
-      expired: ['⌛ EXPIRED', 'bg-gray-200 text-gray-600'],
-      declined: ['❌ DECLINED', 'bg-red-100 text-red-700'],
+      await_receipt: ['💰 AWAITING PAYMENT', 'ad-status-amber'],
+      review: ['⏳ PAYMENT UNDER REVIEW', 'ad-status-blue'],
+      live: ['🟢 LIVE', 'ad-status-green'],
+      expired: ['⌛ EXPIRED', 'ad-status-gray'],
+      declined: ['❌ DECLINED', 'ad-status-red'],
     };
     const [txt, cls] = map[s];
     return <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${cls}`}>{txt}</span>;
@@ -569,11 +559,11 @@ export default function AdsPage() {
         {myEmail && tab === 'mine' && (
           <div className="mb-8">
             <h2 className="text-lg font-semibold text-gray-900 mb-1">📂 My Ads ({myAds.length})</h2>
-            <p className="text-xs text-gray-500 mb-3">Your ads stay saved here forever — unless you delete them yourself. Saved one to pay later? It waits under <b>💾 Saved</b> — upload the receipt whenever you're ready.</p>
+            <p className="text-xs mb-3 ad-hint">Your ads stay saved here forever — unless you delete them yourself. Saved one to pay later? It waits under <b>💾 Saved</b> — upload the receipt whenever you're ready.</p>
             {myAds.length === 0 ? (
               <div className="bg-white rounded-2xl border border-dashed border-gray-200 p-10 text-center">
                 <p className="font-semibold text-gray-700 mb-1">You haven't submitted any ads yet</p>
-                <p className="text-xs text-gray-400 mb-4">Live, pending, saved and declined ads all appear here the moment you submit one.</p>
+                <p className="text-xs mb-4 ad-hint">Live, pending, saved and declined ads all appear here the moment you submit one.</p>
                 <button onClick={() => setTab('create')} className="bg-primary-600 text-white text-sm font-semibold px-5 py-2.5 rounded-xl hover:bg-primary-700 transition-colors">📢 Create Your First Ad</button>
               </div>
             ) : (
@@ -614,23 +604,23 @@ export default function AdsPage() {
                         <p className="text-[11px] text-gray-500 mt-0.5">
                           ⏱ {ad.duration_days || '?'} day{(ad.duration_days || 0) > 1 ? 's' : ''} · ₦{Number(ad.price || 0).toLocaleString()} · {media.length || 1} photo/video{(media.length || 1) > 1 ? 's' : ''}
                         </p>
-                        <p className="text-[11px] text-gray-400">📅 Created: {fmtDate(ad.submitted_at)}</p>
+                        <p className="text-[11px] ad-hint">📅 Created: {fmtDate(ad.submitted_at)}</p>
                         {statusOf(ad) === 'live' && ad.expires_at && (
-                          <p className="text-[11px] text-emerald-700 font-semibold mt-0.5">📺 Showing until {new Date(ad.expires_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}{left !== null ? ` — ${left} day${left === 1 ? '' : 's'} left` : ''}</p>
+                          <p className="text-[11px] ad-note-green font-semibold mt-0.5">📺 Showing until {new Date(ad.expires_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}{left !== null ? ` — ${left} day${left === 1 ? '' : 's'} left` : ''}</p>
                         )}
                         {statusOf(ad) === 'review' && (
-                          <p className="text-[11px] text-blue-700 mt-0.5">✅ Receipt uploaded{ad.receipt_uploaded_at ? ` ${fmtDate(ad.receipt_uploaded_at)}` : ''} — waiting for PayRound to confirm payment.</p>
+                          <p className="text-[11px] ad-note-blue mt-0.5">✅ Receipt uploaded{ad.receipt_uploaded_at ? ` ${fmtDate(ad.receipt_uploaded_at)}` : ''} — waiting for PayRound to confirm payment.</p>
                         )}
                         {statusOf(ad) === 'await_receipt' && (
-                          <p className="text-[11px] text-amber-700 mt-0.5">💡 Pay ₦{Number(ad.price || 0).toLocaleString()} to {bank.name} {bank.number} ({bank.holder}) then upload your receipt below.</p>
+                          <p className="text-[11px] mt-0.5 ad-amber border rounded-lg px-2 py-1 inline-block">💡 Pay ₦{Number(ad.price || 0).toLocaleString()} to {bank.name} {bank.number} ({bank.holder}) then upload your receipt below.</p>
                         )}
                       </div>
                     </div>
                     {statusOf(ad) === 'declined' && (
-                      <div className="mt-3 bg-red-50 border border-red-200 rounded-xl p-3">
-                        <p className="text-[11px] font-bold text-red-700 mb-0.5">❌ Why PayRound declined this ad:</p>
-                        <p className="text-xs text-red-800">{ad.reject_reason || 'No reason was given — please re-check the ad rules and resubmit.'}</p>
-                        <button onClick={() => startEdit(ad)} className="mt-2 text-[11px] font-bold text-white bg-primary-600 px-4 py-1.5 rounded-full hover:bg-primary-700 transition-colors">✏️ Edit & Resubmit</button>
+                      <div className="mt-3 border rounded-xl p-3 ad-redbox">
+                        <p className="text-[11px] font-bold mb-0.5 ad-red-title">❌ Why PayRound declined this ad:</p>
+                        <p className="text-xs ad-red-text">{ad.reject_reason || 'No reason was given — please re-check the ad rules and resubmit.'}</p>
+                        <button onClick={() => startEdit(ad)} className="mt-2 w-full sm:w-auto text-sm font-extrabold text-white bg-primary-600 px-5 py-2.5 rounded-xl hover:bg-primary-700 transition-colors shadow-md shadow-primary-200">✏️ EDIT & RESUBMIT THIS AD</button>
                       </div>
                     )}
                     <div className="flex gap-2 mt-3 flex-wrap">
@@ -691,12 +681,12 @@ export default function AdsPage() {
           <div className="max-w-lg mx-auto">
             <div className="bg-white rounded-2xl border border-gray-100 p-6 md:p-8 shadow-sm">
               <h3 className="text-lg font-semibold text-gray-900 mb-1">Advertise Your Business</h3>
-              {editId && <p className="text-[11px] font-semibold text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-2 py-1 mb-3">✏️ Editing your declined ad — submitting replaces it and sends it back for review (created date stays).</p>}
+              {editId && <p className="text-[11px] font-semibold border rounded-lg px-2 py-1 mb-3 ad-amber">✏️ Editing your declined ad — submitting replaces it and sends it back for review (created date stays).</p>}
               {!editId && <div className="mb-3" />}
 
               <form onSubmit={handleSubmit} className="space-y-4">
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1.5">Business Name *</label>
+                    <label className="block text-sm font-medium mb-1.5 ad-label">Business Name *</label>
                     <input
                       type="text"
                       value={formData.businessName}
@@ -709,12 +699,12 @@ export default function AdsPage() {
 
                   {/* 📸 Media — right under the business name (max 5) */}
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1.5">Business Photos / Videos * (max {MAX_MEDIA})</label>
-                    <p className="text-[11px] text-gray-500 mb-1.5">💡 The Sponsored area has <b>2 portrait slots</b> and <b>1 landscape slot</b> — upload both tall and wide shots to show everywhere. Photos display up to 5s, videos up to 10s.</p>
+                    <label className="block text-sm font-medium mb-1.5 ad-label">Business Photos / Videos * (max {MAX_MEDIA})</label>
+                    <p className="text-[11px] mb-1.5 ad-hint">💡 The Sponsored area has <b>2 portrait slots</b> and <b>1 landscape slot</b> — upload both tall and wide shots to show everywhere. Photos display up to 5s, videos up to 10s.</p>
                     <label className="w-full border-2 border-dashed border-gray-200 rounded-xl p-4 flex flex-col items-center gap-1 cursor-pointer hover:border-primary-300 hover:bg-primary-50/40 transition-all">
                       <input type="file" accept="image/*,video/*" multiple className="hidden" onChange={e => { pickMedia(e.target.files); e.target.value = ''; }} />
                       <HiPhotograph className="w-6 h-6 text-gray-400" />
-                      <span className="text-xs text-gray-500">Tap to add photos or videos 🎬 — images auto-compressed, videos up to <b>{MAX_VIDEO_MB}MB</b> fly to fast file storage ({mediaFiles.length}/{MAX_MEDIA} added)</span>
+                      <span className="text-xs ad-hint">Tap to add photos or videos 🎬 — images auto-compressed, videos up to <b>{MAX_VIDEO_MB}MB</b> fly to fast file storage ({mediaFiles.length}/{MAX_MEDIA} added)</span>
                     </label>
                     {mediaError && <p className="text-xs text-red-500 mt-1">{mediaError}</p>}
                     {mediaFiles.length > 0 && (
@@ -743,7 +733,7 @@ export default function AdsPage() {
                   {/* ✨ Description with optional AI writer */}
                   <div>
                     <div className="flex items-center justify-between mb-1.5">
-                      <label className="block text-sm font-medium text-gray-700">Description *</label>
+                      <label className="block text-sm font-medium ad-label">Description *</label>
                       <button
                         type="button"
                         onClick={() => useAiDescription(aiUsed)}
@@ -752,7 +742,7 @@ export default function AdsPage() {
                         {aiUsed ? <><HiRefresh className="w-3 h-3" /> Regenerate</> : <><HiSparkles className="w-3 h-3" /> ✨ Write it for me (AI)</>}
                       </button>
                     </div>
-                    <p className="text-[11px] text-gray-400 mb-1.5">Type it yourself — or let our AI write one. <b>Tell the AI your market below</b> 👇 (it also reads each photo&apos;s Alt text + counts/orientation of your media). You can edit the result freely.</p>
+                    <p className="text-[11px] mb-1.5 ad-hint">Type it yourself — or let our AI write one. <b>Tell the AI your market below</b> 👇 (it also reads your Alt texts &amp; how bright/clear your photos look). You can edit the result freely.</p>
                     {/* 🎯 What are you selling? — one tap removes all AI guessing */}
                     <div className="flex gap-1.5 flex-wrap mb-2">
                       {AI_CATEGORIES.map(c => (
@@ -781,7 +771,7 @@ export default function AdsPage() {
                   </div>
 
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1.5">Contact Phone *</label>
+                    <label className="block text-sm font-medium mb-1.5 ad-label">Contact Phone *</label>
                     <input
                       type="tel"
                       value={formData.contact}
@@ -792,7 +782,7 @@ export default function AdsPage() {
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1.5">WhatsApp Number *</label>
+                    <label className="block text-sm font-medium mb-1.5 ad-label">WhatsApp Number *</label>
                     <input
                       type="tel"
                       value={formData.whatsapp}
@@ -803,7 +793,7 @@ export default function AdsPage() {
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1.5">Website (optional)</label>
+                    <label className="block text-sm font-medium mb-1.5 ad-label">Website (optional)</label>
                     <input
                       type="url"
                       value={formData.website}
@@ -815,7 +805,7 @@ export default function AdsPage() {
 
                   {/* ⏱ Duration — price shown beside each timeframe */}
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1.5"><HiClock className="inline w-4 h-4 mr-1 -mt-0.5" />How long should your ad run? *</label>
+                    <label className="block text-sm font-medium mb-1.5 ad-label"><HiClock className="inline w-4 h-4 mr-1 -mt-0.5" />How long should your ad run? *</label>
                     <div className="grid grid-cols-3 gap-2">
                       {plans.map(p => (
                         <button
@@ -837,7 +827,7 @@ export default function AdsPage() {
                     <div className="text-xs space-y-0.5">
                       <p><span className="ad-pay-label">Bank:</span> <b>{bank.name}</b></p>
                       <p className="flex items-center gap-2 flex-wrap">
-                        <span className="ad-pay-label">Account No:</span> <b className="font-mono text-sm tracking-wide">{bank.number}</b>
+                        <span className="ad-pay-label">Account No:</span> <b className="font-mono ad-pay-number">{bank.number}</b>
                         <button type="button" onClick={() => { try { navigator.clipboard.writeText(bank.number); toast.success('Account number copied! 📋'); } catch {} }} className="text-[10px] font-semibold px-2 py-0.5 rounded-full ad-pay-copy">Copy</button>
                       </p>
                       <p><span className="ad-pay-label">Name:</span> <b>{bank.holder}</b></p>
@@ -847,7 +837,7 @@ export default function AdsPage() {
 
                   {/* 🧾 Receipt */}
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1.5">Payment Receipt (screenshot of your transfer)</label>
+                    <label className="block text-sm font-medium mb-1.5 ad-label">Payment Receipt (screenshot of your transfer)</label>
                     {receipt ? (
                       <div className="flex items-start gap-3">
                         <button type="button" onClick={() => setViewImg(receipt)}><img src={receipt} alt="receipt" className="w-20 h-20 rounded-xl object-cover border" /></button>
@@ -870,7 +860,7 @@ export default function AdsPage() {
                   >
                     {sending ? 'Submitting…' : receipt ? 'Submit Ad + Receipt for Review' : 'Save Ad (upload receipt later)'}
                   </button>
-                  <p className="text-[10px] text-gray-400 text-center">Your ad details are stored safely — leaving this page to go pay will NOT delete anything.</p>
+                  <p className="text-[10px] text-center ad-hint">Your ad details are stored safely — leaving this page to go pay will NOT delete anything.</p>
                 </form>
             </div>
           </div>
