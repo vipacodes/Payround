@@ -228,6 +228,31 @@ export default function AdsPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   const [viewImg, setViewImg] = useState('');
+  const [previewAd, setPreviewAd] = useState(null); // 👁 live preview (saved ads OR the form before submitting)
+
+  // 👁 Build a temporary ad (marked active so AdBanner renders it) from any source
+  const openPreview = (ad) => setPreviewAd({ ...ad, active: true, _preview: true });
+
+  const previewForm = () => {
+    if (!formData.businessName.trim()) { toast.error('Type your business name first — then preview.'); return; }
+    if (mediaFiles.length === 0) { toast.error('Add at least 1 photo/video — that\'s what people see first!'); return; }
+    const cover = mediaFiles[0];
+    openPreview({
+      id: editId || 'preview-draft',
+      business_name: formData.businessName.trim(),
+      description: formData.description.trim() || '(no description yet)',
+      phone: formData.contact.trim(),
+      contact: formData.contact.trim(),
+      whatsapp: formData.whatsapp.trim() || formData.contact.trim(),
+      website: formData.website.trim() || null,
+      media_urls: JSON.stringify(mediaFiles),
+      media_url: cover,
+      media_type: isVideoSrc(cover) ? 'video' : 'image',
+      media_alts: JSON.stringify(mediaAlts.map(a => (a || '').trim())),
+      duration_days: plan.days,
+      price: plan.price,
+    });
+  };
 
   const plans = [
     { days: 1, label: '1 Day', price: Number(settings?.ad_1day || 500) },
@@ -303,7 +328,7 @@ export default function AdsPage() {
     const catLabel = (AI_CATEGORIES.find(c => c.id === catId) || AI_CATEGORIES[0]).label;
     toast.success(regen
       ? `✨ Fresh version (${catLabel}) — edit freely!`
-      : `✨ Written for ${catLabel} + your ${mediaFiles.length || 'uploaded'} photo/video facts — edit anything!`, { id: t });
+      : `✨ Written for ${catLabel} + your ${mediaFiles.length || 'uploaded'} photo/video facts — edit anything!`, { id: t, duration: 4000 });
   };
 
   // Tap a market chip → AI instantly rewrites for that market (if it already wrote something)
@@ -431,7 +456,7 @@ export default function AdsPage() {
         ? 'Updated ad sent for review again! 🎉 The reason it was declined is cleared.'
         : receipt
           ? 'Ad + receipt submitted! PayRound will confirm your payment and set it LIVE. 🎉'
-          : '✅ Ad SAVED! Nothing is lost — pay and upload your receipt anytime from the My Ads tab.', { id: t });
+          : '✅ Ad SAVED! Nothing is lost — pay and upload your receipt anytime from the My Ads tab.', { id: t, duration: 6000 });
       setFormData({ businessName: '', description: '', contact: '', whatsapp: '', website: '' });
       setMediaFiles([]);
       rawVid.current = {};
@@ -445,7 +470,7 @@ export default function AdsPage() {
       // Straight to the My Ads tab, already filtered to where the new ad landed 🎯
       if (!editId) setTimeout(() => { setTab('mine'); setMineFilter(receipt ? 'review' : 'await_receipt'); }, 450);
     } catch (err) {
-      toast.error(`Could not submit: ${err.message || 'try again'}`, { id: t });
+      toast.error(`Could not submit: ${err.message || 'try again'}`, { id: t, duration: 8000 });
     } finally {
       setSending(false); // NEVER stuck at "Submitting…" again
     }
@@ -459,10 +484,10 @@ export default function AdsPage() {
       const { compressImage } = await import('@/lib/image');
       const dataUrl = await compressImage(file, 1000, 0.82);
       await postgrestSave('PATCH', `ads?id=eq.${encodeURIComponent(ad.id)}`, { payment_receipt_url: dataUrl, receipt_uploaded_at: new Date().toISOString() }, 60000);
-      toast.success('Receipt uploaded! PayRound will review and set your ad LIVE. 🎉', { id: t });
+      toast.success('Receipt uploaded! PayRound will review and set your ad LIVE. 🎉', { id: t, duration: 5000 });
       setMineFilter('review'); // show it land under ⏳ Pending
       loadMyAds(myEmail);
-    } catch (err) { toast.error(`Upload failed: ${err.message || 'try again'}`, { id: t }); }
+    } catch (err) { toast.error(`Upload failed: ${err.message || 'try again'}`, { id: t, duration: 7000 }); }
   };
 
   // ✏️ Fix a declined ad — load it back into the form; submitting UPDATEs the same row
@@ -486,7 +511,9 @@ export default function AdsPage() {
     setCategory('auto');
     setTab('create'); // jump to the Create Ad tab with the form loaded
     setShowForm(true);
-    toast('Ad loaded into the form ✏️ — fix what PayRound flagged and resubmit below.');
+    toast(ad.status === 'declined'
+      ? 'Ad loaded into the form ✏️ — fix what PayRound flagged and resubmit below.'
+      : 'Ad loaded into the form ✏️ — tweak anything you like, then hit the button below.');
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
@@ -497,9 +524,9 @@ export default function AdsPage() {
       const { supabase } = await import('@/lib/supabase');
       const { error } = await supabase.from('ads').delete().eq('id', ad.id);
       if (error) throw error;
-      toast.success('Ad deleted.', { id: t });
+      toast.success('Ad deleted.', { id: t, duration: 3500 });
       loadMyAds(myEmail);
-    } catch (err) { toast.error(`Could not delete: ${err.message || 'try again'}`, { id: t }); }
+    } catch (err) { toast.error(`Could not delete: ${err.message || 'try again'}`, { id: t, duration: 6000 }); }
   };
 
   const bank = { name: settings?.bank_name || 'Opay', number: settings?.account_number || '9151723199', holder: settings?.account_name || 'Basikoro James Okeroghene' };
@@ -624,6 +651,11 @@ export default function AdsPage() {
                       </div>
                     )}
                     <div className="flex gap-2 mt-3 flex-wrap">
+                      {/* 👁 See it exactly as viewers will + ✏️ change it anytime before it's live */}
+                      <button onClick={() => openPreview(ad)} className="text-[11px] font-semibold text-gray-700 bg-gray-100 border border-gray-200 px-3 py-1.5 rounded-full hover:bg-gray-200 transition-colors">👁 Preview</button>
+                      {(statusOf(ad) === 'await_receipt' || statusOf(ad) === 'review') && (
+                        <button onClick={() => startEdit(ad)} className="text-[11px] font-bold text-primary-700 bg-primary-50 border border-primary-200 px-3 py-1.5 rounded-full hover:bg-primary-100 transition-colors">✏️ Edit</button>
+                      )}
                       {ad.payment_receipt_url ? (
                         <button onClick={() => setViewImg(ad.payment_receipt_url)} className="text-[11px] font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 px-3 py-1.5 rounded-full">🧾 View receipt</button>
                       ) : statusOf(ad) === 'await_receipt' ? (
@@ -854,6 +886,14 @@ export default function AdsPage() {
                   </div>
 
                   <button
+                    type="button"
+                    onClick={previewForm}
+                    disabled={sending}
+                    className="w-full border-2 font-bold py-3 rounded-xl transition-all mt-1 disabled:opacity-50 ad-prevbtn"
+                  >
+                    👁 Preview how your ad will look
+                  </button>
+                  <button
                     type="submit"
                     disabled={sending}
                     className="w-full bg-primary-600 text-white font-semibold py-3.5 rounded-xl hover:bg-primary-700 transition-all shadow-lg shadow-primary-200 disabled:opacity-50"
@@ -874,6 +914,25 @@ export default function AdsPage() {
           {isVideoSrc(viewImg)
             ? <video src={viewImg} controls autoPlay playsInline className="max-h-[85vh] max-w-full rounded-xl" onClick={e => e.stopPropagation()} />
             : <img src={viewImg} alt="view" className="max-h-[85vh] max-w-full rounded-xl object-contain" onClick={e => e.stopPropagation()} />}
+        </div>
+      )}
+
+      {/* 👁 LIVE PREVIEW — the exact Sponsored card people will see (taps disabled in preview) */}
+      {previewAd && (
+        <div className="fixed inset-0 z-[95] bg-black/70 flex items-center justify-center p-4" onClick={() => setPreviewAd(null)}>
+          <div className="rounded-2xl max-w-sm w-full p-4 shadow-2xl ad-preview" onClick={e => e.stopPropagation()}>
+            <p className="text-[11px] font-extrabold text-center mb-2 pv-title">👁 LIVE PREVIEW — this is exactly what people see in the Sponsored area</p>
+            <div
+              className="rounded-xl border border-dashed border-gray-200 p-2"
+              onClickCapture={(e) => { if (!e.target.closest('button')) { e.preventDefault(); e.stopPropagation(); } }}
+            >
+              <AdBanner ad={previewAd} big />
+            </div>
+            <div className="flex gap-2 mt-3">
+              <button onClick={() => setPreviewAd(null)} className="flex-1 bg-gray-900 text-white text-sm font-bold py-2.5 rounded-xl">✕ Close preview</button>
+              <button onClick={() => { setPreviewAd(null); toast('Happy? Hit the green submit button 🚀 — or keep editing ✏️'); }} className="flex-1 bg-primary-600 text-white text-sm font-bold py-2.5 rounded-xl">Looks good 👍</button>
+            </div>
+          </div>
         </div>
       )}
 

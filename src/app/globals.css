@@ -275,3 +275,11 @@ body {
 .ad-paycard { background: #d1fae5 !important; border-color: #34d399 !important; border-width: 2px !important; }
 .ad-paycard .ad-pay-label { color: #374151 !important; font-weight: 600 !important; }
 .ad-paycard .ad-pay-number { color: #052e16 !important; font-weight: 800 !important; font-size: 15px !important; letter-spacing: 1.5px !important; }
+
+/* 👁 "Preview how your ad will look" — forced readable white/green in both themes */
+.ad-prevbtn { background: #ffffff !important; color: #15803d !important; border-color: #22c55e !important; }
+.ad-prevbtn:hover { background: #ecfdf5 !important; }
+
+/* 👁 Preview modal card stays a real white card in dark mode too */
+.ad-preview { background: #ffffff !important; color: #111827 !important; }
+.ad-preview .pv-title { color: #374151 !important; }

@@ -227,9 +227,9 @@ export default function SettingsPage() {
       if (error) throw error;
       const realOk = row?.password_hash === emailPw;
       const tempOk = row?.reset_code && row.reset_code === emailPw && row.reset_expires && new Date(row.reset_expires).getTime() > Date.now();
-      if (!realOk && !tempOk) { toast.error('Password incorrect — email not changed.', { id: t }); setEmailBusy(false); return; }
+      if (!realOk && !tempOk) { toast.error('Password incorrect — email not changed.', { id: t, duration: 6000 }); setEmailBusy(false); return; }
       const { data: taken } = await supabase.from('users').select('email').eq('email', em).maybeSingle();
-      if (taken) { toast.error('Another account already uses that email.', { id: t }); setEmailBusy(false); return; }
+      if (taken) { toast.error('Another account already uses that email.', { id: t, duration: 6000 }); setEmailBusy(false); return; }
       // every table + column that stores the user's address
       const spots = [
         ['users', 'email'],
@@ -260,8 +260,8 @@ export default function SettingsPage() {
       setUser(prev => ({ ...prev, email: em }));
       setNewEmail(''); setEmailPw('');
       try { const { sounds } = await import('@/lib/sounds'); sounds.success(); } catch {}
-      toast.success('Email changed everywhere — log in with the new one next time. ✉️', { id: t });
-    } catch (e) { toast.error(`Could not change email: ${e.message || 'try again'}`, { id: t }); }
+      toast.success('Email changed everywhere — log in with the new one next time. ✉️', { id: t, duration: 5000 });
+    } catch (e) { toast.error(`Could not change email: ${e.message || 'try again'}`, { id: t, duration: 7000 }); }
     setEmailBusy(false);
   };
 
