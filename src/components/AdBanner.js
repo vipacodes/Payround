@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import AdVideo from './AdVideo';
 import Link from 'next/link';
 import { HiExternalLink, HiPhone, HiChevronLeft, HiChevronRight } from 'react-icons/hi';
+import { trackAdEvent } from '@/lib/adAnalytics';
 
 // Media helpers — ads can carry a slideshow of business images/videos.
 // An item may be a plain data-URL string OR an object { src, name?, price? } (priced items).
@@ -36,12 +37,19 @@ export function isVideoSrc(src) {
   return src.startsWith('data:video') || /\.(mp4|webm|mov|m4v|3gp|3gpp|ogg)(\?|#|$)/i.test(src);
 }
 
-export default function AdBanner({ ad: raw, variant = 'card', big = false }) {
+export default function AdBanner({ ad: raw, variant = 'card', big = false, track = true }) {
   const media = parseAdMedia(raw?.media_urls);
   const [idx, setIdx] = useState(0);
   const [vidPaused, setVidPaused] = useState(false);
   const curIsVideo = isVideoSrc(media[idx]);
   const nextItem = () => setIdx(i => (i + 1) % media.length);
+
+  // 📊 count an impression for the media currently on screen (skipped in advertiser previews via track={false})
+  useEffect(() => {
+    if (!track || !media.length || !raw?.id) return;
+    trackAdEvent('view', raw, idx);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [idx, track]);
 
   // Slideshow — images advance every 5s… VIDEOS play COMPLETELY and advance on 'ended' (never mid-clip!)
   useEffect(() => {

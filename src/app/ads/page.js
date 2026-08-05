@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import Header from '@/components/Header';
 import Footer from '@/components/Footer';
 import AdBanner from '@/components/AdBanner';
+import AdAnalyticsModal from '@/components/AdAnalyticsModal';
 import { HiPhotograph, HiCheckCircle, HiSparkles, HiRefresh, HiTrash, HiClock, HiCreditCard } from 'react-icons/hi';
 import toast from 'react-hot-toast';
 
@@ -288,6 +289,7 @@ export default function AdsPage() {
   }, []);
   const [viewImg, setViewImg] = useState('');
   const [previewAd, setPreviewAd] = useState(null); // 👁 live preview (saved ads OR the form before submitting)
+  const [statsAd, setStatsAd] = useState(null);     // 📊 analytics modal (expired ads only — unlocks after the run)
 
   // 👁 Build a temporary ad (marked active so AdBanner renders it) from any source
   const openPreview = (ad) => setPreviewAd({ ...ad, active: true, _preview: true });
@@ -412,6 +414,7 @@ export default function AdsPage() {
       if (ad.expires_at && new Date(ad.expires_at).getTime() < Date.now()) return 'expired';
       return 'live';
     }
+    if (ad.status === 'archived') return 'expired'; // cleared from the owner panel 24h after ending — analytics stay yours
     if (ad.status === 'declined') return 'declined';
     return ad.payment_receipt_url ? 'review' : 'await_receipt';
   };
@@ -604,13 +607,14 @@ export default function AdsPage() {
   };
 
   // My Ads tab — live counters + filtered view
-  const mineCounts = { all: myAds.length, live: 0, review: 0, await_receipt: 0, declined: 0 };
+  const mineCounts = { all: myAds.length, live: 0, review: 0, await_receipt: 0, expired: 0, declined: 0 };
   myAds.forEach(a => { const s = statusOf(a); if (mineCounts[s] !== undefined) mineCounts[s] += 1; });
   const shownAds = mineFilter === 'all' ? myAds : myAds.filter(a => statusOf(a) === mineFilter);
   const mineEmpty = {
     live: 'No live ads right now — once PayRound confirms your payment the ad appears here. 🟢',
     review: 'Nothing under review. Submit an ad with its receipt and it queues here while PayRound confirms the payment. ⏳',
     await_receipt: 'No saved ads waiting for payment. 💾 Save one from the Create Ad tab and it waits for you right here.',
+    expired: 'No expired ads yet. When a live ad finishes its paid days it lands here — and its full analytics unlock. 📊',
     declined: 'No declined ads — keep it up! 🎉',
     all: '',
   };
@@ -655,7 +659,7 @@ export default function AdsPage() {
             ) : (
             <>
             <div className="flex flex-wrap gap-1.5 mb-4">
-              {[['all', '🗂 All'], ['live', '🟢 Live'], ['review', '⏳ Pending'], ['await_receipt', '💾 Saved'], ['declined', '❌ Declined']].map(([k, label]) => (
+              {[['all', '🗂 All'], ['live', '🟢 Live'], ['review', '⏳ Pending'], ['await_receipt', '💾 Saved'], ['expired', '⌛ Expired'], ['declined', '❌ Declined']].map(([k, label]) => (
                 <button key={k} onClick={() => setMineFilter(k)}
                   className={`text-[11px] font-bold px-3 py-1.5 rounded-full border transition-all ${mineFilter === k ? 'bg-gray-900 text-white border-gray-900 shadow' : 'bg-white text-gray-600 border-gray-200 hover:border-gray-400'}`}>
                   {label} <span className={mineFilter === k ? 'text-white/70' : 'text-gray-400'}>· {mineCounts[k] || 0}</span>
@@ -694,6 +698,9 @@ export default function AdsPage() {
                         {statusOf(ad) === 'live' && ad.expires_at && (
                           <p className="text-[11px] ad-note-green font-semibold mt-0.5">📺 Showing until {new Date(ad.expires_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}{left !== null ? ` — ${left} day${left === 1 ? '' : 's'} left` : ''}</p>
                         )}
+                        {statusOf(ad) === 'expired' && (
+                          <p className="text-[11px] mt-0.5" style={{ color: '#1e293b', fontWeight: 700 }}>⌛ Ended {ad.expires_at ? new Date(ad.expires_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : ''} — no longer showing on the site. 📊 Your full analytics are ready below!</p>
+                        )}
                         {statusOf(ad) === 'review' && (
                           <p className="text-[11px] ad-note-blue mt-0.5">✅ Receipt uploaded{ad.receipt_uploaded_at ? ` ${fmtDate(ad.receipt_uploaded_at)}` : ''} — waiting for PayRound to confirm payment.</p>
                         )}
@@ -712,6 +719,15 @@ export default function AdsPage() {
                     <div className="flex gap-2 mt-3 flex-wrap">
                       {/* 👁 See it exactly as viewers will + ✏️ change it anytime before it's live */}
                       <button onClick={() => openPreview(ad)} className="text-[11px] font-semibold text-gray-700 bg-gray-100 border border-gray-200 px-3 py-1.5 rounded-full hover:bg-gray-200 transition-colors">👁 Preview</button>
+                      {statusOf(ad) === 'expired' && (
+                        <button onClick={() => setStatsAd(ad)} className="text-[11px] font-extrabold text-white bg-violet-600 border border-violet-600 px-3 py-1.5 rounded-full hover:bg-violet-700 transition-colors shadow-sm shadow-violet-200">📊 View Analytics</button>
+                      )}
+                      {statusOf(ad) === 'live' && (
+                        <span className="text-[10px] font-semibold text-gray-500 bg-gray-50 border border-gray-200 px-3 py-1.5 rounded-full">🔒 Analytics unlock when this ad expires</span>
+                      )}
+                      {statusOf(ad) === 'review' && (
+                        <span className="text-[10px] font-semibold text-gray-500 bg-gray-50 border border-gray-200 px-3 py-1.5 rounded-full">🔒 Analytics unlock after the ad runs</span>
+                      )}
                       {(statusOf(ad) === 'await_receipt' || statusOf(ad) === 'review') && (
                         <button onClick={() => startEdit(ad)} className="text-[11px] font-bold text-primary-700 bg-primary-50 border border-primary-200 px-3 py-1.5 rounded-full hover:bg-primary-100 transition-colors">✏️ Edit</button>
                       )}
@@ -986,7 +1002,7 @@ export default function AdsPage() {
               className="rounded-xl border border-dashed border-gray-200 p-2"
               onClickCapture={(e) => { if (!e.target.closest('button')) { e.preventDefault(); e.stopPropagation(); } }}
             >
-              <AdBanner ad={previewAd} big />
+              <AdBanner ad={previewAd} big track={false} />
             </div>
             <div className="flex gap-2 mt-3">
               <button onClick={() => setPreviewAd(null)} className="flex-1 bg-gray-900 text-white text-sm font-bold py-2.5 rounded-xl">✕ Close preview</button>
@@ -995,6 +1011,9 @@ export default function AdsPage() {
           </div>
         </div>
       )}
+
+      {/* 📊 ANALYTICS — unlocked the moment an ad's paid run ends */}
+      {statsAd && <AdAnalyticsModal ad={statsAd} onClose={() => setStatsAd(null)} />}
 
       <Footer />
     </div>

@@ -5,6 +5,7 @@ import AdVideo from './AdVideo';
 import Link from 'next/link';
 import { HiChevronLeft, HiChevronRight } from 'react-icons/hi';
 import { parseAdMedia, isVideoSrc } from './AdBanner';
+import { trackAdEvent } from '@/lib/adAnalytics';
 
 const IMAGE_MS = 5000;  // image ads show ~5 seconds; videos always play to the very end
 const KEY = 'payround_slot_'; // per-slot cursor, remembered across visits
@@ -106,6 +107,9 @@ function AdSlot({ items, slotKey, startOffset = 0, ratio }) {
   useEffect(() => {
     if (pos === null) return;
     try { localStorage.setItem(KEY + slotKey, String(pos)); } catch {}
+    // 📊 count this impression — the media is genuinely on screen right now
+    const it = itemsRef.current[((pos % len) + len) % len];
+    if (it?.ad) trackAdEvent('view', it.ad, it.idx);
   }, [pos, slotKey]);
 
   // Auto slide — IMAGES 5s. VIDEOS play COMPLETELY: they advance only on 'ended' (never chopped at 10s)
