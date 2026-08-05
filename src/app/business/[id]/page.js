@@ -35,16 +35,14 @@ function StarsRow({ n, className = '' }) {
   return <span className={`text-yellow-500 tracking-tight ${className}`}>{'★'.repeat(n)}{'☆'.repeat(Math.max(0, 5 - n))}</span>;
 }
 
-// 🔍 Full-screen media viewer — tap any photo/video on the page. Videos start WITH SOUND
-// (unless the viewer muted ads before); closing ALWAYS stops the video — no ghost audio.
+// 🔍 Full-screen media viewer — tap any photo/video on the page. Videos start MUTED
+// (sound only after you tap 🔊); closing ALWAYS stops the video — no ghost audio.
 function BizLightbox({ view, onClose, onNav }) {
   const vidRef = useRef(null);
   const cur = view.list[view.idx];
   const vid = isVideoSrc(cur);
-  const [muted, setMuted] = useState(false);
-  useEffect(() => {
-    try { setMuted(localStorage.getItem('payround_ad_sound') === 'off'); } catch { setMuted(false); }
-  }, [view.idx]);
+  const [muted, setMuted] = useState(true);
+  useEffect(() => { setMuted(true); }, [view.idx]); // 🔇 every item starts silent until tapped
   useEffect(() => {
     const v = vidRef.current;
     if (!v) return;
@@ -70,7 +68,7 @@ function BizLightbox({ view, onClose, onNav }) {
       <div className="flex items-center justify-between gap-2 p-3" onClick={e => e.stopPropagation()}>
         <div className="min-w-0">
           <div className="font-bold text-sm text-white truncate">{view.name || 'Business media'}</div>
-          <div className="text-[11px] text-white/60">{view.idx + 1} of {view.list.length} · {vid ? 'Video 🔊' : 'Photo'}</div>
+          <div className="text-[11px] text-white/60">{view.idx + 1} of {view.list.length} · {vid ? 'Video 🔇 (tap for sound)' : 'Photo'}</div>
         </div>
         <button onClick={onClose} className="shrink-0 bg-white/15 hover:bg-white/30 text-white text-xs font-bold px-4 py-2 rounded-full">✕ Close</button>
       </div>
@@ -80,8 +78,8 @@ function BizLightbox({ view, onClose, onNav }) {
               onClick={e => e.stopPropagation()} />
           : <img key={view.idx} src={cur} alt="" className="max-w-full max-h-full object-contain rounded-xl" />}
         {muted && vid && (
-          <button onClick={(e) => { e.stopPropagation(); setMuted(false); try { localStorage.setItem('payround_ad_sound', 'on'); } catch {} }}
-            className="absolute top-2 right-2 bg-white/15 hover:bg-white/30 text-white text-[11px] font-bold px-3 py-1.5 rounded-full z-20">🔇 Tap for sound</button>
+          <button onClick={(e) => { e.stopPropagation(); setMuted(false); }}
+            className="absolute top-2 right-2 bg-white/20 hover:bg-white/35 text-white text-xs font-bold px-4 py-2 rounded-full z-20 border border-white/30">🔊 Tap for sound</button>
         )}
         {view.list.length > 1 && (
           <>
@@ -435,7 +433,7 @@ function BusinessContent() {
               {isVideoSrc(pinned.src) ? (
                 <>
                   <video src={pinned.src} autoPlay muted playsInline loop className="w-full max-h-[420px] rounded-xl bg-black pointer-events-none" />
-                  <span className="absolute bottom-2 right-2 bg-black/60 text-white text-[10px] font-bold px-2 py-1 rounded-full">🔍 tap for full screen + 🔊</span>
+                  <span className="absolute bottom-2 right-2 bg-black/60 text-white text-[10px] font-bold px-2 py-1 rounded-full">🔍 tap for full screen 🔇</span>
                 </>
               ) : (
                 <>

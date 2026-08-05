@@ -3,8 +3,8 @@
 import { useEffect, useRef, useState } from 'react';
 
 // 🎬 Video ad with viewer controls:
-//  • 🔊 sound ON by default (unless the viewer muted ads before) — browsers that block
-//    unmuted autoplay fall back to silent + 🔇 for that clip
+//  • 🔇 EVERY ad starts MUTED — sound only comes on when the viewer TAPS it
+//    (play/pause tap or the 🔊 button), unless they muted ads on purpose (🔇 is remembered)
 //  • ⏸/▶ pause & play — the viewer is the boss (taps never reach the ad's link)
 //  • 🔊/🔇 sound toggle — remembered for every ad video (localStorage 'payround_ad_sound')
 //  • onEnded — parents advance their slideshow only when the clip has COMPLETELY finished
@@ -14,11 +14,9 @@ export default function AdVideo({ src, className, btnClass = 'bottom-2 left-12',
   const [sound, setSound] = useState(false);
   const [playing, setPlaying] = useState(true);
 
-  // Restore the viewer's sound choice whenever the clip changes — SOUND IS THE DEFAULT now
+  // Every clip starts silent — always. Sound is a tap away.
   useEffect(() => {
-    let on = true;
-    try { on = localStorage.getItem('payround_ad_sound') !== 'off'; } catch {}
-    setSound(on);
+    setSound(false);
     setPlaying(true);
   }, [src]);
 
@@ -38,12 +36,19 @@ export default function AdVideo({ src, className, btnClass = 'bottom-2 left-12',
     }
   }, [sound, src]);
 
+  // 👆 First tap on the clip = play WITH sound… unless the viewer muted ads on purpose
+  const unmuteKick = () => {
+    let off = false;
+    try { off = localStorage.getItem('payround_ad_sound') === 'off'; } catch {}
+    if (!off) setSound(true);
+  };
+
   const togglePlay = (e) => {
     e.preventDefault();
     e.stopPropagation();
     const v = ref.current;
     if (!v) return;
-    if (v.paused || v.ended) { const p = v.play(); if (p && p.catch) p.catch(() => {}); }
+    if (v.paused || v.ended) { unmuteKick(); const p = v.play(); if (p && p.catch) p.catch(() => {}); }
     else v.pause();
   };
 
