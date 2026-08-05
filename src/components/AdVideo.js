@@ -61,6 +61,8 @@ export default function AdVideo({ src, className, btnClass = 'bottom-2 left-12',
         autoPlay
         loop={loop}
         playsInline
+        preload="auto"
+        data-sound={sound ? 'on' : 'muted'}
         className={className}
         onPlay={() => { setPlaying(true); if (onPlayEv) onPlayEv(); }}
         onPause={() => { setPlaying(false); if (onPauseEv) onPauseEv(); }}
