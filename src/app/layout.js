@@ -1,9 +1,7 @@
 import './globals.css';
-import { Suspense } from 'react';
 import { Toaster } from 'react-hot-toast';
 import BootLoader from '@/components/BootLoader';
 import SupportChatFab from '@/components/SupportChatFab';
-import PageTransitionLoader from '@/components/PageTransitionLoader';
 
 export const viewport = {
   width: 'device-width',
@@ -41,9 +39,6 @@ export default function RootLayout({ children }) {
       </head>
       <body className="antialiased">
         <BootLoader />
-        <Suspense fallback={null}>
-          <PageTransitionLoader />
-        </Suspense>
         <Toaster
           position="top-center"
           toastOptions={{

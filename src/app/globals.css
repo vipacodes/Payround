@@ -285,5 +285,3 @@ body {
 .ad-preview .pv-title { color: #374151 !important; }
 
 /* 🔄 Page-switch loader — the green arc's spin */
-@keyframes prLoaderSpin { to { transform: rotate(360deg); } }
-.pr-loader-spin { animation: prLoaderSpin 0.9s linear infinite; }
