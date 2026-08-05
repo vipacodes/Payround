@@ -90,7 +90,7 @@ export default function HomePage() {
   const features = [
     { icon: <HiUserGroup className="w-6 h-6" />, title: 'Create & Join Groups', desc: 'Start your own Ajo group or join existing ones with unique group IDs.' },
     { icon: <HiShieldCheck className="w-6 h-6" />, title: 'Face Verification', desc: 'Secure identity verification to build trust among group members.' },
-    { icon: <HiBellAlert className="w-6 h-6" />, title: 'Smart Reminders', desc: 'Get notified on the website and via WhatsApp when payments are due.' },
+    { icon: <HiBellAlert className="w-6 h-6" />, title: 'Smart Reminders', desc: 'Get reminded right here in the app — your dashboard, group board and bell flag every payment before it is due.' },
     { icon: <HiChartBar className="w-6 h-6" />, title: 'Real-time Tracking', desc: 'Track contributions, payments, and rotation progress in real time.' },
     { icon: <HiCurrencyDollar className="w-6 h-6" />, title: 'Transparent Rotation', desc: 'See exactly who has paid, who is next to receive, and the full rotation order.' },
     { icon: <HiCheckCircle className="w-6 h-6" />, title: 'Payment Receipts', desc: 'Upload receipts and track verification status for every contribution.' },
