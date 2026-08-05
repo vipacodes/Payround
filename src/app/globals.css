@@ -239,3 +239,20 @@ body {
 .chat-search-bar .cs-btn { color: #78350f !important; border-radius: 9999px; }
 .chat-search-bar .cs-btn:hover:not(:disabled) { background: rgba(245, 158, 11, 0.28) !important; }
 .chat-search-bar .cs-btn:disabled { color: #d6b585 !important; }
+
+/* 📢 Ads form — plan cards, pay-to bank card & receipt drop-zone stay READABLE in dark mode too
+   (the dark remap turns white cards near-black, which used to swallow their dark text) */
+.ad-plan { background: #ffffff !important; border-color: #e5e7eb !important; }
+.ad-plan p { color: #1f2937 !important; }
+.ad-plan .ad-plan-price { color: #4b5563 !important; }
+.ad-plan.ad-plan-sel { background: #ecfdf5 !important; border-color: #22c55e !important; box-shadow: 0 6px 16px rgba(34,197,94,.22) !important; }
+.ad-plan.ad-plan-sel p, .ad-plan.ad-plan-sel .ad-plan-price { color: #15803d !important; }
+.ad-paycard { background: #ecfdf5 !important; border-color: #a7f3d0 !important; }
+.ad-paycard, .ad-paycard p, .ad-paycard b { color: #1f2937 !important; }
+.ad-paycard .ad-pay-title { color: #065f46 !important; }
+.ad-paycard .ad-pay-label { color: #4b5563 !important; }
+.ad-paycard .ad-pay-note { color: #047857 !important; }
+.ad-paycard .ad-pay-copy { background: #ffffff !important; color: #047857 !important; border-color: #6ee7b7 !important; }
+.ad-dropzone { background: #f0fdf4 !important; border-color: #86efac !important; }
+.ad-dropzone span { color: #374151 !important; }
+.ad-dropzone .ad-drop-sub { color: #6b7280 !important; }

@@ -15,22 +15,49 @@ const MAX_PAYLOAD_KB = 5200;    // safety ceiling for the (light) ad row itself 
 const isVideoSrc = (m) => typeof m === 'string'
   && (m.startsWith('data:video') || /\.(mp4|webm|mov|m4v|3gp|3gpp|ogg)(\?|#|$)/i.test(m));
 
-// ⬆️ Upload one video to the public `ads-media` storage bucket — returns its public https URL.
-// Hard timeout so slow networks fail with a clear message instead of spinning forever.
-const uploadAdVideo = async (file, path, timeoutMs = 180000) => {
-  const { supabase } = await import('@/lib/supabase');
-  const timer = new Promise((_, rej) => setTimeout(
-    () => rej(new Error('Video upload is taking too long on this network — try stronger data/Wi-Fi or a shorter clip.')),
-    timeoutMs
-  ));
-  const up = await Promise.race([
-    supabase.storage.from('ads-media').upload(path, file, { contentType: file.type || 'video/mp4', upsert: true }),
-    timer,
-  ]);
-  if (up?.error) throw up.error;
-  const { data } = supabase.storage.from('ads-media').getPublicUrl(path);
-  if (!data?.publicUrl) throw new Error('Storage did not return a link for the video.');
-  return data.publicUrl;
+// ⬆️ Upload one video to the public `ads-media` storage bucket — with LIVE % progress (XHR, since
+// fetch can't show upload progress on phones). A stall watchdog aborts if NOTHING moves for 30s.
+const uploadAdVideoOnce = (file, path, onPct) => new Promise((resolve, reject) => {
+  const base = process.env.NEXT_PUBLIC_SUPABASE_URL || SUPA_FALLBACK_URL;
+  const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || SUPA_FALLBACK_KEY;
+  const xhr = new XMLHttpRequest();
+  let lastMove = Date.now();
+  const watchdog = setInterval(() => {
+    if (Date.now() - lastMove > 30000) { clearInterval(watchdog); try { xhr.abort(); } catch {} reject(new Error('stall')); }
+  }, 4000);
+  xhr.upload.onprogress = (e) => {
+    lastMove = Date.now();
+    if (e.lengthComputable && onPct) onPct(Math.min(1, e.loaded / e.total));
+  };
+  xhr.onload = () => {
+    clearInterval(watchdog);
+    if (xhr.status >= 200 && xhr.status < 300) resolve(`${base}/storage/v1/object/public/ads-media/${path}`);
+    else reject(new Error(xhr.status === 413 ? '413' : `http-${xhr.status}`));
+  };
+  xhr.onerror = () => { clearInterval(watchdog); reject(new Error('neterr')); };
+  xhr.ontimeout = () => { clearInterval(watchdog); reject(new Error('timeout')); };
+  xhr.timeout = 8 * 60 * 1000; // absolute ceiling — stall watchdog normally trips far earlier (30s of zero movement)
+  xhr.open('POST', `${base}/storage/v1/object/ads-media/${path}`);
+  xhr.setRequestHeader('apikey', key);
+  xhr.setRequestHeader('Authorization', `Bearer ${key}`);
+  xhr.setRequestHeader('x-upsert', 'true');
+  xhr.setRequestHeader('Content-Type', file.type || 'video/mp4');
+  xhr.send(file);
+});
+
+// 🔁 Up to 3 goes per video (instant retry keeps the % climbing); permanent errors (over limit) fail fast.
+const uploadAdVideo = async (file, path, onPct) => {
+  let lastErr = null;
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    try {
+      return await uploadAdVideoOnce(file, path, onPct);
+    } catch (err) {
+      lastErr = err;
+      if (err?.message === '413') throw new Error('That video is over storage\'s 15MB hard limit — keep clips under 12MB (≈30 seconds).');
+      await new Promise(r => setTimeout(r, 900 * attempt)); // little breather, then try again
+    }
+  }
+  throw new Error('This network keeps dropping the video — please try on stronger data/Wi-Fi, or trim the clip smaller.');
 };
 
 // 🌐 Direct PostgREST save with a HARD timeout — unlike fire-and-hope this ALWAYS comes back,
@@ -47,7 +74,13 @@ const postgrestSave = async (method, path, body, timeoutMs) => {
   try {
     res = await fetch(`${base}/rest/v1/${path}`, {
       method,
-      headers: { apikey: key, Authorization: `Bearer ${key}`, 'Content-Type': 'application/json', Prefer: 'return=minimal' },
+      headers: {
+        apikey: key,
+        Authorization: `Bearer ${key}`,
+        'Content-Type': 'application/json',
+        // merge-duplicates = re-tapping Submit after a network hiccup safely overwrites instead of erroring
+        Prefer: method === 'POST' ? 'return=minimal,resolution=merge-duplicates' : 'return=minimal',
+      },
       body: body ? JSON.stringify(body) : undefined,
       signal: ctrl.signal,
     });
@@ -66,14 +99,25 @@ const postgrestSave = async (method, path, body, timeoutMs) => {
   }
 };
 
-// ✨ Local "AI" description writer — builds a tailored advert from the business name + the photos/videos uploaded.
+// ✨ Local "AI" description writer — builds a tailored advert from your CATEGORY pick, the words you
+// typed as Alt text on each photo/video, your business name, AND real facts from the media itself.
+const AI_CATEGORIES = [
+  { id: 'auto',     label: '✨ Auto-detect',  topic: '',                                     hook: '' },
+  { id: 'fashion',  label: '👗 Fashion',      topic: 'quality fashion pieces & outfits',     hook: 'Sizes & colours available — just ask for yours! 👗' },
+  { id: 'hair',     label: '💇 Hair & Beauty', topic: 'top-notch hair & beauty services',    hook: 'Book your slot today — spaces fill up fast! 💇🏽‍♀️' },
+  { id: 'skincare', label: '🧴 Skincare',     topic: 'original skincare & beauty products',  hook: 'Your glow-up starts with ONE order 🧴' },
+  { id: 'food',     label: '🍲 Food',         topic: 'delicious, freshly-made food',         hook: 'Made fresh when you order — come hungry! 🍲' },
+  { id: 'gadgets',  label: '📱 Gadgets',      topic: 'genuine gadgets & accessories',        hook: 'Original & tested — no fakes, no stories 📱' },
+  { id: 'thrift',   label: '👟 Thrift/Okrika', topic: 'quality thrift (okrika) finds',       hook: 'First come, best pick — stock moves FAST 👟' },
+  { id: 'other',    label: '🛠 Services',     topic: 'trusted, quality service',             hook: 'Tell us what you need — consider it sorted 🛠' },
+];
 const AI_PATTERNS = [
-  { keys: ['fashion', 'cloth', 'wear', 'outfit', 'dress', 'thrift', 'okrika', 'shoe', 'sneaker', 'bag', 'tailor'], topic: 'quality fashion pieces' },
-  { keys: ['hair', 'salon', 'barber', 'wig', 'braid', 'lash', 'nail'], topic: 'top-notch beauty & hair services' },
-  { keys: ['food', 'restaurant', 'chops', 'snack', 'cake', 'bakery', 'meal', 'cook'], topic: 'delicious, freshly-made meals' },
-  { keys: ['cream', 'soap', 'skincare', 'glow', 'cosmetic', 'makeup', 'beauty', 'oil'], topic: 'original skincare & beauty products' },
-  { keys: ['phone', 'gadget', 'laptop', 'accessor', 'electronic', 'charger', 'tech'], topic: 'genuine gadgets & accessories' },
-  { keys: ['thrift', 'shoes'], topic: 'quality thrift finds' },
+  { keys: ['fashion', 'cloth', 'wear', 'outfit', 'dress', 'gown', 'ankara', 'jean', 'shirt', 'skirt', 'blouse', 'two-piece', 'twopiece'], cat: 'fashion' },
+  { keys: ['thrift', 'okrika', 'shoe', 'sneaker', 'bag', 'sandal', 'heel'], cat: 'thrift' },
+  { keys: ['hair', 'salon', 'barber', 'wig', 'braid', 'lash', 'nail', 'makeup', 'mua'], cat: 'hair' },
+  { keys: ['cream', 'soap', 'skincare', 'glow', 'cosmetic', 'beauty oil', 'lotion', 'scrub'], cat: 'skincare' },
+  { keys: ['food', 'restaurant', 'chops', 'snack', 'cake', 'bakery', 'meal', 'cook', 'pepper soup', 'jollof'], cat: 'food' },
+  { keys: ['phone', 'gadget', 'laptop', 'accessor', 'electronic', 'charger', 'tech', 'earpod', 'speaker'], cat: 'gadgets' },
 ];
 
 // 👁 Truly read the uploaded media first: orientation of each image, and how bright/colourful
@@ -115,43 +159,46 @@ function visualStory(a) {
   if (a.landscapes) shapes.push(`${a.landscapes} wide shot${a.landscapes > 1 ? 's' : ''}`);
   if (a.squares) shapes.push(`${a.squares} square shot${a.squares > 1 ? 's' : ''}`);
   if (a.videos) shapes.push(`${a.videos} short video${a.videos > 1 ? 's' : ''}`);
-  const mood = a.dark >= Math.max(1, Math.floor(a.images / 2))
+  let head;
+  if (a.images === 0 && a.videos > 0) {
+    // Video-only ad — don't call them "photos"! (count is in the head, so skip the shapes suffix)
+    head = `▶️ Press play — ${a.videos === 1 ? 'a real short video' : `${a.videos} real short videos`} of the ACTUAL items`;
+    return `${head}. What you see is EXACTLY what arrives. 💯`;
+  }
+  const half = Math.max(1, Math.ceil(a.images / 2));
+  const mood = a.dark >= half
     ? 'clean, classy shots'
-    : a.colorful >= Math.max(1, Math.floor(a.images / 2))
+    : a.colorful >= half
       ? 'bright, colourful photos'
       : 'clear, well-lit photos';
-  return `Swipe through ${a.count} real ${mood}${shapes.length ? ' — ' + shapes.join(' + ') : ''} — what you see is exactly what arrives.`;
+  head = `Swipe through ${a.count} real ${mood}`;
+  return `${head}${shapes.length ? ' — ' + shapes.join(' + ') : ''}. What you see is EXACTLY what arrives. 💯`;
 }
 
-function aiDescriptions(name, a) {
+function aiDescriptions(name, a, opts = {}) {
   const n = (name || 'My Business').trim();
-  const lower = n.toLowerCase();
-  const hit = AI_PATTERNS.find(p => p.keys.some(k => lower.includes(k)));
-  const topic = hit ? hit.topic : 'quality products & trusted service';
+  // Topic: 1) the category chip you tapped  2) auto-detect from your ALT TEXTS first, then the name
+  let cat = AI_CATEGORIES.find(c => c.id === opts.category) || AI_CATEGORIES[0];
+  if (!cat.topic) {
+    const bag = [(opts.alts || []).join(' '), n].map(s => (s || '').toLowerCase());
+    for (const text of bag) {
+      const hit = AI_PATTERNS.find(p => p.keys.some(k => text.includes(k)));
+      if (hit) { cat = AI_CATEGORIES.find(c => c.id === hit.cat) || cat; break; }
+    }
+  }
+  const topic = cat.topic || 'quality products & trusted service';
+  const hook = cat.hook || '';
+  const topicCap = topic.charAt(0).toUpperCase() + topic.slice(1);
   const proof = visualStory(a);
-  const hashtag = '#' + n.replace(/[^a-z0-9]/gi, '').slice(0, 18) + ' #Payround #NaijaBusiness';
+  const tag = '#' + (n.replace(/[^a-z0-9]/gi, '').slice(0, 18) || 'Payround');
+  const hashtag = `${tag} #Payround #NaijaBusiness`;
+  const proofLine = proof ? `\u{1F4F8} ${proof}\n` : '';
+  const hookLine = hook ? `${hook}\n` : '';
   return [
-    `🚨 ${n} is LIVE!
-${topic.charAt(0).toUpperCase() + topic.slice(1)} that people keep coming back for — and now it's one tap away.
-${proof ? '📸 ' + proof + '\n' : ''}✔ Honest prices\n✔ Fast responses\n✔ Quick delivery
-👉 Send us a WhatsApp message NOW to order — first come, first served!
-${hashtag}`,
-    `Why do customers love ${n}? Simple — ${topic}, done RIGHT. 💯
-${proof ? proof + '\n' : ''}No stories, no stress: pick what you want, chat us, get it fast. That's it.
-🎁 New customers get a warm welcome — try us this week!
-👉 WhatsApp us now — we reply in minutes.
-${hashtag}`,
-    `Looking for ${topic} you can actually trust? Stop scrolling. 😌
-${n} delivers the goods — literally.
-${proof ? '📸 ' + proof + '\n' : ''}💬 One message on WhatsApp and your order is moving.
-✔ Quality guaranteed\n✔ Prices that respect your pocket\n✔ Speed you'll love
-👉 Tap to chat with us on WhatsApp now!
-${hashtag}`,
-    `✨ ${n} — for people who don't settle for less.
-We've got the ${topic} everyone is talking about, served with a smile.
-${proof ? proof + '\n' : ''}Don't wait for "later" — stock moves FAST. 🏃🏽‍♂️💨
-👉 Message us on WhatsApp today and thank yourself tomorrow.
-${hashtag}`,
+    `\u{1F6A8} ${n} is LIVE!\n${topicCap} that people keep coming back for — and now it's one tap away.\n${proofLine}${hookLine}✔ Honest prices\n✔ Fast responses\n✔ Quick delivery\n👉 Send us a WhatsApp message NOW to order — first come, first served!\n${hashtag}`,
+    `Why do customers love ${n}? Simple — ${topic}, done RIGHT. 💯\n${proofLine}${hookLine}No stories, no stress: pick what you want, chat us, get it fast. That's it.\n🎁 New customers get a warm welcome — try us this week!\n👉 WhatsApp us now — we reply in minutes.\n${hashtag}`,
+    `Looking for ${topic} you can actually trust? Stop scrolling. 😌\n${n} delivers the goods — literally.\n${proofLine}💬 One message on WhatsApp and your order is moving.\n${hookLine}✔ Quality guaranteed\n✔ Prices that respect your pocket\n✔ Speed you'll love\n👉 Tap to chat with us on WhatsApp now!\n${hashtag}`,
+    `✨ ${n} — for people who don't settle for less.\nWe've got the ${topic} everyone is talking about, served with a smile.\n${proofLine}${hookLine}Don't wait for "later" — stock moves FAST. 🏃🏽‍♂️💨\n👉 Message us on WhatsApp today and thank yourself tomorrow.\n${hashtag}`,
   ];
 }
 
@@ -161,6 +208,7 @@ export default function AdsPage() {
   const [formData, setFormData] = useState({ businessName: '', description: '', contact: '', whatsapp: '', website: '' });
   const [mediaFiles, setMediaFiles] = useState([]);
   const rawVid = useRef({});   // dataUrl -> original video File (uploaded to Supabase Storage on submit)
+  const adIdRef = useRef('');  // stable ad id across Submit retries — videos reuse the same storage paths (no duplicates)
   const [mediaAlts, setMediaAlts] = useState([]);   // optional alt text per photo/video (advertiser's words)
   const [mediaError, setMediaError] = useState('');
   const [editId, setEditId] = useState('');         // set while fixing a declined ad (UPDATE instead of INSERT)
@@ -170,6 +218,7 @@ export default function AdsPage() {
   const [sending, setSending] = useState(false);
   const [aiIdx, setAiIdx] = useState(0);
   const [aiUsed, setAiUsed] = useState(false);
+  const [category, setCategory] = useState('auto'); // 🎯 what are you selling? — drives the AI writer
 
   const [settings, setSettings] = useState(null); // owner bank + ad prices (owner-editable)
   const [myEmail, setMyEmail] = useState('');
@@ -251,16 +300,27 @@ export default function AdsPage() {
     });
   };
 
-  const useAiDescription = async (regen) => {
+  const useAiDescription = async (regen, catOverride) => {
     if (!formData.businessName.trim()) { toast.error('Type your business name first — the AI writes from it.'); return; }
+    const catId = catOverride || category;
     const t = toast.loading('✨ Studying your photos & videos…');
     const analysis = await analyzeMedia(mediaFiles);
-    const variants = aiDescriptions(formData.businessName, analysis);
+    const variants = aiDescriptions(formData.businessName, analysis, { category: catId, alts: mediaAlts });
     const next = regen ? (aiIdx + 1) % variants.length : aiIdx % variants.length;
     setAiIdx(next);
     setFormData(prev => ({ ...prev, description: variants[next] }));
     setAiUsed(true);
-    toast.success(regen ? '✨ Fresh version written from your media — edit freely!' : '✨ Written from your photos/videos — edit anything you like!', { id: t });
+    const catLabel = (AI_CATEGORIES.find(c => c.id === catId) || AI_CATEGORIES[0]).label;
+    toast.success(regen
+      ? `✨ Fresh version (${catLabel}) — edit freely!`
+      : `✨ Written for ${catLabel} + your ${mediaFiles.length || 'uploaded'} photo/video facts — edit anything!`, { id: t });
+  };
+
+  // Tap a market chip → AI instantly rewrites for that market (if it already wrote something)
+  const pickCategory = (id) => {
+    setCategory(id);
+    if (aiUsed) useAiDescription(false, id);
+    else toast(`Category set: ${(AI_CATEGORIES.find(c => c.id === id) || {}).label} — now tap "✨ Write it for me (AI)" ✍️`);
   };
 
   const pickReceipt = async (file) => {
@@ -304,24 +364,46 @@ export default function AdsPage() {
     setSending(true);
     const t = toast.loading('Preparing your ad…', { duration: Infinity });
     try {
-      const adId = editId || `ad-${Date.now()}`;
-      // 🎬 Videos go to Supabase Storage as REAL files (fast on mobile) — the ad row itself stays light & quick.
-      const finalMedia = [];
-      let i = 0;
-      for (const m of mediaFiles) {
-        i++;
+      // Stable id across retries — re-tapped Submit reuses the same storage paths (no duplicate files)
+      if (!editId && !adIdRef.current) adIdRef.current = `ad-${Date.now()}`;
+      const adId = editId || adIdRef.current;
+      // 🎬 Upload ALL videos AT THE SAME TIME (parallel!) with ONE overall % — far faster than one-by-one
+      const jobs = [];
+      mediaFiles.forEach((m, idx) => {
         const file = rawVid.current[m];
-        if (!file) { finalMedia.push(m); continue; } // photos & previously-saved items stay as they are
-        toast.loading(`📤 Uploading video ${i} of ${mediaFiles.length} to storage… please don’t close this page`, { id: t });
-        try {
+        if (file) {
           const ext = (file.name.split('.').pop() || 'mp4').toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 5) || 'mp4';
-          finalMedia.push(await uploadAdVideo(file, `ads/${adId}/media-${i}-${Date.now()}.${ext}`));
-        } catch (vErr) {
-          // Backup plan: a small clip can still ride inside the ad; a big one must give up with a clear message
-          if (file.size <= 3.5 * 1024 * 1024) { finalMedia.push(m); toast.loading('💾 Saving your ad…', { id: t }); }
-          else throw vErr;
+          jobs.push({ idx, m, file, path: `ads/${adId}/media-${idx + 1}.${ext}`, fraction: 0, url: '' });
         }
+      });
+      if (jobs.length) {
+        const totals = jobs.reduce((s, j) => s + (j.file.size || 1), 0);
+        let lastToast = 0;
+        const bump = () => {
+          const now = Date.now();
+          if (now - lastToast < 400) return;
+          lastToast = now;
+          const done = jobs.reduce((s, j) => s + j.fraction * (j.file.size || 1), 0);
+          const pct = Math.min(99, Math.round((done / totals) * 100));
+          toast.loading(`📤 Uploading ${jobs.length} video${jobs.length > 1 ? 's' : ''} at once… ${pct}% — please don’t close this page`, { id: t });
+        };
+        bump();
+        await Promise.all(jobs.map(async (j) => {
+          try {
+            j.url = await uploadAdVideo(j.file, j.path, (f) => { j.fraction = f; bump(); });
+          } catch (vErr) {
+            // Backup plan: a small clip can still ride inside the ad; a big one must give up with a clear message
+            if (j.file.size <= 3.5 * 1024 * 1024) j.url = ''; // empty url → falls back to inline dataUrl below
+            else throw vErr;
+          }
+          j.fraction = 1; bump();
+        }));
       }
+      // Photos & previously-saved media stay as they are; freshly-uploaded videos become their storage URL
+      const finalMedia = mediaFiles.map((m, idx) => {
+        const j = jobs.find(x => x.idx === idx);
+        return j ? (j.url || m) : m;
+      });
       toast.loading(receipt ? '💾 Saving ad + receipt…' : '💾 Saving your ad…', { id: t });
       const cover = finalMedia[0];
       const payload = {
@@ -363,8 +445,9 @@ export default function AdsPage() {
       setFormData({ businessName: '', description: '', contact: '', whatsapp: '', website: '' });
       setMediaFiles([]);
       rawVid.current = {};
+      adIdRef.current = '';
       setReceipt('');
-      setAiUsed(false); setAiIdx(0);
+      setAiUsed(false); setAiIdx(0); setCategory('auto');
       setMediaAlts([]);
       setEditId('');
       setShowForm(false);
@@ -410,6 +493,7 @@ export default function AdsPage() {
     setPlanDays(ad.duration_days || 7);
     setReceipt(ad.payment_receipt_url || '');
     setEditId(ad.id);
+    setCategory('auto');
     setTab('create'); // jump to the Create Ad tab with the form loaded
     setShowForm(true);
     toast('Ad loaded into the form ✏️ — fix what PayRound flagged and resubmit below.');
@@ -668,7 +752,24 @@ export default function AdsPage() {
                         {aiUsed ? <><HiRefresh className="w-3 h-3" /> Regenerate</> : <><HiSparkles className="w-3 h-3" /> ✨ Write it for me (AI)</>}
                       </button>
                     </div>
-                    <p className="text-[11px] text-gray-400 mb-1.5">Type it yourself — or let our AI write one automatically from your business name &amp; the photos/videos you uploaded above. You can edit the result freely.</p>
+                    <p className="text-[11px] text-gray-400 mb-1.5">Type it yourself — or let our AI write one. <b>Tell the AI your market below</b> 👇 (it also reads each photo&apos;s Alt text + counts/orientation of your media). You can edit the result freely.</p>
+                    {/* 🎯 What are you selling? — one tap removes all AI guessing */}
+                    <div className="flex gap-1.5 flex-wrap mb-2">
+                      {AI_CATEGORIES.map(c => (
+                        <button
+                          type="button"
+                          key={c.id}
+                          onClick={() => pickCategory(c.id)}
+                          className={`text-[11px] font-bold px-2.5 py-1 rounded-full border transition-colors ${
+                            category === c.id
+                              ? 'bg-purple-600 text-white border-purple-600 shadow-sm'
+                              : 'bg-white text-gray-600 border-gray-200 hover:border-purple-300'
+                          }`}
+                        >
+                          {c.label}
+                        </button>
+                      ))}
+                    </div>
                     <textarea
                       value={formData.description}
                       onChange={(e) => setFormData(prev => ({ ...prev, description: e.target.value }))}
@@ -721,27 +822,27 @@ export default function AdsPage() {
                           type="button"
                           key={p.days}
                           onClick={() => setPlanDays(p.days)}
-                          className={`rounded-xl border-2 p-3 text-center transition-all ${planDays === p.days ? 'border-primary-500 bg-primary-50 shadow-md shadow-primary-100' : 'border-gray-200 bg-white hover:border-primary-200'}`}
+                          className={`rounded-xl border-2 p-3 text-center transition-all ad-plan ${planDays === p.days ? 'ad-plan-sel' : ''}`}
                         >
-                          <p className={`text-sm font-bold ${planDays === p.days ? 'text-primary-700' : 'text-gray-800'}`}>{p.label}</p>
-                          <p className={`text-xs font-semibold mt-0.5 ${planDays === p.days ? 'text-primary-600' : 'text-gray-500'}`}>₦{p.price.toLocaleString()}</p>
+                          <p className="text-sm font-bold">{p.label}</p>
+                          <p className="text-xs font-semibold mt-0.5 ad-plan-price">₦{p.price.toLocaleString()}</p>
                         </button>
                       ))}
                     </div>
                   </div>
 
                   {/* 💳 Pay the PayRound account */}
-                  <div className="rounded-xl border-2 border-emerald-200 bg-emerald-50/70 p-4">
-                    <p className="text-[11px] font-bold text-emerald-800 mb-1"><HiCreditCard className="inline w-4 h-4 mr-1 -mt-0.5" />PAY ₦{plan.price.toLocaleString()} TO THE PAYROUND ACCOUNT</p>
-                    <div className="text-xs text-gray-900 space-y-0.5">
-                      <p><span className="text-gray-500">Bank:</span> <b>{bank.name}</b></p>
+                  <div className="rounded-xl border-2 p-4 ad-paycard">
+                    <p className="text-[11px] font-bold mb-1 ad-pay-title"><HiCreditCard className="inline w-4 h-4 mr-1 -mt-0.5" />PAY ₦{plan.price.toLocaleString()} TO THE PAYROUND ACCOUNT</p>
+                    <div className="text-xs space-y-0.5">
+                      <p><span className="ad-pay-label">Bank:</span> <b>{bank.name}</b></p>
                       <p className="flex items-center gap-2 flex-wrap">
-                        <span className="text-gray-500">Account No:</span> <b className="font-mono text-sm tracking-wide">{bank.number}</b>
-                        <button type="button" onClick={() => { try { navigator.clipboard.writeText(bank.number); toast.success('Account number copied! 📋'); } catch {} }} className="text-[10px] font-semibold text-emerald-700 border border-emerald-200 bg-white px-2 py-0.5 rounded-full">Copy</button>
+                        <span className="ad-pay-label">Account No:</span> <b className="font-mono text-sm tracking-wide">{bank.number}</b>
+                        <button type="button" onClick={() => { try { navigator.clipboard.writeText(bank.number); toast.success('Account number copied! 📋'); } catch {} }} className="text-[10px] font-semibold px-2 py-0.5 rounded-full ad-pay-copy">Copy</button>
                       </p>
-                      <p><span className="text-gray-500">Name:</span> <b>{bank.holder}</b></p>
+                      <p><span className="ad-pay-label">Name:</span> <b>{bank.holder}</b></p>
                     </div>
-                    <p className="text-[10px] text-emerald-700 mt-2">Use your business name as the transfer remark. Your ad goes LIVE as soon as PayRound confirms the payment.</p>
+                    <p className="text-[10px] mt-2 ad-pay-note">Use your business name as the transfer remark. Your ad goes LIVE as soon as PayRound confirms the payment.</p>
                   </div>
 
                   {/* 🧾 Receipt */}
@@ -753,10 +854,10 @@ export default function AdsPage() {
                         <button type="button" onClick={() => setReceipt('')} className="text-[11px] font-semibold text-red-600 bg-red-50 border border-red-200 px-3 py-1.5 rounded-full">✕ Remove</button>
                       </div>
                     ) : (
-                      <label className="w-full border-2 border-dashed border-emerald-200 bg-emerald-50/40 rounded-xl p-4 flex flex-col items-center gap-1 cursor-pointer hover:border-emerald-300 transition-all">
+                      <label className="w-full border-2 border-dashed rounded-xl p-4 flex flex-col items-center gap-1 cursor-pointer transition-all ad-dropzone">
                         <input type="file" accept="image/*" className="hidden" onChange={e => { pickReceipt(e.target.files?.[0]); e.target.value = ''; }} />
                         <span className="text-lg">🧾</span>
-                        <span className="text-xs text-gray-600 text-center">Tap to upload your transfer receipt<br /><span className="text-[10px] text-gray-400">Not paid yet? No wahala — submit now, your ad stays saved, upload the receipt anytime from My Ads.</span></span>
+                        <span className="text-xs text-center">Tap to upload your transfer receipt<br /><span className="text-[10px] ad-drop-sub">Not paid yet? No wahala — submit now, your ad stays saved, upload the receipt anytime from My Ads.</span></span>
                       </label>
                     )}
                     {receiptError && <p className="text-xs text-red-500 mt-1">{receiptError}</p>}
