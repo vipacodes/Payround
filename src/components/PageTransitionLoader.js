@@ -3,27 +3,42 @@
 import { useState, useEffect, useRef } from 'react';
 import { usePathname, useSearchParams } from 'next/navigation';
 
-const MIN_SHOW = 380;   // ms — never just a flash
-const MAX_SHOW = 9000;  // ms — NEVER trap the user, whatever happens
+const SHOW_DELAY = 220;  // ms — only show if the switch ACTUALLY takes long (fast taps never see it)
+const MIN_SHOW = 350;    // ms — if it did appear, never just a flash
+const MAX_SHOW = 5000;   // ms — NEVER trap the user, whatever happens
 
-// 🔄 The PayRound GREEN SPINNING ARC — shows full-screen while switching pages.
-// Pure SVG (no white background, razor-sharp at every size, zero download).
+// 🔄 The PayRound GREEN SPINNING ARC — shows ONLY while a page switch is genuinely slow.
+// • The moment a navigation starts it PAUSES EVERY VIDEO — no sound under the overlay, ever.
+// • Delays appearing by 0.22s: quick switches land before it wakes up = zero flashing.
+// Pure SVG (transparent background, razor-sharp at every size, zero download).
 // Catches every client-side navigation: <Link> taps, router.push buttons, Back/Forward.
 export default function PageTransitionLoader() {
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const [busy, setBusy] = useState(false);
-  const busyRef = useRef(false);
+  const busyRef = useRef(false);       // true while the overlay is VISIBLE
+  const pendingRef = useRef(null);     // show-timer (overlay about to appear)
   const shownAt = useRef(0);
 
+  // 🔇 kill every sound source the moment we start switching — nothing plays under the overlay
+  const silence = () => {
+    try { document.querySelectorAll('video, audio').forEach(v => { try { v.pause(); } catch {} }); } catch {}
+  };
+
   const start = () => {
-    if (busyRef.current) return;
-    busyRef.current = true;
+    if (busyRef.current || pendingRef.current) return; // already on its way
+    silence();
     shownAt.current = Date.now();
-    setBusy(true);
+    pendingRef.current = setTimeout(() => {
+      busyRef.current = true;
+      shownAt.current = Date.now();
+      setBusy(true);
+    }, SHOW_DELAY);
   };
 
   const stop = () => {
+    // Still inside the grace window → it never appeared at all, just cancel the wake-up ☑
+    if (pendingRef.current) { clearTimeout(pendingRef.current); pendingRef.current = null; }
     if (!busyRef.current) return;
     const wait = Math.max(0, MIN_SHOW - (Date.now() - shownAt.current));
     setTimeout(() => { busyRef.current = false; setBusy(false); }, wait);
@@ -76,6 +91,7 @@ export default function PageTransitionLoader() {
       window.history.replaceState = rs;
       window.removeEventListener('popstate', onPop);
       document.removeEventListener('click', onClick, true);
+      if (pendingRef.current) clearTimeout(pendingRef.current);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -92,7 +108,7 @@ export default function PageTransitionLoader() {
   // 🛟 Absolute safety: the overlay can never get stuck on screen
   useEffect(() => {
     if (!busy) return undefined;
-    const t = setTimeout(() => { busyRef.current = false; setBusy(false); }, MAX_SHOW);
+    const t = setTimeout(() => { busyRef.current = false; setBusy(false); pendingRef.current = null; }, MAX_SHOW);
     return () => clearTimeout(t);
   }, [busy]);
 
@@ -102,7 +118,7 @@ export default function PageTransitionLoader() {
     <div
       className="fixed inset-0 z-[9999] flex flex-col items-center justify-center gap-4 cursor-wait"
       role="status"
-      aria-label="Loading page"
+      aria-label="Page loading — videos paused"
       style={{ background: 'rgba(8,15,28,0.85)' }}
     >
       {/* ⭕ The green spinning arc — transparent background, nothing else */}
