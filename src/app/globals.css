@@ -284,6 +284,6 @@ body {
 .ad-preview { background: #ffffff !important; color: #111827 !important; }
 .ad-preview .pv-title { color: #374151 !important; }
 
-/* 🔄 Page-switch loader card — gentle breathing behind the GIF */
-@keyframes pulseSlower { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.035); } }
-.animate-pulse-slow { animation: pulseSlower 1.6s ease-in-out infinite; }
+/* 🔄 Page-switch loader — the green arc's spin */
+@keyframes prLoaderSpin { to { transform: rotate(360deg); } }
+.pr-loader-spin { animation: prLoaderSpin 0.9s linear infinite; }

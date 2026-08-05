@@ -79,14 +79,18 @@ export default function AdBanner({ ad: raw, variant = 'card', big = false }) {
       {isVideoSrc(current) ? (
         <AdVideo
           src={current}
-          className={`w-full ${big ? 'h-48' : 'h-36'} object-cover rounded-xl bg-black`}
+          className={`w-full ${big ? 'h-48' : 'h-36'} object-contain rounded-xl bg-black`}
           loop={media.length < 2}
           onEnded={media.length > 1 ? nextItem : undefined}
           onPlayEv={() => setVidPaused(false)}
           onPauseEv={() => setVidPaused(true)}
         />
       ) : (
-        <img src={current} alt={parseAdAlts(raw?.media_alts)[idx] || `${ad.businessName} photo ${idx + 1}`} className={`w-full ${big ? 'h-48' : 'h-36'} object-cover rounded-xl`} />
+        /* 🖼 FULL picture, never cropped — soft blurred fill keeps the box tidy (same trick as the Sponsored slots) */
+        <div className={`relative w-full ${big ? 'h-48' : 'h-36'} rounded-xl overflow-hidden bg-gray-100`}>
+          <div aria-hidden="true" className="absolute inset-0 scale-125 blur-xl opacity-50 bg-center bg-cover" style={{ backgroundImage: `url("${current}")` }} />
+          <img src={current} alt={parseAdAlts(raw?.media_alts)[idx] || `${ad.businessName} photo ${idx + 1}`} className="relative w-full h-full object-contain" />
+        </div>
       )}
       <span className="absolute inset-0 rounded-xl bg-black/0 group-hover:bg-black/15 transition-all"></span>
       {media.length > 1 && (

@@ -192,6 +192,65 @@ function aiDescriptions(name, a, opts = {}) {
   ];
 }
 
+// 🧩 Shows how PayRound AUTO-SORTS the media into the Sponsored slots:
+// tall (portrait) shots → the 2 portrait slots • wide (landscape) shots → the landscape slot.
+// Every photo/video renders in FULL (never cropped).
+function SlotFitPreview({ media }) {
+  const [shapes, setShapes] = useState([]); // per item: true = portrait(tall), false = landscape(wide)
+  useEffect(() => {
+    let alive = true;
+    if (!media || !media.length) { setShapes([]); return undefined; }
+    Promise.all(media.map((m) => new Promise((res) => {
+      if (isVideoSrc(m)) {
+        const v = document.createElement('video');
+        v.muted = true; v.preload = 'metadata';
+        v.onloadedmetadata = () => res((v.videoHeight || 0) > (v.videoWidth || 0));
+        v.onerror = () => res(false);
+        setTimeout(() => res(false), 5000);
+        v.src = m;
+      } else {
+        const img = new Image();
+        img.onload = () => res(img.naturalHeight > img.naturalWidth);
+        img.onerror = () => res(false);
+        img.src = m;
+      }
+    }))).then((r) => { if (alive) setShapes(r); });
+    return () => { alive = false; };
+  }, [media]);
+
+  if (!media || !media.length) return null;
+  const portraits = media.filter((_, i) => shapes[i] === true);
+  const landscapes = media.filter((_, i) => shapes[i] === false);
+  const thumb = (m, i, port) => (
+    <span key={i} className="shrink-0 inline-flex items-center justify-center bg-black rounded-lg overflow-hidden" style={{ width: port ? 40 : 56, height: 40 }}>
+      {isVideoSrc(m)
+        ? <video src={m} muted playsInline className="w-full h-full object-contain" />
+        : <img src={m} alt="" className="w-full h-full object-contain" />}
+    </span>
+  );
+  return (
+    <div className="mb-3 rounded-xl p-2" style={{ background: '#f8fafc', border: '1px solid #e5e7eb' }}>
+      <p className="text-[10px] font-bold mb-1.5 text-center" style={{ color: '#475569' }}>🧩 PayRound auto-sorts your media into the Sponsored slots:</p>
+      <div className="flex items-center gap-2 mb-1.5">
+        <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-full shrink-0" style={{ background: '#e0e7ff', color: '#3730a3' }}>🟦 2 Portrait slots</span>
+        <div className="flex gap-1 overflow-x-auto">
+          {shapes.length < media.length
+            ? <span className="text-[10px]" style={{ color: '#64748b' }}>checking shapes…</span>
+            : portraits.length ? portraits.map((m, i) => thumb(m, i, true)) : <span className="text-[10px]" style={{ color: '#64748b' }}>none — upload a tall shot to fill these!</span>}
+        </div>
+      </div>
+      <div className="flex items-center gap-2">
+        <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-full shrink-0" style={{ background: '#ffedd5', color: '#9a3412' }}>🟧 1 Landscape slot</span>
+        <div className="flex gap-1 overflow-x-auto">
+          {shapes.length < media.length
+            ? <span className="text-[10px]" style={{ color: '#64748b' }}>checking…</span>
+            : landscapes.length ? landscapes.map((m, i) => thumb(m, i, false)) : <span className="text-[10px]" style={{ color: '#64748b' }}>none — upload a wide shot for this!</span>}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function AdsPage() {
   const [showForm, setShowForm] = useState(false);
 
@@ -732,7 +791,7 @@ export default function AdsPage() {
                   {/* 📸 Media — right under the business name (max 5) */}
                   <div>
                     <label className="block text-sm font-medium mb-1.5 ad-label">Business Photos / Videos * (max {MAX_MEDIA})</label>
-                    <p className="text-[11px] mb-1.5 ad-hint">💡 The Sponsored area has <b>2 portrait slots</b> and <b>1 landscape slot</b> — upload both tall and wide shots to show everywhere. Photos display up to 5s, videos up to 10s.</p>
+                    <p className="text-[11px] mb-1.5 ad-hint">💡 The Sponsored area has <b>2 portrait slots</b> and <b>1 landscape slot</b> — PayRound <b>auto-sorts</b> each photo/video into the right slot, always shown in FULL (never cropped). Photos play ~5s, videos play to the end.</p>
                     <label className="w-full border-2 border-dashed border-gray-200 rounded-xl p-4 flex flex-col items-center gap-1 cursor-pointer hover:border-primary-300 hover:bg-primary-50/40 transition-all">
                       <input type="file" accept="image/*,video/*" multiple className="hidden" onChange={e => { pickMedia(e.target.files); e.target.value = ''; }} />
                       <HiPhotograph className="w-6 h-6 text-gray-400" />
@@ -920,8 +979,9 @@ export default function AdsPage() {
       {/* 👁 LIVE PREVIEW — the exact Sponsored card people will see (taps disabled in preview) */}
       {previewAd && (
         <div className="fixed inset-0 z-[95] bg-black/70 flex items-center justify-center p-4" onClick={() => setPreviewAd(null)}>
-          <div className="rounded-2xl max-w-sm w-full p-4 shadow-2xl ad-preview" onClick={e => e.stopPropagation()}>
+          <div className="rounded-2xl max-w-sm w-full p-4 shadow-2xl ad-preview max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
             <p className="text-[11px] font-extrabold text-center mb-2 pv-title">👁 LIVE PREVIEW — this is exactly what people see in the Sponsored area</p>
+            <SlotFitPreview media={(() => { try { const m = JSON.parse(previewAd?.media_urls || '[]'); return Array.isArray(m) ? m : []; } catch { return []; } })()} />
             <div
               className="rounded-xl border border-dashed border-gray-200 p-2"
               onClickCapture={(e) => { if (!e.target.closest('button')) { e.preventDefault(); e.stopPropagation(); } }}

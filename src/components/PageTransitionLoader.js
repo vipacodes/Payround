@@ -6,14 +6,13 @@ import { usePathname, useSearchParams } from 'next/navigation';
 const MIN_SHOW = 380;   // ms — never just a flash
 const MAX_SHOW = 9000;  // ms — NEVER trap the user, whatever happens
 
-// 🔄 Branded full-screen loader shown while SWITCHING pages.
-// Catches every client-side navigation: <Link> taps, router.push buttons (the App Router
-// uses history.pushState/replaceState), browser Back/Forward, and plain internal <a> taps.
+// 🔄 The PayRound GREEN SPINNING ARC — shows full-screen while switching pages.
+// Pure SVG (no white background, razor-sharp at every size, zero download).
+// Catches every client-side navigation: <Link> taps, router.push buttons, Back/Forward.
 export default function PageTransitionLoader() {
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const [busy, setBusy] = useState(false);
-  const [pulse, setPulse] = useState(0); // remount key → the animation restarts on every trip
   const busyRef = useRef(false);
   const shownAt = useRef(0);
 
@@ -21,7 +20,6 @@ export default function PageTransitionLoader() {
     if (busyRef.current) return;
     busyRef.current = true;
     shownAt.current = Date.now();
-    setPulse((p) => p + 1);
     setBusy(true);
   };
 
@@ -96,26 +94,28 @@ export default function PageTransitionLoader() {
     if (!busy) return undefined;
     const t = setTimeout(() => { busyRef.current = false; setBusy(false); }, MAX_SHOW);
     return () => clearTimeout(t);
-  }, [busy, pulse]);
+  }, [busy]);
 
   if (!busy) return null;
 
   return (
     <div
-      className="fixed inset-0 z-[9999] flex items-center justify-center cursor-wait transition-opacity"
+      className="fixed inset-0 z-[9999] flex flex-col items-center justify-center gap-4 cursor-wait"
       role="status"
       aria-label="Loading page"
-      style={{ background: 'rgba(8,15,28,0.92)' }}
+      style={{ background: 'rgba(8,15,28,0.85)' }}
     >
-      {/* key = pulse → the GIF restarts on every page switch */}
-      <img
-        key={pulse}
-        src="/loading.gif"
-        alt="PayRound loading…"
-        draggable={false}
-        className="w-56 h-auto rounded-2xl shadow-2xl select-none animate-pulse-slow"
-        style={{ background: '#ffffff' }}
-      />
+      {/* ⭕ The green spinning arc — transparent background, nothing else */}
+      <svg width="84" height="84" viewBox="0 0 72 72" aria-hidden="true" className="pr-loader-spin">
+        <circle cx="36" cy="36" r="30" fill="none" stroke="rgba(34,197,94,0.15)" strokeWidth="7" />
+        <circle
+          cx="36" cy="36" r="30" fill="none"
+          stroke="#22c55e" strokeWidth="7" strokeLinecap="round"
+          pathLength="100" strokeDasharray="72 28"
+          transform="rotate(-90 36 36)"
+        />
+      </svg>
+      <span className="text-green-500 text-xs font-bold tracking-[0.3em] select-none">LOADING</span>
     </div>
   );
 }
