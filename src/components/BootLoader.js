@@ -7,6 +7,8 @@ import { useEffect } from 'react';
 // while the app bundles download. Removed as soon as the app is ready.
 export default function BootLoader() {
   useEffect(() => {
+    // App hydrated fine — clear the one-shot stale-chunk reload guard (see global-error.js)
+    try { sessionStorage.removeItem('pr_chunk_reload'); } catch (e) {}
     const el = document.getElementById('boot-loader');
     if (el) {
       // App has hydrated — fade the boot animation out
