@@ -449,10 +449,10 @@ function MessagesInner() {
   /* ============ PAYROUND SUPPORT VIEW ============ */
   if (active === SUPPORT_ID) {
     return (
-      <div className="min-h-screen bg-gray-50">
+      <div className="h-[100dvh] flex flex-col bg-gray-50 overflow-hidden">
         <Header />
-        <div className="max-w-2xl mx-auto px-4 py-4">
-          <div className="bg-white rounded-2xl border border-gray-100 overflow-hidden">
+        <div className="flex-1 flex flex-col min-h-0 w-full max-w-2xl mx-auto px-4 py-4">
+          <div className="flex-1 flex flex-col min-h-0 bg-white rounded-2xl border border-gray-100 overflow-hidden">
             {/* 👑 Owner profile head — official account, black badge with golden ring */}
             <div className="px-4 py-3 border-b border-gray-800 bg-gradient-to-r from-gray-900 via-gray-800 to-gray-900">
               <div className="flex items-center gap-3">
@@ -481,7 +481,7 @@ function MessagesInner() {
 
             {/* messages */}
             <div ref={listRef} onScroll={(e) => { const el = e.currentTarget; nearBottom.current = el.scrollHeight - el.scrollTop - el.clientHeight < 120; }}
-              className="h-[55vh] overflow-y-auto px-4 py-4 space-y-2.5">
+              className="flex-1 min-h-0 overflow-y-auto px-4 py-4 space-y-2.5">
               {/* greeting (local until the first real message is sent) */}
               {supMsgs.length === 0 && (
                 <div className="flex justify-start">
@@ -553,7 +553,6 @@ function MessagesInner() {
             </form>
           </div>
         </div>
-        <Footer />
       </div>
     );
   }
@@ -562,10 +561,10 @@ function MessagesInner() {
   if (active) {
     const displayName = otherUser?.name || 'PayRound member';
     return (
-      <div className="min-h-screen bg-gray-50">
+      <div className="h-[100dvh] flex flex-col bg-gray-50 overflow-hidden">
         <Header />
-        <div className="max-w-2xl mx-auto px-4 py-4">
-          <div className="bg-white rounded-2xl border border-gray-100 overflow-hidden">
+        <div className="flex-1 flex flex-col min-h-0 w-full max-w-2xl mx-auto px-4 py-4">
+          <div className="flex-1 flex flex-col min-h-0 bg-white rounded-2xl border border-gray-100 overflow-hidden">
             {/* chat head */}
             <div className="flex items-center gap-3 px-4 py-3 border-b border-gray-100">
               <button onClick={() => { setActive(''); setOtherUser(null); loadThreads(me); }} aria-label="Back to conversations" className="p-1.5 rounded-full hover:bg-gray-100 text-gray-500">
@@ -596,7 +595,7 @@ function MessagesInner() {
 
             {/* messages */}
             <div ref={listRef} onScroll={(e) => { const el = e.currentTarget; nearBottom.current = el.scrollHeight - el.scrollTop - el.clientHeight < 120; }}
-              className="h-[55vh] overflow-y-auto px-4 py-4 space-y-2.5">
+              className="flex-1 min-h-0 overflow-y-auto px-4 py-4 space-y-2.5">
               {msgs.length === 0 && (
                 <p className="text-center text-xs text-gray-400 py-10">No messages yet — say hello! 👋<br />Messages are delivered in-app (this is not WhatsApp).</p>
               )}
@@ -647,7 +646,6 @@ function MessagesInner() {
             </form>
           </div>
         </div>
-        <Footer />
       </div>
     );
   }

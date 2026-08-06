@@ -245,11 +245,11 @@ function GroupChatInner() {
   if (activeId) {
     const name = g?.name || 'Group chat';
     return (
-      <div className="min-h-screen bg-gray-50">
+      <div className="h-[100dvh] flex flex-col bg-gray-50 overflow-hidden">
         <Header />
         {zoomImg && <ImageLightbox src={zoomImg} alt="Chat photo" onClose={() => setZoomImg(null)} />}
-        <div className="max-w-2xl mx-auto px-4 py-4">
-          <div className="bg-white rounded-2xl border border-gray-100 overflow-hidden">
+        <div className="flex-1 flex flex-col min-h-0 w-full max-w-2xl mx-auto px-4 py-4">
+          <div className="flex-1 flex flex-col min-h-0 bg-white rounded-2xl border border-gray-100 overflow-hidden">
             {/* room head */}
             <div className="flex items-center gap-3 px-4 py-3 border-b border-gray-100">
               <button onClick={() => { setActiveId(''); setG(null); setMsgs([]); loadRooms(me); }} aria-label="Back to group chats" className="p-1.5 rounded-full hover:bg-gray-100 text-gray-500">
@@ -365,7 +365,7 @@ function GroupChatInner() {
               <>
                 {/* messages */}
                 <div ref={listRef} onScroll={(e) => { const el = e.currentTarget; nearBottom.current = el.scrollHeight - el.scrollTop - el.clientHeight < 120; }}
-                  className="h-[55vh] overflow-y-auto px-4 py-4 space-y-2.5">
+                  className="flex-1 min-h-0 overflow-y-auto px-4 py-4 space-y-2.5">
                   {msgs.length === 0 && (
                     <p className="text-center text-xs text-gray-400 py-10">No messages yet — start the conversation! 🎉<br />Everyone in this group can read and reply here.</p>
                   )}
@@ -453,7 +453,6 @@ function GroupChatInner() {
             )}
           </div>
         </div>
-        <Footer />
       </div>
     );
   }
