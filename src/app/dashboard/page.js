@@ -203,7 +203,7 @@ export default function DashboardPage() {
               const due = cg ? nextDueForMember(cg, payments, mySpots, adminAutoSpots(cg, buildSpotMap(members))) : null;
               const cash = cg ? nextCashOutForMember(cg, payouts, mySpots) : null;
               return (
-                <button key={g.id} onClick={() => router.push(`/groups/${g.id}`)} className="w-full flex items-center gap-3 py-4 min-h-[136px] border-b border-gray-50 last:border-0 text-left hover:bg-gray-50/60 rounded-xl px-2 transition-colors">
+                <button key={g.id} onClick={() => router.push(`/group-chat?group=${g.id}`)} className="w-full flex items-center gap-3 py-4 min-h-[136px] border-b border-gray-50 last:border-0 text-left hover:bg-gray-50/60 rounded-xl px-2 transition-colors">
                   {g.avatar_url
                     ? <img src={g.avatar_url} alt="" className="w-14 h-14 rounded-xl object-cover border border-gray-100 shrink-0" />
                     : <div className="w-14 h-14 bg-primary-100 rounded-xl flex items-center justify-center shrink-0"><span className="text-primary-700 font-bold text-lg">{g.name?.charAt(0)}</span></div>}
@@ -217,7 +217,7 @@ export default function DashboardPage() {
                       ? <span className="text-gray-400">⏳ Savings start when the group is full — nothing due yet</span>
                       : <><span className={due?.dueNow ? 'text-amber-600 font-semibold' : 'text-gray-500'}>{due ? (due.dueNow ? 'Payment due now ⚠️' : `Next due ${fmtDate(due.date)}`) : 'No spot yet'}</span>{cash ? <span className={cash.dueNow ? 'text-emerald-600 font-semibold' : 'text-gray-500'}> • Cash out {cash.dueNow ? 'NOW 💰' : `${fmtDate(cash.date)} (#${cash.spot})`}</span> : null}</>}</p>
                   </div>
-                  <HiArrowRight className="w-5 h-5 text-gray-300 shrink-0" />
+                  <span className="shrink-0 text-xl" title="Opens this group's chat">💬</span>
                 </button>
               );
             })}

@@ -424,17 +424,19 @@ function GroupChatInner() {
                   })}
                 </div>
 
-                {/* composer — admin always types; members type only while the admin has opened the chat */}
+                {/* composer + receipt — 📤 receipt upload stays ALWAYS available (locked OR open chat, admin or member);
+                    the typing box appears for members only while the admin has opened the chat */}
                 {g?.is_frozen ? (
                   <div className="px-4 py-4 border-t border-gray-100 bg-sky-50">
                     <p className="text-xs text-sky-800 text-center">❄️ This group is frozen by PayRound — chat and payments are paused for now.</p>
                   </div>
-                ) : memberLocked ? (
-                  <div className="px-4 py-4 border-t border-gray-100 bg-gray-50">
+                ) : (
+                <>
+                  <div data-receipt="always" className={`px-4 ${memberLocked ? 'py-4' : 'pt-3 pb-1'} border-t border-gray-100 bg-gray-50`}>
                     <button onClick={() => router.push(`/groups/${activeId}#pay`)} className="w-full bg-primary-600 text-white text-sm font-semibold py-2.5 rounded-xl hover:bg-primary-700 transition-colors">📤 Upload payment receipt (choose spots & weeks) →</button>
                   </div>
-                ) : (
-                <form onSubmit={send} className="flex items-center gap-2 px-3 py-3 border-t border-gray-100">
+                  {!memberLocked && (
+                  <form onSubmit={send} className="flex items-center gap-2 px-3 py-3 bg-gray-50">
                   <input
                     type="text"
                     value={body}
@@ -447,7 +449,9 @@ function GroupChatInner() {
                     className="w-10 h-10 bg-primary-600 text-white rounded-full flex items-center justify-center hover:bg-primary-700 disabled:opacity-40 transition-all shrink-0">
                     <HiPaperAirplane className="w-5 h-5 rotate-90" />
                   </button>
-                </form>
+                  </form>
+                  )}
+                </>
                 )}
               </>
             )}
