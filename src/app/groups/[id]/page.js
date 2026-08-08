@@ -1020,6 +1020,9 @@ export default function GroupDetailsPage() {
                         {pay.status === 'declined' && pay.decline_reason && (
                           <div className="text-[11px] text-red-500 mt-1">Reason from admin: {pay.decline_reason}</div>
                         )}
+                        {pay.status === 'approved' && pay.review_note && (
+                          <div className="text-[11px] text-emerald-700 mt-1">📝 Note from admin: {pay.review_note}</div>
+                        )}
                       </div>
                     </div>
                     {pay.status === 'approved'

@@ -30,6 +30,9 @@ export default function AdminPaymentsPage() {
   const [zoomImg, setZoomImg] = useState(null);
   const [declineId, setDeclineId] = useState(null);
   const [declineReason, setDeclineReason] = useState('');
+  const [approveId, setApproveId] = useState(null);
+  const [approveNote, setApproveNote] = useState('');
+  const [approveWeeks, setApproveWeeks] = useState('1');
   const [busy, setBusy] = useState(false);
 
   const loadAll = async () => {
@@ -68,21 +71,29 @@ export default function AdminPaymentsPage() {
     } catch {}
   };
 
-  // APPROVE — marks the member paid for the selected spots x weeks
+  // APPROVE — marks the member paid for the selected spots x weeks; optional note rides along.
+  // ⚖️ Short payments: the tick counts WEEKS — the admin can credit fewer weeks than claimed
+  // (e.g. 9 weeks expected = ₦9,900 but only ₦9,000 arrived → credit 8 weeks + note the balance)
   const handleApprove = async (p) => {
     setBusy(true);
     try {
       const { supabase } = await import('@/lib/supabase');
-      const { error } = await supabase.from('payments').update({ status: 'approved', reviewed_at: new Date().toISOString() }).eq('id', p.id);
+      const note = approveNote.trim();
+      const claimed = parseInt(p.weeks, 10) || 1;
+      const credit = Math.max(1, Math.min(parseInt(approveWeeks, 10) || claimed, claimed)); // never credit MORE than the receipt claims
+      const shortened = credit < claimed;
+      const label1 = periodLabel(group.frequency, group.frequency_days);
+      const { error } = await supabase.from('payments').update({ status: 'approved', weeks: credit, review_note: note || null, reviewed_at: new Date().toISOString() }).eq('id', p.id);
       if (error) throw error;
       // 🟢 Stamp the receipt APPROVED in the group chat (everyone sees it)
       try { await supabase.from('group_messages').update({ receipt_status: 'approved' }).eq('payment_id', p.id); } catch {}
       await notify({
         user_email: p.user_email, type: 'payment_approved',
-        message: `✅ Your payment of ₦${Number(p.amount || 0).toLocaleString()} in "${group.name}" was approved — spot${parseSpots(p.spots).length > 1 ? 's' : ''} #${parseSpots(p.spots).join(', #')} marked paid for ${p.weeks} ${periodLabel(group.frequency, group.frequency_days)}${p.weeks > 1 ? 's' : ''}. 🎉`,
-      });
+        message: `✅ Your payment of ₦${Number(p.amount || 0).toLocaleString()} in "${group.name}" was approved — spot${parseSpots(p.spots).length > 1 ? 's' : ''} #${parseSpots(p.spots).join(', #')} marked paid for ${credit} ${label1}${credit > 1 ? 's' : ''}.${shortened ? ` ⚠️ Only ${credit} of ${claimed} ${label1}s credited — the receipt was short; settle the balance with a new receipt.` : ''}${note ? ` 📝 Note from admin: "${note}"` : ''} 🎉`,
+        });
       sounds.success();
-      toast.success(`${p.member_name || p.user_email} marked paid (spot(s) ${p.spots}, ${p.weeks} week(s)).`);
+      toast.success(`${p.member_name || p.user_email} marked paid (spot(s) ${p.spots}, ${credit} ${label1}(s)).`);
+      setApproveId(null); setApproveNote(''); setApproveWeeks('1'); setDeclineId(null);
       await loadAll();
     } catch (e) { toast.error('Could not approve payment.'); }
     setBusy(false);
@@ -233,7 +244,32 @@ export default function AdminPaymentsPage() {
                     <span className="bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded-full font-medium">₦{Number(p.amount || 0).toLocaleString()}</span>
                     <span className="text-gray-400 px-1 py-0.5">{p.created_at ? new Date(p.created_at).toLocaleString() : ''}</span>
                   </div>
-                  {declineId === p.id ? (
+                  {approveId === p.id ? (
+                    <div className="mt-3 flex flex-col gap-2 bg-emerald-50/70 border border-emerald-100 rounded-xl p-3">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <label className="text-[11px] font-semibold text-gray-700 shrink-0">Credit weeks:</label>
+                        <input
+                          type="number" min={1} max={parseInt(p.weeks, 10) || 1}
+                          value={approveWeeks}
+                          onChange={e => setApproveWeeks(e.target.value)}
+                          className="w-16 border border-gray-200 rounded-lg px-2 py-1.5 text-xs text-center focus:outline-none focus:ring-2 focus:ring-emerald-300"
+                        />
+                        <span className="text-[10px] text-gray-500">of {p.weeks} claimed — lower it if the money arrived short (e.g. paid ₦9,000 instead of ₦9,900 → credit 8)</span>
+                      </div>
+                      <input
+                        value={approveNote}
+                        onChange={e => setApproveNote(e.target.value)}
+                        placeholder="Note for the member (optional) — e.g. ₦900 balance, add it with your next receipt"
+                        className="w-full border border-gray-200 rounded-lg px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-emerald-300"
+                      />
+                      <div className="flex gap-2">
+                        <button disabled={busy || group.is_frozen} onClick={() => handleApprove(p)} className="bg-primary-600 hover:bg-primary-700 text-white px-4 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1 disabled:opacity-50">
+                          <HiCheck className="w-3.5 h-3.5" /> Confirm Approve
+                        </button>
+                        <button disabled={busy} onClick={() => { setApproveId(null); setApproveNote(''); setApproveWeeks('1'); }} className="border px-3 py-1.5 rounded-lg text-xs">Cancel</button>
+                      </div>
+                    </div>
+                  ) : declineId === p.id ? (
                     <div className="mt-3 flex flex-col gap-2">
                       <input
                         value={declineReason}
@@ -248,10 +284,10 @@ export default function AdminPaymentsPage() {
                     </div>
                   ) : (
                     <div className="mt-3 flex gap-2">
-                      <button disabled={busy || group.is_frozen} onClick={() => handleApprove(p)} className="bg-primary-600 hover:bg-primary-700 text-white px-4 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1 disabled:opacity-50">
+                      <button disabled={busy || group.is_frozen} onClick={() => { setApproveId(p.id); setApproveWeeks(String(parseInt(p.weeks, 10) || 1)); setApproveNote(''); setDeclineId(null); }} className="bg-primary-600 hover:bg-primary-700 text-white px-4 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1 disabled:opacity-50">
                         <HiCheck className="w-3.5 h-3.5" /> Approve — Mark Paid
                       </button>
-                      <button disabled={busy || group.is_frozen} onClick={() => { setDeclineId(p.id); setDeclineReason(''); }} className="bg-red-50 text-red-600 border border-red-200 hover:bg-red-100 px-4 py-1.5 rounded-lg text-xs font-semibold disabled:opacity-50">
+                      <button disabled={busy || group.is_frozen} onClick={() => { setDeclineId(p.id); setDeclineReason(''); setApproveId(null); }} className="bg-red-50 text-red-600 border border-red-200 hover:bg-red-100 px-4 py-1.5 rounded-lg text-xs font-semibold disabled:opacity-50">
                         Decline
                       </button>
                     </div>
@@ -334,6 +370,7 @@ export default function AdminPaymentsPage() {
                 <div className="text-[11px] text-gray-400">
                   ₦{Number(p.amount || 0).toLocaleString()} • reviewed {p.reviewed_at ? new Date(p.reviewed_at).toLocaleString() : ''}
                   {p.status === 'declined' && p.decline_reason ? ` • Reason: ${p.decline_reason}` : ''}
+                  {p.status === 'approved' && p.review_note ? ` • 📝 ${p.review_note}` : ''}
                 </div>
               </div>
               {p.status === 'approved'
