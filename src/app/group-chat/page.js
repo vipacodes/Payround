@@ -10,6 +10,7 @@ import ImageLightbox from '@/components/ImageLightbox';
 import { HiArrowLeft, HiBadgeCheck, HiUserGroup, HiPaperAirplane, HiSearch } from 'react-icons/hi';
 import toast from 'react-hot-toast';
 import { sounds } from '@/lib/sounds';
+import { parseSpots, periodLabel } from '@/lib/payments';
 import ChatSearchBar, { Mark, useChatSearch } from '@/components/ChatSearchBar';
 
 // Real group chat rooms — every group gets its own in-app conversation.
@@ -150,6 +151,69 @@ function GroupChatInner() {
   }, [activeId, me]);
 
   const isRoomAdmin = !!g && (g.admin_email || '').toLowerCase() === me;
+  const chatLabel = periodLabel(g?.frequency, g?.frequency_days);
+
+  // 👑 In-chat receipt review — the admin approves/declines right where the receipt
+  // lands (no digging through dashboards). Weeks can be trimmed on short payments.
+  const [reviewPayId, setReviewPayId] = useState(null);
+  const [reviewPay, setReviewPay] = useState(null);
+  const [reviewMode, setReviewMode] = useState('approve');
+  const [reviewNote, setReviewNote] = useState('');
+  const [reviewWeeks, setReviewWeeks] = useState('1');
+  const [reviewBusy, setReviewBusy] = useState(false);
+
+  const openReview = async (m) => {
+    try {
+      const { supabase } = await import('@/lib/supabase');
+      const { data } = await supabase.from('payments').select('*').eq('id', m.payment_id).single();
+      if (!data) { toast.error('Could not load that receipt — try again.'); return; }
+      if (data.status !== 'pending') {
+        try { await supabase.from('group_messages').update({ receipt_status: data.status }).eq('payment_id', m.payment_id); } catch {}
+        setMsgs(prev => prev.map(x => x.payment_id === m.payment_id ? { ...x, receipt_status: data.status } : x));
+        toast(`That receipt was already ${data.status} — stamp refreshed.`);
+        return;
+      }
+      setReviewPay(data); setReviewPayId(m.payment_id); setReviewMode('approve');
+      setReviewWeeks(String(parseInt(data.weeks, 10) || 1)); setReviewNote('');
+    } catch { toast.error('Could not load that receipt — try again.'); }
+  };
+
+  const doReview = async () => {
+    if (!reviewPay || !g) return;
+    setReviewBusy(true);
+    try {
+      const { supabase } = await import('@/lib/supabase');
+      const note = reviewNote.trim();
+      const p = reviewPay;
+      const spots = parseSpots(p.spots);
+      if (reviewMode === 'approve') {
+        const claimed = parseInt(p.weeks, 10) || 1;
+        const credit = Math.max(1, Math.min(parseInt(reviewWeeks, 10) || claimed, claimed));
+        const shortened = credit < claimed;
+        const { error } = await supabase.from('payments').update({ status: 'approved', weeks: credit, review_note: note || null, reviewed_at: new Date().toISOString() }).eq('id', p.id);
+        if (error) throw error;
+        await supabase.from('group_messages').update({ receipt_status: 'approved' }).eq('payment_id', p.id);
+        await supabase.from('notifications').insert({
+          id: `payment_approved-${Date.now()}`, type: 'payment_approved', group_id: p.group_id, is_read: false, user_email: p.user_email,
+          message: `✅ Your payment of ₦${Number(p.amount || 0).toLocaleString()} in "${g.name}" was approved — spot${spots.length > 1 ? 's' : ''} #${spots.join(', #')} marked paid for ${credit} ${chatLabel}${credit > 1 ? 's' : ''}.${shortened ? ` ⚠️ Only ${credit} of ${claimed} ${chatLabel}s credited — the receipt was short; settle the balance with a new receipt.` : ''}${note ? ` 📝 Note from admin: "${note}"` : ''} 🎉`,
+        });
+        sounds.success();
+        toast.success(`Approved — ${credit} ${chatLabel}(s) marked paid.`);
+      } else {
+        const { error } = await supabase.from('payments').update({ status: 'declined', decline_reason: note || null, reviewed_at: new Date().toISOString() }).eq('id', p.id);
+        if (error) throw error;
+        await supabase.from('group_messages').update({ receipt_status: 'declined' }).eq('payment_id', p.id);
+        await supabase.from('notifications').insert({
+          id: `payment_declined-${Date.now()}`, type: 'payment_declined', group_id: p.group_id, is_read: false, user_email: p.user_email,
+          message: `⚠️ Your payment of ₦${Number(p.amount || 0).toLocaleString()} in "${g.name}" was declined — it has NOT been marked paid.${note ? ` Reason from admin: "${note}".` : ''} Please upload a clearer/valid receipt.`,
+        });
+        toast.success('Declined — the member has been notified.');
+      }
+      setMsgs(prev => prev.map(x => x.payment_id === p.id ? { ...x, receipt_status: reviewMode === 'approve' ? 'approved' : 'declined' } : x));
+      setReviewPayId(null); setReviewPay(null); setReviewNote(''); setReviewWeeks('1');
+    } catch (e) { sounds.error(); toast.error(`Could not review: ${e.message || 'try again'}`); }
+    setReviewBusy(false);
+  };
   const hasBank = !!(adminBank && (adminBank.bank_name || adminBank.account_number || adminBank.account_name));
   const memberLocked = !!g && !g.chat_open && !isRoomAdmin;
 
@@ -414,6 +478,38 @@ function GroupChatInner() {
                             <p className={`text-[9px] mt-0.5 ${mine ? 'text-primary-200 text-right' : 'text-gray-400'}`}>{timeOf(m.created_at)}</p>
                           </div>
                         </div>
+                        {/* 👑 ADMIN: review this receipt right here — Approve/Decline + optional note */}
+                        {isRoomAdmin && m.payment_id && (!m.receipt_status || m.receipt_status === 'pending') && (
+                          <div className="flex justify-start" data-review="chat">
+                            {reviewPayId === m.payment_id ? (
+                              <div className="w-full max-w-[92%] bg-emerald-50/80 border border-emerald-100 rounded-xl p-3 flex flex-col gap-2">
+                                <div className="flex gap-2">
+                                  <button onClick={() => setReviewMode('approve')} className={`flex-1 text-[11px] font-bold px-2 py-1.5 rounded-lg transition-colors ${reviewMode === 'approve' ? 'bg-emerald-600 text-white' : 'bg-white border border-emerald-200 text-emerald-700'}`}>✅ Approve</button>
+                                  <button onClick={() => setReviewMode('decline')} className={`flex-1 text-[11px] font-bold px-2 py-1.5 rounded-lg transition-colors ${reviewMode === 'decline' ? 'bg-red-600 text-white' : 'bg-white border border-red-200 text-red-600'}`}>❌ Decline</button>
+                                </div>
+                                {reviewMode === 'approve' && (
+                                  <div className="flex items-center gap-2 flex-wrap">
+                                    <span className="text-[11px] font-semibold text-gray-700 shrink-0">Credit weeks:</span>
+                                    <input type="number" min={1} max={parseInt(reviewPay?.weeks, 10) || 1} value={reviewWeeks} onChange={e => setReviewWeeks(e.target.value)}
+                                      className="w-14 border border-gray-200 rounded-lg px-2 py-1 text-xs text-center focus:outline-none focus:ring-2 focus:ring-emerald-300" />
+                                    <span className="text-[10px] text-gray-500">of {reviewPay?.weeks || 1} claimed</span>
+                                  </div>
+                                )}
+                                <input value={reviewNote} onChange={e => setReviewNote(e.target.value)} maxLength={200}
+                                  placeholder={reviewMode === 'approve' ? 'Note for the member (optional)…' : 'Reason for declining (optional)…'}
+                                  className={`w-full border border-gray-200 rounded-lg px-3 py-2 text-xs focus:outline-none focus:ring-2 ${reviewMode === 'approve' ? 'focus:ring-emerald-300' : 'focus:ring-red-300'}`} />
+                                <div className="flex gap-2">
+                                  <button disabled={reviewBusy} onClick={doReview} className={`text-[11px] font-bold px-4 py-1.5 rounded-lg text-white disabled:opacity-50 ${reviewMode === 'approve' ? 'bg-emerald-600 hover:bg-emerald-700' : 'bg-red-600 hover:bg-red-700'}`}>{reviewBusy ? '…' : `Confirm ${reviewMode === 'approve' ? 'Approve' : 'Decline'}`}</button>
+                                  <button disabled={reviewBusy} onClick={() => { setReviewPayId(null); setReviewPay(null); setReviewNote(''); }} className="border border-gray-200 px-3 py-1.5 rounded-lg text-[11px]">Cancel</button>
+                                </div>
+                              </div>
+                            ) : (
+                              <button onClick={() => openReview(m)} className="text-[11px] font-bold text-emerald-800 bg-emerald-50 border border-emerald-200 px-3 py-1.5 rounded-full hover:bg-emerald-100 flex items-center gap-1">
+                                🧾 Review this receipt — approve / decline
+                              </button>
+                            )}
+                          </div>
+                        )}
                         {mine && sel === m.id && (
                           <div className="flex justify-end">
                             <button onClick={() => del(m)} disabled={deleting} className="text-[11px] font-semibold text-red-600 bg-red-50 border border-red-100 px-3 py-1 rounded-full hover:bg-red-100 disabled:opacity-50">🗑 Delete this message</button>
