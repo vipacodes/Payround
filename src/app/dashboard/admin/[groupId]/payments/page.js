@@ -254,7 +254,7 @@ export default function AdminPaymentsPage() {
                           onChange={e => setApproveWeeks(e.target.value)}
                           className="w-16 border border-gray-200 rounded-lg px-2 py-1.5 text-xs text-center focus:outline-none focus:ring-2 focus:ring-emerald-300"
                         />
-                        <span className="text-[10px] text-gray-500">of {p.weeks} claimed — lower it if the money arrived short (e.g. paid ₦9,000 instead of ₦9,900 → credit 8)</span>
+                        <span className="text-[10px] text-gray-500">of {p.weeks} claimed — lower it if the money arrived short</span>
                       </div>
                       <input
                         value={approveNote}
