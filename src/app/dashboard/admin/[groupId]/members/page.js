@@ -117,6 +117,54 @@ export default function AdminMembersPage() {
     loadSupa();
   };
 
+  // 🪑 Approve / decline EXTRA spot requests from members who already hold spots
+  const [extraBusy, setExtraBusy] = useState(false);
+  const reviewExtraSpots = async (m, approve) => {
+    if (extraBusy) return;
+    setExtraBusy(true);
+    try {
+      const { supabase } = await import('@/lib/supabase');
+      const { parseSpots, formatSpots } = await import('@/lib/payments');
+      const want = parseSpots(m.extra_spots_request);
+      if (!approve) {
+        await supabase.from('members').update({ extra_spots_request: null }).eq('id', m.id);
+        await supabase.from('notifications').insert({
+          id: `extrares-${Date.now()}`, type: 'extra_spots_declined', group_id: params.groupId, is_read: false,
+          user_email: m.member_email,
+          message: `Your request to take extra spot${want.length > 1 ? 's' : ''} #${want.join(', #')} in "${group?.name || params.groupId}" was declined by the admin. You keep your current spot(s) ${m.spots ? `#${m.spots}` : ''}.`,
+        });
+        toast.success('Extra-spots request declined — the member was notified.');
+      } else {
+        // fresh conflict check — another member may have grabbed a spot meanwhile
+        const { data: current } = await supabase.from('members').select('id, spots').eq('group_id', params.groupId).eq('status', 'approved');
+        const takenElsewhere = (current || []).filter(x => x.id !== m.id).flatMap(x => parseSpots(x.spots));
+        const free = want.filter(sp => !takenElsewhere.includes(sp));
+        const lost = want.filter(sp => takenElsewhere.includes(sp));
+        if (free.length === 0) {
+          toast.error(`Spot(s) #${lost.join(', #')} are taken now — decline instead or ask the member to pick again.`);
+          setExtraBusy(false);
+          return;
+        }
+        const merged = formatSpots([...parseSpots(m.spots), ...free]);
+        const { error } = await supabase.from('members').update({ spots: merged, extra_spots_request: null }).eq('id', m.id);
+        if (error) throw error;
+        await supabase.from('notifications').insert({
+          id: `extrares-${Date.now()}`, type: 'extra_spots_approved', group_id: params.groupId, is_read: false,
+          user_email: m.member_email,
+          message: `🎉 Approved! You now ALSO hold spot${free.length > 1 ? 's' : ''} #${free.join(', #')} in "${group?.name || params.groupId}" — you now hold #${parseSpots(merged).join(', #')} total. Each spot pays its own contribution and collects its own payout.${lost.length ? ` (#${lost.join(', #')} were taken meanwhile and were NOT granted.)` : ''}`,
+        });
+        toast.success(`Granted — ${m.member_name || m.member_email} now holds #${parseSpots(merged).join(', #')}.`);
+        // 🎉 If that filled the LAST open spot, everyone hears "savings start now!"
+        try {
+          const { notifyGroupFullIfFilled } = await import('@/lib/notifications');
+          await notifyGroupFullIfFilled(supabase, params.groupId);
+        } catch {}
+      }
+    } catch { toast.error('Could not review the request.'); }
+    setExtraBusy(false);
+    loadSupa();
+  };
+
   // ✏️ Move an approved member to different spot(s) — only free numbers can be picked; the member is notified
   const saveMemberSpots = async () => {
     if (!selectedMember || spotEditBusy) return;
@@ -337,6 +385,27 @@ export default function AdminMembersPage() {
                     </div>
                   </div>
                 )}
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* 🪑 EXTRA spot requests — members who already hold spots asking for more */}
+        {approvedMembers.filter(m => parseSpotsLite(m.extra_spots_request).length > 0).length > 0 && (
+          <div className="bg-white rounded-2xl border border-emerald-200 p-5 mb-6" data-extra-spots="admin">
+            <h2 className="font-bold text-gray-900 mb-2">🪑 Extra Spot Requests ({approvedMembers.filter(m => parseSpotsLite(m.extra_spots_request).length > 0)})</h2>
+            <p className="text-xs text-gray-500 mb-3">These members already hold spots and want MORE. Approving adds the spots to theirs — each spot pays &amp; collects separately.</p>
+            {approvedMembers.filter(m => parseSpotsLite(m.extra_spots_request).length > 0).map(m => (
+              <div key={m.id} className="py-3 border-b border-gray-50 last:border-0">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div className="text-xs text-gray-600">
+                    <b className="text-gray-900">{m.name}</b> holds <b>#{parseSpotsLite(m.spots).join(', #')}</b> — wants extra spot{parseSpotsLite(m.extra_spots_request).length > 1 ? 's' : ''} <b className="text-emerald-700">#{parseSpotsLite(m.extra_spots_request).join(', #')}</b>
+                  </div>
+                  <div className="flex gap-2">
+                    <button disabled={extraBusy} onClick={() => reviewExtraSpots(m, true)} className="bg-emerald-600 text-white text-[11px] font-bold px-3 py-1.5 rounded-lg hover:bg-emerald-700 disabled:opacity-50">✔ Approve</button>
+                    <button disabled={extraBusy} onClick={() => reviewExtraSpots(m, false)} className="bg-red-50 text-red-600 border border-red-200 text-[11px] font-bold px-3 py-1.5 rounded-lg hover:bg-red-100 disabled:opacity-50">✖ Decline</button>
+                  </div>
+                </div>
               </div>
             ))}
           </div>

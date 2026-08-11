@@ -357,6 +357,72 @@ export default function GroupDetailsPage() {
 
   const isAdmin = me?.email && group.admin_email && me.email.toLowerCase() === group.admin_email.toLowerCase();
   const isMember = myStatus === 'approved' || isAdmin;
+
+  // 🪑 TAKE MORE SPOTS — existing members ask the admin; the admin grabs extra spots instantly
+  const [extraSpots, setExtraSpots] = useState([]);   // open spots picked to ADD
+  const [extraBusy, setExtraBusy] = useState(false);
+
+  const toggleExtraSpot = (sp) => {
+    setExtraSpots(prev => prev.includes(sp) ? prev.filter(x => x !== sp) : [...prev, sp].sort((a, b) => a - b));
+  };
+
+  const submitExtraSpots = async () => {
+    if (!me || !myMember || extraSpots.length === 0 || extraBusy) return;
+    setExtraBusy(true);
+    try {
+      const { supabase } = await import('@/lib/supabase');
+      const { data: amems } = await supabase.from('members').select('spots').eq('group_id', params.id).eq('status', 'approved');
+      const takenFlat = (amems || []).flatMap(m => parseSpots(m.spots));
+      const mine = parseSpots(myMember.spots);
+      const fresh = extraSpots.filter(sp => !takenFlat.includes(sp));
+      const gone = extraSpots.filter(sp => takenFlat.includes(sp));
+      if (fresh.length === 0) {
+        toast.error(`Spot(s) #${gone.join(', #')} were just taken — pick another.`);
+        const { data: reMems } = await supabase.from('members').select('*').eq('group_id', params.id).eq('status', 'approved');
+        if (reMems) setMembers(reMems);
+        setExtraSpots([]);
+        setExtraBusy(false); return;
+      }
+      if (isAdmin) {
+        // 👑 admin takes extra spots instantly — no approval needed
+        const merged = formatSpots([...mine, ...fresh]);
+        const { error } = await supabase.from('members').update({ spots: merged }).eq('id', myMember.id);
+        if (error) throw error;
+        setMyMember(prev => ({ ...prev, spots: merged }));
+        setMembers(prev => prev.map(m => m.id === myMember.id ? { ...m, spots: merged } : m));
+        setPaySpots(parseSpots(merged));
+        if (gone.length) toast(`#${gone.join(', #')} were taken meanwhile — you got the rest.`);
+        toast.success(`You now also hold spot${fresh.length > 1 ? 's' : ''} #${fresh.join(', #')} — total #${parseSpots(merged).join(', #')}. 👑`);
+        try { const { notifyGroupFullIfFilled } = await import('@/lib/notifications'); await notifyGroupFullIfFilled(supabase, params.id); } catch {}
+      } else {
+        // 👤 member request — waits for the group admin's approval
+        const req = formatSpots(fresh);
+        const { error } = await supabase.from('members').update({ extra_spots_request: req }).eq('id', myMember.id);
+        if (error) throw error;
+        setMyMember(prev => ({ ...prev, extra_spots_request: req }));
+        await supabase.from('notifications').insert({
+          id: `extraspots-${Date.now()}`, type: 'extra_spots_request', group_id: params.id, is_read: false,
+          user_email: (group.admin_email || '').toLowerCase() || null,
+          message: `🪑 ${myMember.member_name || me.email} (already a member holding #${mine.join(', #')}) wants to take extra spot${fresh.length > 1 ? 's' : ''} #${fresh.join(', #')} in "${group.name}" — approve or decline in your Members tab.`,
+        });
+        sounds.success();
+        toast.success('Request sent! The admin will approve or decline — you will be notified. 🎉');
+      }
+      setExtraSpots([]);
+    } catch (e) { toast.error(`Could not send: ${e.message || 'try again'}`); }
+    setExtraBusy(false);
+  };
+
+  // member cancels their own waiting extra-spots request
+  const cancelExtraSpots = async () => {
+    if (!myMember) return;
+    try {
+      const { supabase } = await import('@/lib/supabase');
+      await supabase.from('members').update({ extra_spots_request: null }).eq('id', myMember.id);
+      setMyMember(prev => ({ ...prev, extra_spots_request: null }));
+      toast('Extra-spots request cancelled.');
+    } catch { toast.error('Could not cancel — try again.'); }
+  };
   // 🏁 Nothing is due before the group is FULL — the rotation clock starts then
   const clockGroup = withRotationClock(group, members);
   const period = clockGroup ? currentPeriod(clockGroup) : 0;
@@ -788,6 +854,64 @@ export default function GroupDetailsPage() {
               <button onClick={declineOffer} disabled={offerBusy} className="flex-1 bg-white text-red-600 border border-red-200 font-semibold py-3 rounded-xl hover:bg-red-50 transition-all disabled:opacity-50">✖ Decline — Don&apos;t Join</button>
             </div>
             <p className="text-[11px] text-gray-400 mt-3">Accepting puts you straight into the group with those spots. Declining means you don&apos;t join — the admin is notified either way.</p>
+          </div>
+        )}
+
+        {/* 🪑 TAKE MORE SPOTS — existing members (admin approval) & the admin (instant) can grow their spots */}
+        {!frozen && myStatus === 'approved' && myMember && openSpots.length > 0 && (
+          <div className="bg-white rounded-2xl border border-emerald-200 p-6 mb-6" data-extra-spots="card">
+            <h2 className="font-bold text-gray-900 mb-1 flex items-center gap-2">🪑 Take more spots</h2>
+            <p className="text-xs text-gray-500 mb-3">
+              You currently hold <b>#{mySpots.join(', #')}</b>. Open spot{openSpots.length > 1 ? 's' : ''} left: <b>{openSpots.map(s => `#${s}`).join(', ')}</b>.
+              Each extra spot pays its own <b>₦{Number(group.amount || 0).toLocaleString()}</b> every {label} and collects its own payout.
+              {isAdmin ? ' 👑 You are the admin — extra spots are yours instantly.' : ' Your pick goes to the admin for approval.'}
+            </p>
+            {myMember.extra_spots_request ? (
+              <div className="flex items-center justify-between gap-3 flex-wrap bg-amber-50 border border-amber-200 rounded-xl p-3">
+                <p className="text-xs font-semibold text-amber-800">⏳ Request pending for spot(s) <b>#{parseSpots(myMember.extra_spots_request).join(', #')}</b> — the admin will approve or decline.</p>
+                <button onClick={cancelExtraSpots} className="text-[11px] font-semibold text-red-600 border border-red-200 bg-white px-3 py-1.5 rounded-lg hover:bg-red-50">Cancel request</button>
+              </div>
+            ) : (
+              <>
+                <div className="grid grid-cols-5 sm:grid-cols-8 gap-1.5 mb-3">
+                  {Array.from({ length: N }, (_, i) => i + 1).map(spot => {
+                    const taken = spot in spotMap;
+                    const on = extraSpots.includes(spot);
+                    return (
+                      <button
+                        key={spot}
+                        type="button"
+                        disabled={taken}
+                        onClick={() => toggleExtraSpot(spot)}
+                        title={taken ? `Spot #${spot} is taken (held by ${(spotMap[spot]?.member_name || 'someone').split(' ')[0]})` : on ? `Picked #${spot} — tap to unpick` : `Take spot #${spot}`}
+                        className={`h-11 rounded-lg text-sm font-bold transition-all flex flex-col items-center justify-center leading-tight ${
+                          taken
+                            ? 'bg-red-500 text-white border border-red-600 cursor-not-allowed'
+                            : on
+                              ? 'bg-emerald-600 text-white border border-emerald-600 badge-emboss ring-2 ring-emerald-300'
+                              : 'bg-emerald-50 text-emerald-700 border border-emerald-300 hover:bg-emerald-100'
+                        }`}
+                      >
+                        <span className={taken ? 'line-through text-[11px]' : ''}>#{spot}{!taken && on ? ' ✓' : ''}</span>
+                        {taken && <span className="text-[8px] font-semibold text-white/95 truncate max-w-full px-0.5">{(spotMap[spot]?.member_name || 'Taken').split(' ')[0]}</span>}
+                      </button>
+                    );
+                  })}
+                </div>
+                <button
+                  onClick={submitExtraSpots}
+                  disabled={extraSpots.length === 0 || extraBusy}
+                  className="w-full bg-emerald-600 text-white font-semibold py-3.5 rounded-xl hover:bg-emerald-700 transition-all shadow-lg shadow-emerald-200 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {extraBusy ? 'Sending…' : isAdmin
+                    ? `Take instantly${extraSpots.length ? ` — spot(s) #${extraSpots.join(', #')}` : ''}`
+                    : `Ask admin for ${extraSpots.length ? `spot(s) #${extraSpots.join(', #')}` : 'these spots'}`}
+                </button>
+                <p className="text-[11px] text-gray-400 mt-2 text-center">
+                  {isAdmin ? 'Instant — no approval needed.' : 'The admin approves or declines in their Members tab — you get a notification either way.'}
+                </p>
+              </>
+            )}
           </div>
         )}
 

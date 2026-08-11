@@ -43,7 +43,7 @@ export async function notifyGroupFullIfFilled(supabase, groupId) {
     const N = Math.max(1, parseInt(g.max_members, 10) || 1);
     const { data: mems } = await supabase.from('members').select('member_email, spots').eq('group_id', groupId).eq('status', 'approved');
     const taken = new Set();
-    (mems || []).forEach(m => String(m.spots || '').split(',').map(x => parseInt(x.trim(), 10)).filter(Number.isFinite).forEach(sp => taken.add(sp)));
+    (mems || []).forEach(m => String(m.spots || '').split(',').map(x => parseInt(x.trim(), 10)).filter(sp => Number.isFinite(sp) && sp >= 1 && sp <= N).forEach(sp => taken.add(sp)));
     if (taken.size < N) return; // not full yet — stay quiet
     const emails = new Set((mems || []).map(m => (m.member_email || '').toLowerCase()).filter(Boolean));
     const adminEmail = (g.admin_email || '').toLowerCase();

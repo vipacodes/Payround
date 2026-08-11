@@ -211,7 +211,9 @@ export function savingsStartMs(group, members) {
   }
   const N = cycleLength(group);
   const holders = (members || []).filter(m => m.status === 'approved' && parseSpots(m.spots).length > 0);
-  const taken = new Set(holders.flatMap(m => parseSpots(m.spots)));
+  // Only spots within 1..N count toward fullness — a leftover spot number beyond
+  // the group size (e.g. spot 9 in a 5-member group) must never fake "full"
+  const taken = new Set(holders.flatMap(m => parseSpots(m.spots).filter(sp => sp >= 1 && sp <= N)));
   if (taken.size < N) return null;
   const stamps = holders.map(m => new Date(m.approved_at || 0).getTime()).filter(Number.isFinite);
   const latest = stamps.length ? Math.max(...stamps) : 0;
