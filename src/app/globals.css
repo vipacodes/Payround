@@ -285,3 +285,37 @@ body {
 .ad-preview .pv-title { color: #374151 !important; }
 
 /* 🔄 Page-switch loader — the green arc's spin */
+
+/* 🎬 Auth flip card (login/signup) — the TikTok-style panel turn */
+.auth-card { perspective: 1500px; }
+.auth-overlay {
+  transform-style: preserve-3d;
+  backface-visibility: hidden;
+  will-change: transform;
+}
+.auth-card.show-signup > div > .auth-overlay { animation: turn-left 860ms linear forwards; }
+.auth-card.show-login  > div > .auth-overlay { animation: turn-right 860ms linear forwards; }
+@keyframes turn-left {
+  0%   { transform: translate3d(0, 0, 0) rotateY(0deg); }
+  20%  { transform: translate3d(-10%, 0, 0) rotateY(-2.6deg); }
+  50%  { transform: translate3d(-50%, 0, 0) rotateY(-4.5deg); }
+  80%  { transform: translate3d(-90%, 0, 0) rotateY(-2.6deg); }
+  100% { transform: translate3d(-100%, 0, 0) rotateY(0deg); }
+}
+@keyframes turn-right {
+  0%   { transform: translate3d(-100%, 0, 0) rotateY(0deg); }
+  20%  { transform: translate3d(-90%, 0, 0) rotateY(2.6deg); }
+  50%  { transform: translate3d(-50%, 0, 0) rotateY(4.5deg); }
+  80%  { transform: translate3d(-10%, 0, 0) rotateY(2.6deg); }
+  100% { transform: translate3d(0, 0, 0) rotateY(0deg); }
+}
+/* 📱 mobile: the incoming form slides in with a soft 3D turn */
+@keyframes auth-form-in {
+  0%   { opacity: 0; transform: translate3d(24px, 0, 0) rotateY(6deg); }
+  100% { opacity: 1; transform: translate3d(0, 0, 0) rotateY(0deg); }
+}
+.auth-form-in { animation: auth-form-in 420ms ease-out; transform-style: preserve-3d; }
+@keyframes auth-banner-in {
+  0% { opacity: 0.6; } 100% { opacity: 1; }
+}
+.auth-banner { animation: auth-banner-in 500ms ease-out; }
