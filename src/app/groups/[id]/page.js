@@ -363,9 +363,6 @@ export default function GroupDetailsPage() {
   const isMember = myStatus === 'approved' || isAdmin;
 
   // 🪑 TAKE MORE SPOTS — existing members ask the admin; the admin grabs extra spots instantly
-  const [extraSpots, setExtraSpots] = useState([]);   // open spots picked to ADD
-  const [extraBusy, setExtraBusy] = useState(false);
-
   const toggleExtraSpot = (sp) => {
     setExtraSpots(prev => prev.includes(sp) ? prev.filter(x => x !== sp) : [...prev, sp].sort((a, b) => a - b));
   };
@@ -1159,6 +1156,20 @@ export default function GroupDetailsPage() {
                         ? <span className="shrink-0 text-red-600 bg-red-50 border border-red-200 px-2 py-0.5 rounded-full text-xs font-semibold">Declined ⚠️</span>
                         : <span className="shrink-0 text-amber-700 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-full text-xs font-semibold">Under review ⏳</span>}
                   </div>
+                ))}
+              </div>
+            )}
+          </>
+        )}
+      </div>
+
+      {zoomImg && <ImageLightbox src={zoomImg} alt="Receipt" onClose={() => setZoomImg(null)} />}
+
+      <Footer />
+    </div>
+  );
+}
+     </div>
                 ))}
               </div>
             )}
