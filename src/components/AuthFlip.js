@@ -55,18 +55,8 @@ function LoginPane({ go, autoSkip }) {
           setLoading(false);
           return;
         }
-        let exists = null;
-        try {
-          const { data: flag, error: rpcErr } = await supabase.rpc('account_exists', { p_email: email });
-          if (!rpcErr) exists = !!flag;
-        } catch {}
-        if (exists === false) {
-          setErrors({ email: 'This email is not assigned to any account' });
-          toast.error('This email is not assigned to any account');
-        } else {
-          setErrors({ password: 'Incorrect password' });
-          toast.error('Incorrect password. If you just signed up, confirm your email first — or use Forgot password.');
-        }
+        setErrors({ password: 'Check your email or password' });
+        toast.error('Can’t sign in yet. If you just registered, open your email and tap the confirm link. If you already did that, the password is wrong — use Forgot password.');
         setLoading(false);
         return;
       }
