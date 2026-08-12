@@ -307,14 +307,6 @@ export default function Header() {
                   >
                     <HiCog className="w-6 h-6" />
                   </button>
-                  <button
-                    onClick={() => setIsMenuOpen(!isMenuOpen)}
-                    aria-label="Menu"
-                    title="Menu"
-                    className="p-2 text-gray-600 hover:text-gray-900 border border-gray-200 rounded-xl"
-                  >
-                    {isMenuOpen ? <HiX className="w-6 h-6" /> : <HiMenu className="w-6 h-6" />}
-                  </button>
                 </div>
               </>
             ) : (
@@ -390,14 +382,17 @@ export default function Header() {
                 {gchatUnread > 0 && <span className="msg-dot absolute top-1 right-1 w-2.5 h-2.5 bg-green-500 rounded-full" title="You have new group messages" />}
               </button>
             )}
-            <button
-              onClick={() => setIsMenuOpen(!isMenuOpen)}
-              aria-label="Menu"
-              className="p-2 text-gray-600 hover:text-gray-900"
-            >
-              {isMenuOpen ? <HiX className="w-6 h-6" /> : <HiMenu className="w-6 h-6" />}
-            </button>
           </div>
+
+          <button
+            type="button"
+            onClick={() => setIsMenuOpen(!isMenuOpen)}
+            aria-label="Menu"
+            title="Menu"
+            className="ml-1 p-2 text-gray-800 hover:text-gray-900 border border-gray-200 rounded-xl bg-white shrink-0"
+          >
+            {isMenuOpen ? <HiX className="w-6 h-6" /> : <HiMenu className="w-6 h-6" />}
+          </button>
         </div>
       </div>
 
