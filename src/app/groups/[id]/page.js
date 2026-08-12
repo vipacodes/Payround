@@ -49,6 +49,8 @@ export default function GroupDetailsPage() {
   const [desiredSpots, setDesiredSpots] = useState([]);
   const [agreeRules, setAgreeRules] = useState(false);
   const [joining, setJoining] = useState(false);
+  const [extraSpots, setExtraSpots] = useState([]);
+  const [extraBusy, setExtraBusy] = useState(false);
 
   useEffect(() => {
     let mounted = true;
@@ -65,7 +67,7 @@ export default function GroupDetailsPage() {
           g = pub.data;
         }
         if (!mounted) return;
-        if (error || !g) { setNotFound(true); setLoading(false); return; }
+        if (!g) { setNotFound(true); setLoading(false); return; }
         setGroup(g);
 
         const { data: mems } = await supabase.from('members').select('*').eq('group_id', params.id).eq('status', 'approved');
@@ -1156,20 +1158,6 @@ export default function GroupDetailsPage() {
                         ? <span className="shrink-0 text-red-600 bg-red-50 border border-red-200 px-2 py-0.5 rounded-full text-xs font-semibold">Declined ⚠️</span>
                         : <span className="shrink-0 text-amber-700 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-full text-xs font-semibold">Under review ⏳</span>}
                   </div>
-                ))}
-              </div>
-            )}
-          </>
-        )}
-      </div>
-
-      {zoomImg && <ImageLightbox src={zoomImg} alt="Receipt" onClose={() => setZoomImg(null)} />}
-
-      <Footer />
-    </div>
-  );
-}
-     </div>
                 ))}
               </div>
             )}
