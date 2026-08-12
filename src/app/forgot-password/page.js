@@ -33,7 +33,7 @@ export default function ForgotPasswordPage() {
       if (data.sent) {
         setSent(true);
         setSentVia(data.via || 'email');
-        toast.success('📧 Temporary password emailed to you!');
+                toast.success('📧 Reset link emailed to you!');
       } else if (data.dev_fallback) {
         // Email service isn't wired yet — show the code on screen as a bridge (never shown once email is live)
         setFallbackCode(data.code);
@@ -59,7 +59,7 @@ export default function ForgotPasswordPage() {
           </div>
           <h1 className="text-2xl font-bold text-gray-900">Reset Password</h1>
           <p className="text-gray-500 mt-1">
-            {sent ? 'Check your email 📧' : `We'll email you a temporary password (works 20 minutes)`}
+            {sent ? 'Check your email 📧' : 'We’ll email you a link to set a new password'}
           </p>
         </div>
 
@@ -69,11 +69,11 @@ export default function ForgotPasswordPage() {
               <div className="w-16 h-16 bg-emerald-50 rounded-full flex items-center justify-center mx-auto mb-4">
                 <HiMail className="w-10 h-10 text-emerald-500" />
               </div>
-              <h3 className="text-lg font-semibold text-gray-900 mb-2">Temporary password sent! 🔑</h3>
+              <h3 className="text-lg font-semibold text-gray-900 mb-2">Check your email 📧</h3>
               <p className="text-sm text-gray-500 mb-1">
-                We emailed a temporary password to <strong>{email.trim().toLowerCase()}</strong>
+                We sent a reset link to <strong>{email.trim().toLowerCase()}</strong>
               </p>
-              <p className="text-xs text-gray-400 mb-4">It works for <b>20 minutes</b>, one time. Log in with it and you'll set your own new password immediately. <b>Check your Spam/Junk folder</b> if you don't see it.</p>
+              <p className="text-xs text-gray-400 mb-4">Open the email and tap the link. It opens a page to type your <b>new password</b>. Check Spam if you don’t see it.</p>
               <Link
                 href={`/login?email=${encodeURIComponent(email.trim().toLowerCase())}`}
                 className="block w-full bg-primary-600 text-white font-semibold py-3.5 rounded-xl hover:bg-primary-700 transition-all shadow-lg shadow-primary-200 mb-3"

@@ -19,7 +19,7 @@ export async function POST(req) {
     const supabase = createClient(url, key, { auth: { persistSession: false } });
     const origin = process.env.NEXT_PUBLIC_SITE_URL || 'https://payround-omega.vercel.app';
     const { error } = await supabase.auth.resetPasswordForEmail(em, {
-      redirectTo: `${origin}/auth/callback?next=/settings`,
+      redirectTo: `${origin}/auth/callback?next=/reset-password`,
     });
     if (error) {
       console.error('resetPasswordForEmail', error.message);
