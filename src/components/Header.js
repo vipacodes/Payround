@@ -303,6 +303,14 @@ export default function Header() {
                   >
                     <HiCog className="w-6 h-6" />
                   </button>
+                  <button
+                    onClick={() => setIsMenuOpen(!isMenuOpen)}
+                    aria-label="Menu"
+                    title="Menu"
+                    className="p-2 text-gray-600 hover:text-gray-900 border border-gray-200 rounded-xl"
+                  >
+                    {isMenuOpen ? <HiX className="w-6 h-6" /> : <HiMenu className="w-6 h-6" />}
+                  </button>
                 </div>
               </>
             ) : (
@@ -391,7 +399,7 @@ export default function Header() {
 
       {/* Mobile Menu */}
       {isMenuOpen && (
-        <div className="md:hidden bg-white border-t border-gray-100 animate-fade-in">
+        <div className="bg-white border-t border-gray-100 animate-fade-in">
           <div className="px-4 py-4 space-y-4">
             {/* Mobile Search */}
             <form onSubmit={handleSearch}>
