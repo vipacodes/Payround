@@ -12,11 +12,9 @@ export async function POST(req) {
       return NextResponse.json({ ok: false, error: 'invalid-email' }, { status: 400 });
     }
 
-    const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-    const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-    if (!url || !key) {
-      return NextResponse.json({ ok: false, error: 'server' }, { status: 500 });
-    }
+    const url = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://biqutnjvhkvldrihywdb.supabase.co';
+    const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+      || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJpcXV0bmp2aGt2bGRyaWh5d2RiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODU0Nzk1NjMsImV4cCI6MjEwMTA1NTU2M30.zLffszHcCGRFmnGW0iXSp6BNJ_BMPqQv1W6TXQNxYLU';
 
     const supabase = createClient(url, key, { auth: { persistSession: false } });
     const origin = process.env.NEXT_PUBLIC_SITE_URL || 'https://payround-omega.vercel.app';

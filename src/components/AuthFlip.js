@@ -319,9 +319,9 @@ function SignupPane({ go }) {
         <div className="w-20 h-20 bg-emerald-50 rounded-full flex items-center justify-center mx-auto mb-4">
           <HiCheckCircle className="w-12 h-12 text-emerald-500" />
         </div>
-        <h2 className="text-xl font-bold text-gray-900 mb-2">Account Created! 🎉</h2>
-        <p className="text-gray-500 mb-2">Your account is in — welcome to PayRound! 🎊</p>
-        <p className="text-sm text-gray-400 mb-6">PayRound will review your profile picture shortly — you can already explore groups.</p>
+        <h2 className="text-xl font-bold text-gray-900 mb-2">Check your email 📧</h2>
+        <p className="text-gray-500 mb-2">We sent a confirmation link to your inbox (and maybe Spam).</p>
+        <p className="text-sm text-gray-400 mb-6">Tap that link first. Then come back and log in. Login will not work until you tap it.</p>
         <button onClick={() => router.push(redirectPath || '/dashboard')} className="w-full bg-primary-600 text-white font-semibold py-3.5 rounded-xl hover:bg-primary-700 transition-all shadow-lg shadow-primary-200">
           {redirectPath ? 'Continue →' : 'Go to Dashboard'}
         </button>
