@@ -294,18 +294,28 @@ function SignupPane({ go }) {
           {errors.phone && <p className="text-xs text-red-500 mt-1">{errors.phone}</p>}
         </div>
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1.5">Selfie <span className="text-red-500">*</span> <span className="text-gray-400 text-xs font-normal">(the only photo needed to sign up — used as your profile picture)</span></label>
-          <input type="file" ref={profilePicRef} accept="image/*" capture="user" onChange={e => handleFile(e.target.files[0], setProfilePicPreview, setProfilePic)} className="hidden" />
+          <label className="block text-sm font-medium text-gray-700 mb-1.5">Profile photo <span className="text-red-500">*</span> <span className="text-gray-400 text-xs font-normal">(live selfie or a photo from your gallery)</span></label>
+          <input type="file" ref={cameraRef} accept="image/*" capture="user" onChange={e => { handleFile(e.target.files[0], setProfilePicPreview, setProfilePic); e.target.value = ''; }} className="hidden" />
+          <input type="file" ref={galleryRef} accept="image/*" onChange={e => { handleFile(e.target.files[0], setProfilePicPreview, setProfilePic); e.target.value = ''; }} className="hidden" />
           {profilePicPreview ? (
-            <div className="relative w-24 h-24">
-              <img src={profilePicPreview} alt="Profile" className="w-24 h-24 rounded-2xl object-cover border-2 border-primary-200" />
-              <button type="button" onClick={() => profilePicRef.current?.click()} className="absolute -top-2 -right-2 w-6 h-6 bg-primary-600 text-white rounded-full text-xs flex items-center justify-center shadow">✕</button>
+            <div className="flex items-center gap-3">
+              <div className="relative w-24 h-24 shrink-0">
+                <img src={profilePicPreview} alt="Profile" className="w-24 h-24 rounded-2xl object-cover border-2 border-primary-200" />
+                <button type="button" onClick={() => { setProfilePic(null); setProfilePicPreview(null); }} className="absolute -top-2 -right-2 w-6 h-6 bg-primary-600 text-white rounded-full text-xs flex items-center justify-center shadow">✕</button>
+              </div>
+              <div className="flex flex-col gap-2">
+                <button type="button" onClick={() => cameraRef.current?.click()} className="text-xs font-semibold text-primary-700 bg-primary-50 border border-primary-200 px-3 py-2 rounded-lg">Retake selfie</button>
+                <button type="button" onClick={() => galleryRef.current?.click()} className="text-xs font-semibold text-gray-700 bg-gray-50 border border-gray-200 px-3 py-2 rounded-lg">Choose another</button>
+              </div>
             </div>
           ) : (
-            <div onClick={() => profilePicRef.current?.click()} className="border-2 border-dashed border-gray-300 rounded-2xl p-6 text-center cursor-pointer hover:border-primary-400 hover:bg-primary-50/30 transition-all">
-              <HiCamera className="w-8 h-8 text-gray-400 mx-auto mb-1" />
-              <p className="text-sm text-gray-500">Tap to add a photo</p>
-              <p className="text-xs text-gray-400">This will be your profile picture</p>
+            <div className="border-2 border-dashed border-gray-300 rounded-2xl p-5">
+              <HiCamera className="w-8 h-8 text-gray-400 mx-auto mb-2" />
+              <p className="text-sm text-gray-600 text-center mb-3">Use a live selfie or a photo you already have</p>
+              <div className="grid grid-cols-2 gap-2">
+                <button type="button" onClick={() => cameraRef.current?.click()} className="bg-primary-600 text-white text-sm font-semibold py-2.5 rounded-xl">Take selfie</button>
+                <button type="button" onClick={() => galleryRef.current?.click()} className="bg-white border border-gray-200 text-gray-800 text-sm font-semibold py-2.5 rounded-xl">From gallery</button>
+              </div>
             </div>
           )}
           {errors.profilePic && <p className="text-xs text-red-500 mt-1">{errors.profilePic}</p>}
