@@ -153,7 +153,7 @@ export default function CreateGroupPage() {
     (async () => {
       try {
         const { supabase } = await import('@/lib/supabase');
-        const { data: s } = await supabase.from('owner_settings').select('plan_1m, plan_6m, plan_12m').eq('id', 1).single();
+        const { data: s } = await supabase.from('public_pricing').select('plan_1m, plan_6m, plan_12m').eq('id', 1).single();
         if (s) setPlanPrices({ 1: s.plan_1m ?? 1500, 6: s.plan_6m ?? 8000, 12: s.plan_12m ?? 15000 });
       } catch {}
     })();

@@ -314,7 +314,7 @@ function MessagesInner() {
         const { data: th } = await supabase.from('support_threads').select('*').eq('user_email', me).maybeSingle();
         if (!alive) return;
         setSupThread(th || null);
-        const { data: st } = await supabase.from('owner_settings').select('*').eq('id', 1).single();
+        const { data: st } = await supabase.from('public_pricing').select('*').eq('id', 1).single();
         if (alive) { setOwnerOnline(!!st?.is_online); setBotSettings(st || null); }
         if (!th) { if (alive) setSupMsgs([]); return; }
         const { data: ms } = await supabase.from('support_messages').select('*').eq('thread_id', th.id).order('created_at', { ascending: true }).limit(300);

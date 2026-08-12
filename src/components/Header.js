@@ -145,9 +145,9 @@ export default function Header() {
     }
   };
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    try { const { signOutEverywhere } = await import('@/lib/session'); await signOutEverywhere(); } catch {}
     logoutUser();
-    localStorage.removeItem('payround_user');
     setIsLoggedIn(false);
     setUserName('');
     setUserRole('');

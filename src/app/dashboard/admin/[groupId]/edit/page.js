@@ -135,8 +135,8 @@ export default function EditGroupPage() {
     setDeleting(true);
     try {
       const { supabase } = await import('@/lib/supabase');
-      const { data: acc } = await supabase.from('users').select('password_hash').eq('email', me.email.toLowerCase()).maybeSingle();
-      if (!acc || acc.password_hash !== delPass) { toast.error('Wrong password — the group was NOT deleted.'); setDeleting(false); return; }
+      const { error: reauthErr } = await supabase.auth.signInWithPassword({ email: me.email.toLowerCase(), password: delPass });
+      if (reauthErr) { toast.error('Wrong password — the group was NOT deleted.'); setDeleting(false); return; }
       // Best-effort cleanup of everything tied to the group, then the group itself
       await supabase.from('group_messages').delete().eq('group_id', params.groupId);
       await supabase.from('payments').delete().eq('group_id', params.groupId);

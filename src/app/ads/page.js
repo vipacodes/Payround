@@ -338,7 +338,7 @@ export default function AdsPage() {
       setMyEmail(email);
       try {
         const { supabase } = await import('@/lib/supabase');
-        const { data: s } = await supabase.from('owner_settings').select('bank_name, account_number, account_name, ad_1day, ad_1week, ad_1month').eq('id', 1).single();
+        const { data: s } = await supabase.from('public_pricing').select('bank_name, account_number, account_name, ad_1day, ad_1week, ad_1month').eq('id', 1).single();
         if (s) setSettings(s);
       } catch {}
       loadMyAds(email);

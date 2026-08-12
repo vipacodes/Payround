@@ -51,7 +51,7 @@ export default function Footer() {
             <div>
               <h3 className="text-white font-semibold mb-4">Why Payround?</h3>
               <ul className="space-y-3">
-                <li className="flex items-center gap-2 text-sm"><HiShieldCheck className="text-primary-400 w-5 h-5 flex-shrink-0" /><span>Face verification security</span></li>
+                <li className="flex items-center gap-2 text-sm"><HiShieldCheck className="text-primary-400 w-5 h-5 flex-shrink-0" /><span>Transparent group tracking</span></li>
                 <li className="flex items-center gap-2 text-sm"><HiHeart className="text-primary-400 w-5 h-5 flex-shrink-0" /><span>Community trust built in</span></li>
                 <li className="flex items-center gap-2 text-sm"><HiSupport className="text-primary-400 w-5 h-5 flex-shrink-0" /><span>Member support</span></li>
               </ul>
@@ -60,6 +60,10 @@ export default function Footer() {
         </div>
         <div className="mt-10 pt-8 border-t border-gray-800 flex flex-col md:flex-row items-center justify-between gap-4">
           <p className="text-sm text-gray-500">&copy; {year} {name}. All rights reserved.</p>
+          <div className="flex gap-4 text-sm text-gray-500">
+            <button onClick={() => router.push('/privacy')} className="hover:text-primary-400">Privacy</button>
+            <button onClick={() => router.push('/terms')} className="hover:text-primary-400">Terms</button>
+          </div>
         </div>
       </div>
     </footer>

@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
-import { loginUser, signupUser, users, storeUserDocuments } from '@/lib/data';
+import { users } from '@/lib/data';
 import { HiUser, HiMail, HiPhone, HiLockClosed, HiCamera, HiCheckCircle, HiEye, HiEyeOff } from 'react-icons/hi';
 import toast from 'react-hot-toast';
 
@@ -45,52 +45,17 @@ function LoginPane({ go, autoSkip }) {
     setLoading(true);
     try {
       const { supabase } = await import('@/lib/supabase');
-      const { data: usersRow, error } = await supabase.from('users').select('*').eq('email', formData.email.trim().toLowerCase()).single();
-      if (usersRow && !error) {
-        const tempOk = usersRow.reset_code && usersRow.reset_code === formData.password
-          && usersRow.reset_expires && new Date(usersRow.reset_expires).getTime() > Date.now();
-        if (tempOk) {
-          localStorage.setItem('payround_user', JSON.stringify({
-            id: usersRow.id, name: usersRow.name, email: usersRow.email, phone: usersRow.phone,
-            role: usersRow.role || 'member', faceVerified: true,
-          }));
-          localStorage.setItem('payround_must_change_pw', '1');
-          toast('Logged in with your temporary password — set your NEW password now. ⏳', { icon: '🔑' });
-          router.push('/settings?mustChange=1');
-          setLoading(false);
-          return;
-        }
-        if (usersRow.reset_code === formData.password && usersRow.reset_expires && new Date(usersRow.reset_expires).getTime() <= Date.now()) {
-          toast.error('That temporary password has expired (20 min limit) — tap "Forgot password?" for a new one.');
-          setLoading(false);
-          return;
-        }
-        if (usersRow.password_hash === formData.password) {
-          localStorage.setItem('payround_user', JSON.stringify({
-            id: usersRow.id, name: usersRow.name, email: usersRow.email, phone: usersRow.phone,
-            role: usersRow.role || 'member', faceVerified: true,
-          }));
-          toast.success(`Welcome back, ${usersRow.name}!`);
-          router.push(redirect);
-          setLoading(false);
-          return;
-        } else {
-          toast.error('Incorrect password. Please try again.');
-          setLoading(false);
-          return;
-        }
+      const { persistProfileFromAuth } = await import('@/lib/session');
+      const email = formData.email.trim().toLowerCase();
+      const { data, error } = await supabase.auth.signInWithPassword({ email, password: formData.password });
+      if (error || !data?.user) {
+        toast.error(error?.message || 'Invalid email or password. If you used Payround before August 2026, tap Forgot password to set a new one.');
+        setLoading(false);
+        return;
       }
-      const result = loginUser(formData.email, formData.password);
-      if (result.success) {
-        localStorage.setItem('payround_user', JSON.stringify({
-          id: result.user.id, name: result.user.name, email: result.user.email,
-          phone: result.user.phone, role: result.user.role, faceVerified: result.user.faceVerified,
-        }));
-        toast.success(`Welcome back, ${result.user.name}!`);
-        router.push(redirect);
-      } else {
-        toast.error('Invalid email or password. Please check your details and try again.');
-      }
+      const profile = await persistProfileFromAuth();
+      toast.success(`Welcome back, ${profile?.name || 'there'}!`);
+      router.push(redirect);
     } catch (err) {
       toast.error('Login failed: ' + err.message);
     }
@@ -202,61 +167,59 @@ function SignupPane({ go }) {
     setSubmitting(true);
     try {
       const { supabase } = await import('@/lib/supabase');
-      const { data: existingSupa } = await supabase.from('users').select('email').eq('email', formData.email.trim().toLowerCase()).single();
-      if (existingSupa) {
-        toast.error('Email already registered - 1 account per email. Please log in.');
+      const { persistProfileFromAuth } = await import('@/lib/session');
+      const email = formData.email.trim().toLowerCase();
+      const { data: authData, error: authErr } = await supabase.auth.signUp({
+        email,
+        password: formData.password,
+        options: { data: { name: formData.name, phone: formData.phone } },
+      });
+      if (authErr) {
+        toast.error(authErr.message || 'Could not create account');
         setSubmitting(false);
         return;
       }
-    } catch {}
-    const exists = users.find(u => u.email === formData.email.trim().toLowerCase());
-    if (exists) { toast.error('Email already registered.'); setSubmitting(false); return; }
-    try {
-      const { supabase } = await import('@/lib/supabase');
-      let { error } = await supabase.from('users').insert({
-        email: formData.email.trim().toLowerCase(), name: formData.name, phone: formData.phone,
-        password_hash: formData.password, trial_used: false, role: 'member', is_verified: false,
-        referred_by: formData.referredBy?.trim() || null, profile_pic: profilePic || null,
-      });
-      if (error) {
-        const retry = await supabase.from('users').insert({
-          email: formData.email.trim().toLowerCase(), name: formData.name, phone: formData.phone,
-          password_hash: formData.password, trial_used: false, role: 'member',
-        });
-        error = retry.error;
+      if (!authData.session) {
+        toast.success('Check your email to confirm your account, then log in.');
+        setSubmitting(false);
+        go('login');
+        return;
       }
-      if (error) console.log('Supabase insert fallback', error.message);
+      const row = {
+        id: authData.user.id,
+        email,
+        name: formData.name,
+        phone: formData.phone,
+        trial_used: false,
+        role: 'member',
+        is_verified: false,
+        referred_by: formData.referredBy?.trim() || null,
+        profile_pic: profilePic || null,
+      };
+      const { error } = await supabase.from('users').insert(row);
+      if (error && !String(error.message || '').toLowerCase().includes('duplicate')) {
+        const retry = await supabase.from('users').insert({
+          email, name: formData.name, phone: formData.phone, trial_used: false, role: 'member',
+        });
+        if (retry.error) console.log('profile insert', retry.error.message);
+      }
       const ref = (formData.referredBy || '').trim();
       if (ref) {
-        const { data: allUsers } = await supabase.from('users').select('id,email,name,referral_earnings');
-        const referrer = (allUsers || []).find(x => x.id && String(x.id).toLowerCase().startsWith(ref.toLowerCase()));
-        if (referrer && referrer.email !== formData.email.trim().toLowerCase()) {
-          const { data: mem } = await supabase.from('members').select('id').eq('member_email', referrer.email).eq('status', 'approved');
-          const { data: adm } = await supabase.from('groups').select('id').eq('admin_email', referrer.email);
-          if ((mem && mem.length > 0) || (adm && adm.length > 0)) {
-            await supabase.from('users').update({ referral_earnings: (referrer.referral_earnings || 0) + 200 }).eq('id', referrer.id);
-            await supabase.from('notifications').insert({
-              id: `ref-${Date.now()}`, type: 'referral_bonus', is_read: false,
-              user_email: referrer.email,
-              message: `🎁 ${formData.name} registered with your referral link — ₦200 earned. Minimum withdrawal ₦1,000.`,
-            });
-          }
+        const { data: referrer } = await supabase.from('users').select('id,email,name,referral_earnings').eq('id', ref).maybeSingle();
+        if (referrer && referrer.email !== email) {
+          await supabase.from('notifications').insert({
+            id: `ref-${Date.now()}`, type: 'referral_bonus', is_read: false,
+            user_email: referrer.email,
+            message: `🎁 ${formData.name} registered with your referral link.`,
+          });
         }
       }
-    } catch (err) { console.log('Supabase insert error, using mock fallback', err.message); }
-
-    const result = signupUser({ ...formData, faceVerified: false });
-    if (result.success) {
-      storeUserDocuments(result.user.id, result.user.email, result.user.name, { profilePic });
-      localStorage.setItem('payround_user', JSON.stringify({
-        id: result.user.id, name: result.user.name, email: result.user.email,
-        phone: result.user.phone, role: result.user.role, faceVerified: false,
-      }));
-      toast.success('Account created! Welcome to PayRound 🎉');
+      await persistProfileFromAuth();
+      toast.success('Account created! Welcome to Payround 🎉');
       sessionStorage.removeItem(STORAGE_KEY);
       setDone(true);
-    } else {
-      toast.error('Something went wrong.');
+    } catch (err) {
+      toast.error(err.message || 'Something went wrong.');
       setSubmitting(false);
     }
   };
@@ -324,7 +287,7 @@ function SignupPane({ go }) {
           ) : (
             <div onClick={() => profilePicRef.current?.click()} className="border-2 border-dashed border-gray-300 rounded-2xl p-6 text-center cursor-pointer hover:border-primary-400 hover:bg-primary-50/30 transition-all">
               <HiCamera className="w-8 h-8 text-gray-400 mx-auto mb-1" />
-              <p className="text-sm text-gray-500">Tap to take a selfie</p>
+              <p className="text-sm text-gray-500">Tap to add a photo</p>
               <p className="text-xs text-gray-400">This will be your profile picture</p>
             </div>
           )}

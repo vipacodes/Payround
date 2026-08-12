@@ -43,18 +43,17 @@ export default function HomePage() {
           supabase.from('groups').select('*', { count: 'exact', head: true }).in('status', ['active', 'approved']),
           supabase.from('group_reviews').select('rating'),
           supabase.from('member_receipts').select('amount').in('status', ['active', 'approved']),
-          supabase.from('owner_settings').select('stats_users_override, stats_groups_override, stats_saved_override, stats_satisfaction_override').eq('id', 1).single(),
+          Promise.resolve({ data: null }),
         ]);
         if (!mounted) return;
         const ratings = rv.data || [];
         const realSat = ratings.length ? Math.round((ratings.reduce((a, x) => a + (x.rating || 0), 0) / (ratings.length * 5)) * 100) : null;
         const realSaved = (rc.data || []).reduce((a, x) => a + (x.amount || 0), 0);
-        const o = s.data || {};
         setStats({
-          users: o.stats_users_override ?? (u.count || 0),
-          groups: o.stats_groups_override ?? (g.count || 0),
-          saved: o.stats_saved_override ?? realSaved,
-          satisfaction: o.stats_satisfaction_override ?? realSat,
+          users: u.count || 0,
+          groups: g.count || 0,
+          saved: realSaved,
+          satisfaction: realSat,
         });
       } catch {}
     };
@@ -89,7 +88,7 @@ export default function HomePage() {
 
   const features = [
     { icon: <HiUserGroup className="w-6 h-6" />, title: 'Create & Join Groups', desc: 'Start your own Ajo group or join existing ones with unique group IDs.' },
-    { icon: <HiShieldCheck className="w-6 h-6" />, title: 'Face Verification', desc: 'Secure identity verification to build trust among group members.' },
+    { icon: <HiShieldCheck className="w-6 h-6" />, title: 'Visible members', desc: 'Every member has a real profile photo so your circle can recognise who they save with.' },
     { icon: <HiBellAlert className="w-6 h-6" />, title: 'Smart Reminders', desc: 'Get reminded right here in the app — your dashboard, group board and bell flag every payment before it is due.' },
     { icon: <HiChartBar className="w-6 h-6" />, title: 'Real-time Tracking', desc: 'Track contributions, payments, and rotation progress in real time.' },
     { icon: <HiCurrencyDollar className="w-6 h-6" />, title: 'Transparent Rotation', desc: 'See exactly who has paid, who is next to receive, and the full rotation order.' },
@@ -97,7 +96,7 @@ export default function HomePage() {
   ];
 
   const steps = [
-    { num: 1, title: 'Sign Up', desc: 'Create your account with face verification.' },
+    { num: 1, title: 'Sign Up', desc: 'Create your free account with a profile photo.' },
     { num: 2, title: 'Create or Join', desc: 'Start a group (paid) or search and join an existing one for free.' },
     { num: 3, title: 'Contribute', desc: 'Pay to the admin and upload your receipt as proof.' },
     { num: 4, title: 'Track & Get Paid', desc: 'Monitor progress and receive your payout when it\'s your turn.' },
@@ -386,7 +385,7 @@ export default function HomePage() {
             Ready to Transform Your Ajo Experience?
           </h2>
           <p className="text-lg text-gray-600 mb-8">
-            Join thousands of Nigerians using Payround to save smarter and build trust together.
+            Join Nigerians using Payround to organise Ajo groups and keep every contribution visible.
           </p>
           <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
             <button

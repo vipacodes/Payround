@@ -131,11 +131,8 @@ export default function SettingsPage() {
     try {
       const { supabase } = await import('@/lib/supabase');
       if (savingMoney) {
-        const { data: meRow, error: pwErr } = await supabase.from('users').select('password_hash, reset_code, reset_expires').eq('email', user.email.toLowerCase()).single();
-        if (pwErr) throw pwErr;
-        const realOk = meRow?.password_hash === bankPassword;
-        const tempOk = meRow?.reset_code && meRow.reset_code === bankPassword && meRow.reset_expires && new Date(meRow.reset_expires).getTime() > Date.now();
-        if (!realOk && !tempOk) { toast.error('Password incorrect — bank details NOT saved.'); setBankSaving(false); return; }
+        const { error: reauthErr } = await supabase.auth.signInWithPassword({ email: user.email.toLowerCase(), password: bankPassword });
+        if (reauthErr) { toast.error('Password incorrect — bank details NOT saved.'); setBankSaving(false); return; }
       }
       const row = { bank_name: bankName.trim() || null, account_number: acct || null, account_name: accountName.trim() || null, payment_remark: paymentRemark.trim() || null };
       const { error } = await supabase.from('users').update(row).eq('email', user.email.toLowerCase());
@@ -154,9 +151,10 @@ export default function SettingsPage() {
     toast.success(`${t === 'dark' ? '🌙 Dark' : '☀️ Light'} mode on`);
   };
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    const { signOutEverywhere } = await import('@/lib/session');
+    await signOutEverywhere();
     logoutUser();
-    localStorage.removeItem('payround_user');
     toast.success('Logged out');
     router.push('/');
   };
@@ -168,8 +166,8 @@ export default function SettingsPage() {
     setDeleting(true);
     try {
       const { supabase } = await import('@/lib/supabase');
-      const { data: row } = await supabase.from('users').select('password_hash').eq('email', user.email.toLowerCase()).single();
-      if (!row || row.password_hash !== password) {
+      const { error: reauthErr } = await supabase.auth.signInWithPassword({ email: user.email.toLowerCase(), password });
+      if (reauthErr) {
         toast.error('Incorrect password — account not deleted.');
         setDeleting(false);
         return;
@@ -177,7 +175,8 @@ export default function SettingsPage() {
       await supabase.from('members').delete().eq('member_email', user.email.toLowerCase());
       const { error } = await supabase.from('users').delete().eq('email', user.email.toLowerCase());
       if (error) throw error;
-      localStorage.removeItem('payround_user');
+      const { signOutEverywhere } = await import('@/lib/session');
+      await signOutEverywhere();
       logoutUser();
       toast.success('Account deleted. We are sad to see you go.');
       router.push('/');
@@ -196,12 +195,9 @@ export default function SettingsPage() {
     setPwBusy(true);
     try {
       const { supabase } = await import('@/lib/supabase');
-      const { data: row, error } = await supabase.from('users').select('password_hash, reset_code, reset_expires').eq('email', user.email.toLowerCase()).single();
-      if (error) throw error;
-      const realOk = row?.password_hash === curPw;
-      const tempOk = row?.reset_code && row.reset_code === curPw && row.reset_expires && new Date(row.reset_expires).getTime() > Date.now();
-      if (!realOk && !tempOk) { toast.error('Current password is incorrect.'); setPwBusy(false); return; }
-      const { error: upErr } = await supabase.from('users').update({ password_hash: newPw, reset_code: null, reset_expires: null }).eq('email', user.email.toLowerCase());
+      const { error: reauthErr } = await supabase.auth.signInWithPassword({ email: user.email.toLowerCase(), password: curPw });
+      if (reauthErr) { toast.error('Current password is incorrect.'); setPwBusy(false); return; }
+      const { error: upErr } = await supabase.auth.updateUser({ password: newPw });
       if (upErr) throw upErr;
       try { localStorage.removeItem('payround_must_change_pw'); } catch {}
       setMustChange(false);
@@ -223,11 +219,10 @@ export default function SettingsPage() {
     try {
       const { supabase } = await import('@/lib/supabase');
       const oldE = user.email.toLowerCase();
-      const { data: row, error } = await supabase.from('users').select('password_hash, reset_code, reset_expires').eq('email', oldE).single();
-      if (error) throw error;
-      const realOk = row?.password_hash === emailPw;
-      const tempOk = row?.reset_code && row.reset_code === emailPw && row.reset_expires && new Date(row.reset_expires).getTime() > Date.now();
-      if (!realOk && !tempOk) { toast.error('Password incorrect — email not changed.', { id: t, duration: 6000 }); setEmailBusy(false); return; }
+      const { error: reauthErr } = await supabase.auth.signInWithPassword({ email: oldE, password: emailPw });
+      if (reauthErr) { toast.error('Password incorrect — email not changed.', { id: t, duration: 6000 }); setEmailBusy(false); return; }
+      const { error: authEmailErr } = await supabase.auth.updateUser({ email: em });
+      if (authEmailErr) throw authEmailErr;
       const { data: taken } = await supabase.from('users').select('email').eq('email', em).maybeSingle();
       if (taken) { toast.error('Another account already uses that email.', { id: t, duration: 6000 }); setEmailBusy(false); return; }
       // every table + column that stores the user's address

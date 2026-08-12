@@ -17,8 +17,8 @@ export default function BroadcastAlert() {
     (async () => {
       try {
         const { data, error } = await supabase
-          .from('owner_settings')
-          .select('announcement_text, announcement_media_url, announcement_updated_at')
+          .from('public_pricing')
+          .select('announcement_text')
           .eq('id', 1)
           .single();
         if (error || !data) return;
