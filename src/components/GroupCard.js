@@ -1,11 +1,9 @@
 'use client';
 
-import { useRouter } from 'next/navigation';
 import { HiUserGroup, HiShieldCheck, HiCalendar, HiCurrencyDollar } from 'react-icons/hi';
 import { HiOutlineArrowRight } from 'react-icons/hi2';
 
 export default function GroupCard({ group, compact = false }) {
-  const router = useRouter();
 
   const scheduleLabels = {
     'Daily': 'Daily',
@@ -60,8 +58,8 @@ export default function GroupCard({ group, compact = false }) {
         </div>
 
         {!compact && (
-          <button
-            onClick={() => router.push(`/groups/${group.id}`)}
+          <a
+            href={`/groups/${group.id}`}
             className="w-full flex items-center justify-center gap-2 bg-gray-50 hover:bg-primary-50 text-gray-700 hover:text-primary-700 border border-gray-200 hover:border-primary-200 rounded-xl py-2.5 text-sm font-medium transition-all"
           >
             View Details
