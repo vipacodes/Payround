@@ -10,16 +10,13 @@ function getEnv(name) {
   }
 }
 
-const supabaseUrl = getEnv('NEXT_PUBLIC_SUPABASE_URL');
-const supabaseAnonKey = getEnv('NEXT_PUBLIC_SUPABASE_ANON_KEY');
-
-if (!supabaseUrl || !supabaseAnonKey) {
-  console.warn('Payround: set NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY');
-}
+// Anon key is a public client key (safe in the browser). RLS is what protects data.
+const supabaseUrl = getEnv('NEXT_PUBLIC_SUPABASE_URL') || 'https://biqutnjvhkvldrihywdb.supabase.co';
+const supabaseAnonKey = getEnv('NEXT_PUBLIC_SUPABASE_ANON_KEY') || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJpcXV0bmp2aGt2bGRyaWh5d2RiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODU0Nzk1NjMsImV4cCI6MjEwMTA1NTU2M30.zLffszHcCGRFmnGW0iXSp6BNJ_BMPqQv1W6TXQNxYLU';
 
 export const supabase = createClient(
-  supabaseUrl || 'https://example.supabase.co',
-  supabaseAnonKey || 'public-anon-key-missing',
+  supabaseUrl,
+  supabaseAnonKey,
   {
     auth: {
       persistSession: true,

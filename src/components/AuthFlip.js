@@ -152,6 +152,10 @@ function SignupPane({ go }) {
     sessionStorage.setItem(STORAGE_KEY, JSON.stringify(formData));
   }, [formData]);
 
+  useEffect(() => () => {
+    try { (streamRef.current?.getTracks() || []).forEach((t) => t.stop()); } catch {}
+  }, []);
+
   const handleFile = async (file, setPreview, setData) => {
     if (!file) return;
     if (file.size > 5 * 1024 * 1024) { toast.error('File too large. Max 5MB.'); return; }
@@ -196,7 +200,12 @@ function SignupPane({ go }) {
         options: { data: { name: formData.name, phone: formData.phone } },
       });
       if (authErr) {
-        toast.error(authErr.message || 'Could not create account');
+        const m = String(authErr.message || '');
+        if (/fetch|network|failed to fetch/i.test(m)) {
+          toast.error('Could not reach Payround servers. Check your internet and try again.');
+        } else {
+          toast.error(m || 'Could not create account');
+        }
         setSubmitting(false);
         return;
       }
