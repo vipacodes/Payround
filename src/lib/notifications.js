@@ -1,3 +1,20 @@
+const CLEARED_KEY = 'payround_notif_cleared';
+
+export function getClearedNotifIds() {
+  try {
+    const raw = JSON.parse(localStorage.getItem(CLEARED_KEY) || '[]');
+    return Array.isArray(raw) ? raw.map(String) : [];
+  } catch {
+    return [];
+  }
+}
+
+export function rememberClearedNotifIds(ids) {
+  const next = [...new Set([...getClearedNotifIds(), ...ids.map(String)])].slice(-800);
+  try { localStorage.setItem(CLEARED_KEY, JSON.stringify(next)); } catch {}
+  return next;
+}
+
 // Shared notification visibility rules.
 // A notification is visible to a user ONLY when:
 //   • user_email = their email          -> personal (just for them)

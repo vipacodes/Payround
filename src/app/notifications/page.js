@@ -39,14 +39,14 @@ export default function NotificationsPage() {
       if (stored) { try { email = (JSON.parse(stored).email || '').toLowerCase(); } catch {} }
       if (email) setMyEmail(email);
       const { supabase } = await import('@/lib/supabase');
-      const { isVisibleTo, getMyGroupIds, purgeOldNotifications } = await import('@/lib/notifications');
+      const { isVisibleTo, getMyGroupIds, purgeOldNotifications, getClearedNotifIds } = await import('@/lib/notifications');
       // Auto-cleanup: notifications older than 60 days are deleted to save storage space
       await purgeOldNotifications(supabase);
       // Groups I belong to (admin or approved member) — for group-shared notifications
       const gids = await getMyGroupIds(supabase, email);
       const { data } = await supabase.from('notifications').select('*').order('created_at', { ascending: false }).limit(100);
-      // Only show notifications meant for ME: personal, my groups, or broadcasts
-      setNotifications((data || []).filter(n => isVisibleTo(n, email, gids)));
+      const cleared = new Set(getClearedNotifIds());
+      setNotifications((data || []).filter(n => isVisibleTo(n, email, gids) && !cleared.has(String(n.id))));
     } catch {} finally { setLoading(false); }
   };
 
@@ -131,13 +131,22 @@ export default function NotificationsPage() {
   };
 
   const clearAllMine = async () => {
-    const mine = notifications.filter(n => myEmail && n.user_email && n.user_email.toLowerCase() === myEmail);
-    if (mine.length === 0) return;
+    const ids = notifications.map(n => n.id);
+    if (ids.length === 0) return;
     try {
+      const { rememberClearedNotifIds } = await import('@/lib/notifications');
+      rememberClearedNotifIds(ids);
       const { supabase } = await import('@/lib/supabase');
-      await supabase.from('notifications').delete().in('id', mine.map(n => n.id));
-      setNotifications(prev => prev.filter(n => !(n.user_email && n.user_email.toLowerCase() === myEmail)));
+      const mine = notifications.filter(n => myEmail && n.user_email && n.user_email.toLowerCase() === myEmail);
+      if (mine.length) {
+        await supabase.from('notifications').delete().in('id', mine.map(n => n.id));
+      }
+      const unreadIds = notifications.filter(n => !n.is_read).map(n => n.id);
+      if (unreadIds.length) {
+        await supabase.from('notifications').update({ is_read: true }).in('id', unreadIds);
+      }
     } catch {}
+    setNotifications([]);
   };
 
   // Only marks MY visible notifications as read — never other users' notifications

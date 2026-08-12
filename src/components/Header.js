@@ -76,7 +76,11 @@ export default function Header() {
         try { const { getMyGroupIds } = await import('@/lib/notifications'); gids = await getMyGroupIds(supabase, email); } catch { gids = []; }
         const { data } = await supabase.from('notifications').select('id, user_email, group_id, is_read').eq('is_read', false).limit(100);
         if (data && mounted) {
+          let cleared = [];
+          try { const { getClearedNotifIds } = await import('@/lib/notifications'); cleared = getClearedNotifIds(); } catch {}
+          const hide = new Set(cleared.map(String));
           setUnreadCount(data.filter(n => {
+            if (hide.has(String(n.id))) return false;
             const rowEm = (n.user_email || '').toLowerCase();
             if (rowEm) return !!email && rowEm === email;
             if (n.group_id) return gids.includes(n.group_id);
