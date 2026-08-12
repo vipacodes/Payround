@@ -49,7 +49,24 @@ function LoginPane({ go, autoSkip }) {
       const email = formData.email.trim().toLowerCase();
       const { data, error } = await supabase.auth.signInWithPassword({ email, password: formData.password });
       if (error || !data?.user) {
-        toast.error(error?.message || 'Invalid email or password. If you used Payround before August 2026, tap Forgot password to set a new one.');
+        const msg = String(error?.message || '').toLowerCase();
+        if (msg.includes('email not confirmed')) {
+          toast.error('Please confirm your email first — check your inbox.');
+          setLoading(false);
+          return;
+        }
+        let exists = false;
+        try {
+          const { data: flag } = await supabase.rpc('account_exists', { p_email: email });
+          exists = !!flag;
+        } catch {}
+        if (!exists) {
+          setErrors({ email: 'This email is not assigned to any account' });
+          toast.error('This email is not assigned to any account');
+        } else {
+          setErrors({ password: 'Incorrect password' });
+          toast.error('Incorrect password');
+        }
         setLoading(false);
         return;
       }
