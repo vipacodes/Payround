@@ -295,7 +295,7 @@ function SignupPane({ go }) {
         </div>
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1.5">Selfie <span className="text-red-500">*</span> <span className="text-gray-400 text-xs font-normal">(the only photo needed to sign up — used as your profile picture)</span></label>
-          <input type="file" ref={profilePicRef} accept="image/*,image/heic,image/heif,video/*,application/pdf,.pdf" onChange={e => handleFile(e.target.files[0], setProfilePicPreview, setProfilePic)} className="hidden" />
+          <input type="file" ref={profilePicRef} accept="image/*" capture="user" onChange={e => handleFile(e.target.files[0], setProfilePicPreview, setProfilePic)} className="hidden" />
           {profilePicPreview ? (
             <div className="relative w-24 h-24">
               <img src={profilePicPreview} alt="Profile" className="w-24 h-24 rounded-2xl object-cover border-2 border-primary-200" />
