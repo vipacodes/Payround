@@ -66,7 +66,7 @@ export default function GroupCard({ group, compact = false }) {
           >
             View Details
             <HiOutlineArrowRight className="w-4 h-4" />
-          </button>
+          </a>
         )}
       </div>
     </div>

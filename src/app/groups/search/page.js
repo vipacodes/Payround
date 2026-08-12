@@ -11,11 +11,10 @@ import { frequencyLabel } from '@/lib/payments';
 
 
 function RealGroupCard({ group, memberCount }) {
-  const router = useRouter();
   return (
-    <button
-      onClick={() => router.push(`/groups/${group.id}`)}
-      className="bg-white rounded-2xl border border-gray-100 p-6 text-left card-hover w-full"
+    <a
+      href={`/groups/${group.id}`}
+      className="bg-white rounded-2xl border border-gray-100 p-6 text-left card-hover w-full block"
     >
       <div className="flex items-start justify-between mb-4">
         <div className="flex items-center gap-3 min-w-0">
@@ -55,7 +54,7 @@ function RealGroupCard({ group, memberCount }) {
         <span className="text-xs text-gray-400">Admin: {group.admin_name || '—'}</span>
         <span className="text-sm font-medium text-primary-600">View & Join →</span>
       </div>
-    </button>
+    </a>
   );
 }
 
@@ -100,11 +99,17 @@ function SearchContent() {
     (async () => {
       try {
         const { supabase } = await import('@/lib/supabase');
-        const { data: gs } = await supabase
+        let gs = [];
+        const full = await supabase
           .from('groups')
           .select('id, name, description, amount, frequency, frequency_days, max_members, admin_name, admin_email, is_verified, badge_tier, avatar_url, created_at, is_frozen')
           .in('status', ['active', 'approved'])
           .order('created_at', { ascending: false });
+        if (!full.error) gs = full.data || [];
+        else {
+          const pub = await supabase.from('public_groups').select('*');
+          gs = pub.data || [];
+        }
         if (!mounted) return;
         const list = (gs || []).filter(g => !g.is_frozen); // ❄️ frozen groups are hidden from search
         setGroupsList(list);
