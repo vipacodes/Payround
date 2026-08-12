@@ -156,15 +156,79 @@ function SignupPane({ go }) {
     try { (streamRef.current?.getTracks() || []).forEach((t) => t.stop()); } catch {}
   }, []);
 
-  const handleFile = async (file, setPreview, setData) => {
+  const stopCam = () => {
+    try { (streamRef.current?.getTracks() || []).forEach((t) => t.stop()); } catch {}
+    streamRef.current = null;
+    setCamOpen(false);
+  };
+
+  const openCam = async () => {
+    if (typeof navigator === 'undefined' || !navigator.mediaDevices?.getUserMedia) {
+      toast.error('This browser cannot open the camera. Use “From gallery” instead.');
+      return;
+    }
+    setCamBusy(true);
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: false,
+        video: { facingMode: 'user', width: { ideal: 720 }, height: { ideal: 720 } },
+      });
+      streamRef.current = stream;
+      setCamOpen(true);
+      setTimeout(() => {
+        if (videoRef.current) {
+          videoRef.current.srcObject = stream;
+          videoRef.current.play?.().catch(() => {});
+        }
+      }, 50);
+    } catch {
+      toast.error('Camera permission was blocked. Allow the camera, or use “From gallery”.');
+    }
+    setCamBusy(false);
+  };
+
+  const snapCam = () => {
+    const video = videoRef.current;
+    if (!video || !video.videoWidth) { toast.error('Camera is still starting — wait a second and tap Capture.'); return; }
+    const canvas = document.createElement('canvas');
+    const max = 640;
+    const scale = Math.min(1, max / Math.max(video.videoWidth, video.videoHeight));
+    canvas.width = Math.max(1, Math.round(video.videoWidth * scale));
+    canvas.height = Math.max(1, Math.round(video.videoHeight * scale));
+    const ctx = canvas.getContext('2d');
+    ctx.translate(canvas.width, 0);
+    ctx.scale(-1, 1);
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+    const data = canvas.toDataURL('image/jpeg', 0.85);
+    setProfilePic(data);
+    setProfilePicPreview(data);
+    stopCam();
+  };
+
+  const handleFile = async (file) => {
     if (!file) return;
-    if (file.size > 5 * 1024 * 1024) { toast.error('File too large. Max 5MB.'); return; }
+    if (file.size > 25 * 1024 * 1024) { toast.error('That photo is too large. Try another.'); return; }
     try {
       const { compressImage } = await import('@/lib/image');
-      const compressed = await compressImage(file, 512, 0.85);
-      setPreview(compressed);
-      setData(compressed);
-    } catch { toast.error('Could not read that file — try another image.'); }
+      const compressed = await compressImage(file, 640, 0.82);
+      setProfilePicPreview(compressed);
+      setProfilePic(compressed);
+    } catch {
+      try {
+        const raw = await new Promise((resolve, reject) => {
+          const r = new FileReader();
+          r.onload = () => resolve(r.result);
+          r.onerror = reject;
+          r.readAsDataURL(file);
+        });
+        if (typeof raw === 'string') {
+          setProfilePicPreview(raw);
+          setProfilePic(raw);
+          return;
+        }
+      } catch {}
+      toast.error('Could not use that photo. Try Take selfie, or pick a JPEG/PNG from the gallery.');
+    }
   };
 
   const validateForm = () => {
