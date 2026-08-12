@@ -33,11 +33,32 @@ export async function persistProfileFromAuth() {
     return null;
   }
   const email = user.email.toLowerCase();
-  const { data: row } = await supabase
+  let { data: row } = await supabase
     .from('users')
     .select('id,name,email,phone,role,is_verified')
     .eq('email', email)
     .maybeSingle();
+  if (!row) {
+    const fresh = {
+      id: user.id,
+      email,
+      name: user.user_metadata?.name || email.split('@')[0],
+      phone: user.user_metadata?.phone || '',
+      role: 'member',
+      is_verified: false,
+    };
+    const { error } = await supabase.from('users').insert(fresh);
+    if (!error) row = fresh;
+    else {
+      const retry = await supabase.from('users').insert({
+        email, name: fresh.name, phone: fresh.phone, role: 'member',
+      });
+      if (!retry.error) {
+        const again = await supabase.from('users').select('id,name,email,phone,role,is_verified').eq('email', email).maybeSingle();
+        row = again.data;
+      }
+    }
+  }
   const profile = row || {
     id: user.id,
     name: user.user_metadata?.name || email.split('@')[0],
