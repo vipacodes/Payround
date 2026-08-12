@@ -59,7 +59,11 @@ export default function GroupDetailsPage() {
       if (user?.email && mounted) setMe(user);
       try {
         const { supabase } = await import('@/lib/supabase');
-        const { data: g, error } = await supabase.from('groups').select('*').eq('id', params.id).single();
+        let { data: g, error } = await supabase.from('groups').select('*').eq('id', params.id).maybeSingle();
+        if (error || !g) {
+          const pub = await supabase.from('public_groups').select('*').eq('id', params.id).maybeSingle();
+          g = pub.data;
+        }
         if (!mounted) return;
         if (error || !g) { setNotFound(true); setLoading(false); return; }
         setGroup(g);

@@ -22,7 +22,7 @@ async function hardRefresh() {
 export default function GlobalError({ error }) {
   useEffect(() => {
     const msg = String(error && (error.message || error));
-    const stale = /ChunkLoadError|Loading chunk|dynamically imported module|Failed to fetch/i.test(msg);
+    const stale = /ChunkLoadError|Loading chunk [0-9]+ failed|dynamically imported module/i.test(msg);
     if (!stale) return;
     try {
       if (!sessionStorage.getItem('pr_chunk_reload')) {
