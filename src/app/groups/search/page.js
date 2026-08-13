@@ -46,7 +46,7 @@ function RealGroupCard({ group, memberCount }) {
         </div>
         <div className="flex items-center gap-2 text-sm text-gray-600 col-span-2">
           <HiUserGroup className="w-4 h-4 text-primary-500 shrink-0" />
-          <span>{memberCount}/{group.max_members || '—'} members</span>
+          <span>{memberCount} {memberCount === 1 ? 'person' : 'people'}{group.max_members ? ` · ${group.max_members} spots` : ''}</span>
         </div>
       </div>
 
@@ -101,28 +101,29 @@ function SearchContent() {
       try {
         const { supabase } = await import('@/lib/supabase');
         let gs = [];
-        const full = await supabase
-          .from('groups')
-          .select('id, name, description, amount, frequency, frequency_days, max_members, admin_name, admin_email, is_verified, badge_tier, avatar_url, created_at, is_frozen')
-          .in('status', ['active', 'approved'])
-          .order('created_at', { ascending: false });
-        if (!full.error) gs = full.data || [];
+        const pub = await supabase.from('public_groups').select('*');
+        if (!pub.error) gs = pub.data || [];
         else {
-          const pub = await supabase.from('public_groups').select('*');
-          gs = pub.data || [];
+          const full = await supabase
+            .from('groups')
+            .select('id, name, description, amount, frequency, frequency_days, max_members, admin_name, admin_email, is_verified, badge_tier, avatar_url, created_at, is_frozen')
+            .in('status', ['active', 'approved'])
+            .order('created_at', { ascending: false });
+          gs = full.data || [];
         }
         if (!mounted) return;
         const list = (gs || []).filter(g => !g.is_frozen); // ❄️ frozen groups are hidden from search
         setGroupsList(list);
         setResults(applySearch(list, initialQuery));
-        // Real approved-member counts per group
-        if (list.length > 0) {
+        const counts = {};
+        list.forEach(g => {
+          if (g.member_count != null) counts[g.id] = Number(g.member_count);
+        });
+        if (list.length > 0 && Object.keys(counts).length < list.length) {
           const { data: mems } = await supabase.from('members').select('group_id').in('status', ['active', 'approved']).in('group_id', list.map(g => g.id));
-          if (!mounted) return;
-          const counts = {};
           (mems || []).forEach(m => { counts[m.group_id] = (counts[m.group_id] || 0) + 1; });
-          setMemberCounts(counts);
         }
+        if (mounted) setMemberCounts(counts);
       } catch (e) {
         console.log('Search load:', e.message);
       }

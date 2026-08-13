@@ -190,7 +190,7 @@ export default function HomePage() {
                           <p className="text-sm font-medium text-gray-900">{group.name}</p>
                           <p className="text-xs text-gray-500 font-mono">ID: {group.id}</p>
                         </div>
-                        <span className="text-xs text-gray-400">{group.currentMembers}/{group.maxMembers} members</span>
+                        <span className="text-xs text-gray-400">{group.currentMembers} {group.currentMembers === 1 ? 'person' : 'people'}{group.maxMembers ? ` · ${group.maxMembers} spots` : ''}</span>
                       </button>
                     ))
                   ) : (

@@ -71,7 +71,27 @@ export default function GroupDetailsPage() {
         setGroup(g);
 
         const { data: mems } = await supabase.from('members').select('*').eq('group_id', params.id).eq('status', 'approved');
-        if (mounted) { setMemberCount((mems || []).length); setMembers(mems || []); }
+        let approved = mems || [];
+        // Visitors cannot read the members table (RLS). Use the public count + first names so the board is not 0/5.
+        if (!approved.length) {
+          const [{ data: cnt }, { data: pubSpots }] = await Promise.all([
+            supabase.rpc('public_group_member_count', { p_group_id: params.id }),
+            supabase.rpc('public_group_spots', { p_group_id: params.id }),
+          ]);
+          if (mounted) setMemberCount(typeof cnt === 'number' ? cnt : Number(g.member_count || 0));
+          if (pubSpots && pubSpots.length) {
+            approved = pubSpots.map((s) => ({
+              id: `pub-${s.spot}`,
+              group_id: params.id,
+              status: 'approved',
+              member_name: s.holder_name || 'Taken',
+              spots: String(s.spot),
+            }));
+          }
+        } else if (mounted) {
+          setMemberCount(approved.length);
+        }
+        if (mounted) setMembers(approved);
 
         const { data: pays } = await supabase.from('payments').select('*').eq('group_id', params.id).order('created_at', { ascending: false });
         if (mounted) setPayments(pays || []);
@@ -607,8 +627,9 @@ export default function GroupDetailsPage() {
             <p className="text-lg font-bold text-gray-900">{frequencyLabel(group)}</p>
           </div>
           <div className="bg-white rounded-2xl border border-gray-100 p-4">
-            <div className="flex items-center gap-2 text-gray-500 text-xs mb-1"><HiUserGroup className="w-4 h-4 text-primary-500" /> Members</div>
-            <p className="text-lg font-bold text-gray-900">{memberCount}{group.max_members ? ` / ${group.max_members}` : ''}</p>
+            <div className="flex items-center gap-2 text-gray-500 text-xs mb-1"><HiUserGroup className="w-4 h-4 text-primary-500" /> People in this circle</div>
+            <p className="text-lg font-bold text-gray-900">{memberCount}</p>
+            {group.max_members ? <p className="text-[10px] text-gray-500 mt-0.5">{group.max_members} spots (one person can hold more than one)</p> : null}
           </div>
           <button
             onClick={() => adminProfile && router.push(`/users/${adminProfile.id}`)}

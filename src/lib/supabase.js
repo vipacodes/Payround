@@ -53,7 +53,7 @@ function mapGroups(data) {
     contributionAmount: g.amount,
     contributionSchedule: g.frequency,
     maxMembers: g.max_members,
-    currentMembers: g.max_members ? Math.floor(g.max_members * 0.6) : 0,
+    currentMembers: Number(g.member_count ?? 0),
     color: g.color || '#0A7E3C',
     adminName: g.admin_name,
     adminVerified: g.is_verified,
