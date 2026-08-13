@@ -282,6 +282,13 @@ function SignupPane({ go }) {
       const { supabase } = await import('@/lib/supabase');
       const { persistProfileFromAuth } = await import('@/lib/session');
       const email = formData.email.trim().toLowerCase();
+      const pendingRef = (formData.referredBy || '').trim();
+      if (pendingRef) {
+        try {
+          localStorage.setItem('payround_pending_ref', pendingRef);
+          sessionStorage.setItem('payround_pending_ref', pendingRef);
+        } catch {}
+      }
       const { data: authData, error: authErr } = await supabase.auth.signUp({
         email,
         password: formData.password,
@@ -323,16 +330,9 @@ function SignupPane({ go }) {
         });
         if (retry.error) console.log('profile insert', retry.error.message);
       }
-      const ref = (formData.referredBy || '').trim();
+      const ref = pendingRef || (formData.referredBy || '').trim();
       if (ref) {
-        const { data: referrer } = await supabase.from('users').select('id,email,name,referral_earnings').eq('id', ref).maybeSingle();
-        if (referrer && referrer.email !== email) {
-          await supabase.from('notifications').insert({
-            id: `ref-${Date.now()}`, type: 'referral_bonus', is_read: false,
-            user_email: referrer.email,
-            message: `🎁 ${formData.name} registered with your referral link.`,
-          });
-        }
+        try { await supabase.rpc('apply_referral', { p_new_email: email, p_ref: ref }); } catch {}
       }
       await persistProfileFromAuth();
       toast.success('Account created! Welcome to Payround 🎉');

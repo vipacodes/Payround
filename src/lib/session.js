@@ -45,6 +45,8 @@ export async function persistProfileFromAuth() {
     .select('id,name,email,phone,role,is_verified')
     .eq('email', email)
     .maybeSingle();
+  let pendingRef = '';
+  try { pendingRef = (localStorage.getItem('payround_pending_ref') || sessionStorage.getItem('payround_pending_ref') || '').trim(); } catch {}
   if (!row) {
     const fresh = {
       id: user.id,
@@ -53,12 +55,13 @@ export async function persistProfileFromAuth() {
       phone: user.user_metadata?.phone || '',
       role: 'member',
       is_verified: false,
+      referred_by: pendingRef || null,
     };
     const { error } = await supabase.from('users').insert(fresh);
     if (!error) row = fresh;
     else {
       const retry = await supabase.from('users').insert({
-        email, name: fresh.name, phone: fresh.phone, role: 'member',
+        email, name: fresh.name, phone: fresh.phone, role: 'member', referred_by: pendingRef || null,
       });
       if (!retry.error) {
         const again = await supabase.from('users').select('id,name,email,phone,role,is_verified').eq('email', email).maybeSingle();
@@ -74,6 +77,13 @@ export async function persistProfileFromAuth() {
     role: 'member',
     is_verified: false,
   };
+  if (pendingRef) {
+    try {
+      await supabase.rpc('apply_referral', { p_new_email: email, p_ref: pendingRef });
+      localStorage.removeItem('payround_pending_ref');
+      sessionStorage.removeItem('payround_pending_ref');
+    } catch {}
+  }
   writeLocalUser(profile);
   return profile;
 }

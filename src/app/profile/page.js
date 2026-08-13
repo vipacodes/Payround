@@ -194,7 +194,8 @@ export default function ProfilePage() {
     setSaving(false);
   };
 
-  const refLink = `https://payround-omega.vercel.app/signup?ref=${user.id || ''}`;
+  const uniqueId = String(account?.id || user.id || '').slice(0, 8);
+  const refLink = `https://payround-omega.vercel.app/signup?ref=${uniqueId}`;
   // Extra profile details unlock after PayRound approves the account
   const extrasUnlocked = !!(account?.is_approved || account?.approval_status === 'approved');
 
