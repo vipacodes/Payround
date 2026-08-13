@@ -16,6 +16,7 @@ function LoginPane({ go, autoSkip }) {
   const [formData, setFormData] = useState({ email: '', password: '' });
   const [errors, setErrors] = useState({});
   const [loading, setLoading] = useState(false);
+  const [takedownNote, setTakedownNote] = useState('');
 
   useEffect(() => {
     const p = new URLSearchParams(window.location.search);
@@ -23,7 +24,11 @@ function LoginPane({ go, autoSkip }) {
     if (r && r.startsWith('/')) setRedirect(r);
     const em = p.get('email');
     if (em) setFormData(prev => ({ ...prev, email: em }));
-    if (autoSkip) {
+    const why = p.get('reason');
+    if (p.get('takedown') === '1') {
+      setTakedownNote(why || 'PayRound removed this account.');
+    }
+    if (autoSkip && p.get('takedown') !== '1') {
       try {
         if (localStorage.getItem('payround_user')) router.replace(r && r.startsWith('/') ? r : '/dashboard');
       } catch {}
@@ -47,6 +52,18 @@ function LoginPane({ go, autoSkip }) {
       const { supabase } = await import('@/lib/supabase');
       const { persistProfileFromAuth } = await import('@/lib/session');
       const email = formData.email.trim().toLowerCase();
+      let takedown = null;
+      try {
+        const { data: td } = await supabase.rpc('account_takedown', { p_email: email });
+        if (td?.taken_down) takedown = td;
+      } catch {}
+      if (takedown) {
+        const why = takedown.reason || 'PayRound removed this account.';
+        setErrors({ email: 'This account was taken down' });
+        toast.error(`This account was taken down. Reason: ${why} You can create a new free account with the same details, or email payroundsupport@gmail.com if this is wrong.`, { duration: 10000 });
+        setLoading(false);
+        return;
+      }
       const { data, error } = await supabase.auth.signInWithPassword({ email, password: formData.password });
       if (error || !data?.user) {
         const msg = String(error?.message || '').toLowerCase();
@@ -90,6 +107,13 @@ function LoginPane({ go, autoSkip }) {
         <h1 className="text-xl md:text-2xl font-bold text-gray-900">Welcome Back</h1>
         <p className="text-gray-500 text-sm mt-1">Log in to your account to continue</p>
       </div>
+      {takedownNote && (
+        <div className="mb-4 rounded-xl border border-red-200 bg-red-50 p-3 text-xs text-red-800">
+          <p className="font-bold mb-1">This account was taken down by PayRound.</p>
+          <p className="mb-2">Reason: {takedownNote}</p>
+          <p>You can <a href="/signup" onClick={(e) => { e.preventDefault(); go('signup'); }} className="underline font-semibold">create a new free account</a> with the same details. If this is wrong, email <a href="mailto:payroundsupport@gmail.com" className="underline font-semibold">payroundsupport@gmail.com</a>.</p>
+        </div>
+      )}
       <form onSubmit={handleSubmit} className="space-y-4">
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1.5">Email Address</label>
@@ -274,11 +298,13 @@ function SignupPane({ go }) {
         return;
       }
       if (!authData.session) {
+        try { await supabase.rpc('clear_account_takedown', { p_email: email }); } catch {}
         toast.success('Check your email to confirm your account, then log in.');
         setSubmitting(false);
         go('login');
         return;
       }
+      try { await supabase.rpc('clear_account_takedown', { p_email: email }); } catch {}
       const row = {
         id: authData.user.id,
         email,

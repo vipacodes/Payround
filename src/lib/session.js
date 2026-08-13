@@ -33,6 +33,13 @@ export async function persistProfileFromAuth() {
     return null;
   }
   const email = user.email.toLowerCase();
+  try {
+    const { data: td } = await supabase.rpc('account_takedown', { p_email: email });
+    if (td?.taken_down) {
+      await signOutEverywhere();
+      return null;
+    }
+  } catch {}
   let { data: row } = await supabase
     .from('users')
     .select('id,name,email,phone,role,is_verified')
