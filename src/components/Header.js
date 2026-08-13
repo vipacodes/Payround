@@ -180,14 +180,11 @@ export default function Header() {
           {/* Logo */}
           <button
             onClick={() => router.push('/')}
-            className="flex items-center gap-2"
+            className="flex items-center gap-2 min-w-0"
+            aria-label="Payround home"
           >
-            <div className="w-9 h-9 bg-gradient-to-br from-primary-600 to-primary-500 rounded-xl flex items-center justify-center shadow-lg shadow-primary-200">
-              <span className="text-white font-bold text-lg">P</span>
-            </div>
-            <span className="text-xl font-bold text-gray-900">
-              Pay<span className="text-primary-600">round</span>
-            </span>
+            <img src="/images/logo-mark.png" alt="" className="w-9 h-9 rounded-xl shadow-md shadow-primary-200 object-cover shrink-0" />
+            <img src="/images/logo-wordmark.png" alt="Payround" className="h-8 md:h-9 w-auto max-w-[150px] sm:max-w-[190px] object-contain object-left" />
           </button>
 
           {/* Search Bar (Desktop) */}

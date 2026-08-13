@@ -15,8 +15,8 @@ export const metadata = {
   description: 'Manage your Ajo savings groups. Build trust. Grow together.',
   manifest: '/manifest.json',
   icons: {
-    icon: '/favicon.svg',
-    apple: '/images/apple-icon.svg',
+    icon: [{ url: '/favicon.png', type: 'image/png' }, { url: '/images/logo-mark.png', type: 'image/png' }],
+    apple: '/images/apple-icon.png',
   },
   openGraph: {
     title: 'Payround - Digital Ajo Platform',

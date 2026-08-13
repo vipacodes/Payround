@@ -20,7 +20,7 @@ export default function BootLoader() {
 
   return (
     <div id="boot-loader" aria-hidden="true">
-      <div className="boot-logo">P</div>
+      <div className="boot-logo"><img src="/images/logo-mark.png" alt="" /></div>
       <div className="boot-dots"><span /><span /><span /></div>
       <p className="boot-text">PayRound</p>
     </div>

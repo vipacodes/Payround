@@ -107,9 +107,7 @@ export default function HomePage() {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="text-center">
-          <div className="w-12 h-12 bg-gradient-to-br from-primary-600 to-primary-500 rounded-2xl flex items-center justify-center mx-auto mb-3 shadow-lg shadow-primary-200">
-            <span className="text-white font-bold text-2xl">P</span>
-          </div>
+          <img src="/images/logo-mark.png" alt="Payround" className="w-14 h-14 rounded-2xl mx-auto mb-3 shadow-lg shadow-primary-200 object-cover" />
           <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600 mx-auto"></div>
         </div>
       </div>

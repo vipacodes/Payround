@@ -21,9 +21,7 @@ export default function Footer() {
         <div className={`grid grid-cols-1 gap-8 ${full ? 'md:grid-cols-4' : 'md:grid-cols-2'}`}>
           <div className="md:col-span-1">
             <button onClick={() => router.push('/')} className="flex items-center gap-2 mb-4">
-              <div className="w-8 h-8 bg-gradient-to-br from-primary-500 to-primary-600 rounded-xl flex items-center justify-center">
-                <span className="text-white font-bold text-sm">P</span>
-              </div>
+              <img src="/images/logo-mark.png" alt="" className="w-8 h-8 rounded-xl object-cover" />
               <span className="text-lg font-bold text-white">Pay<span className="text-primary-400">round</span></span>
             </button>
             <p className="text-sm text-gray-400 leading-relaxed">{platformInfo.description}</p>
