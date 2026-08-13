@@ -183,8 +183,8 @@ export default function Header() {
             className="flex items-center gap-2 min-w-0"
             aria-label="Payround home"
           >
-            <img src="/images/logo-mark.png" alt="" className="w-9 h-9 rounded-xl shadow-md shadow-primary-200 object-cover shrink-0" />
-            <img src="/images/logo-wordmark.png" alt="Payround" className="h-8 md:h-9 w-auto max-w-[150px] sm:max-w-[190px] object-contain object-left" />
+            <img src="/images/logo-mark.png" alt="" className="w-10 h-10 md:w-11 md:h-11 rounded-xl shadow-md shadow-primary-200 object-cover shrink-0" />
+            <img src="/images/logo-wordmark.png" alt="Payround" className="h-10 md:h-12 w-auto max-w-[220px] sm:max-w-[280px] md:max-w-[340px] object-contain object-left" />
           </button>
 
           {/* Search Bar (Desktop) */}
