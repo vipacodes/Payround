@@ -301,7 +301,17 @@ export default function SettingsPage() {
             {pendingPhoto && (
               <div className="mt-3 flex items-center gap-3 bg-amber-50 border border-amber-200 rounded-xl p-2.5">
                 <img src={pendingPhoto} alt="pending" onClick={() => setZoomPhoto(pendingPhoto)} title="Tap to expand" className="w-10 h-10 rounded-lg object-cover border border-amber-300 cursor-zoom-in hover:opacity-90" />
-                <p className="text-[11px] text-amber-800 font-medium">⏳ New photo awaiting PayRound approval. Your current photo stays until it&apos;s approved.</p>
+                <p className="text-[11px] text-amber-800 font-medium flex-1">⏳ New photo awaiting PayRound approval. Your current photo stays until it&apos;s approved.</p>
+                <button type="button" onClick={async () => {
+                  if (!window.confirm('Cancel the new photo?')) return;
+                  try {
+                    const { supabase } = await import('@/lib/supabase');
+                    const { error } = await supabase.from('users').update({ pending_profile_pic: null }).eq('email', user.email.toLowerCase());
+                    if (error) throw error;
+                    setPendingPhoto(null);
+                    toast.success('Photo request cancelled.');
+                  } catch (e) { toast.error(`Could not cancel: ${e.message || 'try again'}`); }
+                }} className="text-[11px] font-semibold text-red-700 border border-red-200 bg-white px-2 py-1 rounded-lg shrink-0">Cancel</button>
               </div>
             )}
           </div>

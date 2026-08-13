@@ -252,9 +252,10 @@ export default function ProfilePage() {
             <div className="p-4 bg-amber-50 border border-amber-200 rounded-xl mb-6">
               <div className="flex items-center gap-3">
                 <img src={pendingPhoto} alt="pending" onClick={() => setZoomPhoto(pendingPhoto)} title="Tap to expand" className="w-11 h-11 rounded-xl object-cover border border-amber-300 cursor-zoom-in hover:opacity-90" />
-                <div>
+                <div className="flex-1 min-w-0">
                   <p className="text-sm font-medium text-gray-900 flex items-center gap-1.5"><HiClock className="w-4 h-4 text-amber-600" /> Photo awaiting PayRound approval</p>
                   <p className="text-xs text-gray-500">Your current photo keeps showing until PayRound approves the new one.</p>
+                  <button type="button" onClick={cancelPendingPhoto} className="mt-2 text-xs font-semibold text-red-700 border border-red-200 bg-white px-3 py-1 rounded-lg hover:bg-red-50">Cancel photo request</button>
                 </div>
               </div>
             </div>
@@ -278,6 +279,7 @@ export default function ProfilePage() {
                   <p className="text-sm font-medium text-gray-900">🔵 Blue badge application under review</p>
                   <p className="text-xs text-gray-500 mt-0.5">{badgeReq.reason || 'Valid ID submitted'} • Sent {badgeReq.created_at ? new Date(badgeReq.created_at).toLocaleDateString() : ''}</p>
                   <p className="text-xs text-gray-500 mt-1">PayRound is comparing the photo on your ID with your profile selfie. You will be notified here as soon as it is decided.</p>
+                  <button type="button" onClick={cancelBadgeRequest} className="mt-2 text-xs font-semibold text-red-700 border border-red-200 bg-white px-3 py-1 rounded-lg hover:bg-red-50">Cancel this application</button>
                 </div>
               </div>
             </div>

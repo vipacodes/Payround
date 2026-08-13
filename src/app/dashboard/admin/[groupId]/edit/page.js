@@ -264,6 +264,18 @@ export default function EditGroupPage() {
                 {r.status === 'declined' && r.decline_reason && (
                   <p className="text-[11px] text-red-600 mt-1.5">Reason from PayRound: {r.decline_reason}</p>
                 )}
+                {r.status === 'pending' && (
+                  <button type="button" onClick={async () => {
+                    if (!window.confirm('Cancel this change request?')) return;
+                    try {
+                      const { supabase } = await import('@/lib/supabase');
+                      const { error } = await supabase.from('group_edit_requests').update({ status: 'cancelled' }).eq('id', r.id).eq('status', 'pending');
+                      if (error) throw error;
+                      toast.success('Change request cancelled.');
+                      await load();
+                    } catch (e) { toast.error(`Could not cancel: ${e.message || 'try again'}`); }
+                  }} className="mt-2 text-[11px] font-semibold text-red-700 border border-red-200 bg-white px-3 py-1 rounded-lg hover:bg-red-50">Cancel this request</button>
+                )}
               </div>
             ))}
           </div>

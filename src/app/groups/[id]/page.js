@@ -337,7 +337,7 @@ export default function GroupDetailsPage() {
         requested_at: new Date().toISOString(),
       };
       // Re-requesting after a decline? Revive the same row instead of stacking a duplicate.
-      const { data: stale } = await supabase.from('members').select('id').eq('group_id', params.id).eq('member_email', email).in('status', ['declined', 'spot_offered']);
+      const { data: stale } = await supabase.from('members').select('id').eq('group_id', params.id).eq('member_email', email).in('status', ['declined', 'spot_offered', 'cancelled']);
       if (stale && stale.length) {
         const { error } = await supabase.from('members').update(payload).eq('id', stale[0].id);
         if (error) throw error;
@@ -358,6 +358,27 @@ export default function GroupDetailsPage() {
       sounds.success();
       toast.success('Join request sent! The admin will review it — you will be notified. 🎉');
     } catch (e) { toast.error(`Could not send request: ${e.message || 'try again'}`); }
+    setJoining(false);
+  };
+
+  const cancelJoinRequest = async () => {
+    if (!me || joining) return;
+    if (!window.confirm('Cancel your join request for this group?')) return;
+    setJoining(true);
+    try {
+      const { supabase } = await import('@/lib/supabase');
+      const email = me.email.toLowerCase();
+      const { error } = await supabase.from('members').update({ status: 'cancelled' })
+        .eq('group_id', params.id).eq('member_email', email).eq('status', 'pending');
+      if (error) throw error;
+      await supabase.from('notifications').insert({
+        id: `joincancel-${Date.now()}`, type: 'join_cancelled', group_id: params.id, is_read: false,
+        user_email: (group.admin_email || '').toLowerCase() || null,
+        message: `↩ ${(me.name || email)} cancelled their join request for "${group.name}".`,
+      });
+      setMyStatus(null);
+      toast.success('Join request cancelled.');
+    } catch (e) { toast.error(`Could not cancel: ${e.message || 'try again'}`); }
     setJoining(false);
   };
 
@@ -701,7 +722,10 @@ export default function GroupDetailsPage() {
           <div className="bg-white rounded-2xl border border-gray-100 p-6 mb-6">
             <h2 className="font-bold text-gray-900 mb-2 flex items-center gap-2"><HiCalendar className="w-5 h-5 text-primary-600" /> Available Spots — Tap to Pick Yours</h2>
             {myStatus === 'pending' ? (
-              <p className="text-sm font-medium text-amber-700 flex items-center gap-2 bg-amber-50 border border-amber-200 rounded-xl p-3"><HiClock className="w-5 h-5 shrink-0" /> Your join request is awaiting the admin&apos;s approval — you&apos;ll get a notification.</p>
+              <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 space-y-2">
+                <p className="text-sm font-medium text-amber-700 flex items-center gap-2"><HiClock className="w-5 h-5 shrink-0" /> Your join request is awaiting the admin&apos;s approval — you&apos;ll get a notification.</p>
+                <button type="button" disabled={joining} onClick={cancelJoinRequest} className="text-xs font-semibold text-red-700 bg-white border border-red-200 px-3 py-1.5 rounded-lg hover:bg-red-50 disabled:opacity-50">Cancel this request</button>
+              </div>
             ) : openSpots.length === 0 ? (
               <p className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-xl p-3">All {N} spots are currently taken — this group is full for this round. Check back after the next payout round!</p>
             ) : (
@@ -778,7 +802,7 @@ export default function GroupDetailsPage() {
                 ) : (
                   <>
                     <button
-                      onClick={() => router.push(`/login?redirect=${encodeURIComponent(`/groups/${group.id}`)}`)}
+              ck={() => router.push(`/login?redirect=${encodeURIComponent(`/groups/${group.id}`)}`)}
                       className="w-full bg-primary-600 text-white font-semibold py-3.5 rounded-xl hover:bg-primary-700 transition-all shadow-lg shadow-primary-200"
                     >
                       Log In to Join
@@ -1003,7 +1027,7 @@ export default function GroupDetailsPage() {
                     title="Your own spots tick themselves paid every round — no receipts needed from you. Tap to switch off."
                     className={`flex items-center gap-1.5 text-[11px] font-bold px-3 py-1.5 rounded-full border transition-colors disabled:opacity-50 ${group.admin_auto_paid !== false ? 'bg-amber-100 border-amber-300 text-amber-800' : 'bg-gray-50 border-gray-200 text-gray-500'}`}
                   >
-                    👑 Auto-tick my spots (#${mySpots.join(', #')}) {group.admin_auto_paid !== false ? 'ON' : 'OFF'}
+                    👑 Auto    👑 Auto-tick my spots (#${mySpots.join(', #')}) {group.admin_auto_paid !== false ? 'ON' : 'OFF'}
                   </button>
                 )}
               </div>
@@ -1161,10 +1185,35 @@ export default function GroupDetailsPage() {
                       ? <span className="shrink-0 text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full text-xs font-semibold">Paid ✅</span>
                       : pay.status === 'declined'
                         ? <span className="shrink-0 text-red-600 bg-red-50 border border-red-200 px-2 py-0.5 rounded-full text-xs font-semibold">Declined ⚠️</span>
-                        : <span className="shrink-0 text-amber-700 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-full text-xs font-semibold">Under review ⏳</span>}
+                        : <span className="shrink-0 flex flex-col items-end gap-1">
+                        <span className="text-amber-700 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-full text-xs font-semibold">Under review ⏳</span>
+                        <button type="button" onClick={async () => {
+                          if (!window.confirm('Cancel this receipt? The admin will no longer see it.')) return;
+                          try {
+                            const { supabase } = await import('@/lib/supabase');
+                            const { error } = await supabase.from('payments').update({ status: 'cancelled' }).eq('id', pay.id).eq('status', 'pending');
+                            if (error) throw error;
+                            try { await supabase.from('group_messages').delete().eq('payment_id', pay.id); } catch {}
+                            setPayments(prev => prev.map(x => x.id === pay.id ? { ...x, status: 'cancelled' } : x));
+                            toast.success('Receipt cancelled.');
+                          } catch (e) { toast.error(`Could not cancel: ${e.message || 'try again'}`); }
+                        }} className="text-[10px] font-semibold text-red-600">Cancel</button>
+                      </span>}
                   </div>
                 ))}
               </div>
+            )}
+          </>
+        )}
+      </div>
+
+      {zoomImg && <ImageLightbox src={zoomImg} alt="Receipt" onClose={() => setZoomImg(null)} />}
+
+      <Footer />
+    </div>
+  );
+}
+        </div>
             )}
           </>
         )}

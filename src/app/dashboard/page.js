@@ -17,6 +17,7 @@ import {
   buildSpotMap, nextDueForMember, nextCashOutForMember, nextPayoutForGroup, withRotationClock, frequencyLabel, adminAutoSpots
 } from '@/lib/payments';
 import { remindRenewalIfSoon } from '@/lib/renewal';
+import toast from 'react-hot-toast';
 
 
 const fmtDate = (d) => d ? new Date(d).toLocaleDateString(undefined, { day: 'numeric', month: 'short' }) : '—';
@@ -27,6 +28,7 @@ export default function DashboardPage() {
   const [account, setAccount] = useState(null);
   const [loading, setLoading] = useState(true);
   const [joined, setJoined] = useState([]);   // [{ group, member, payments, payouts }]
+  const [pendingReqs, setPendingReqs] = useState([]); // join / extra-spot requests I sent
   const [managed, setManaged] = useState([]); // [{ group, members, payments, payouts }]
   const [ads, setAds] = useState([]);
   const [activeTab, setActiveTab] = useState(null); // joined | manage | due | cash | browse | people
@@ -69,6 +71,19 @@ export default function DashboardPage() {
         }
         setJoined(joinedOut);
 
+        const { data: pendingMine } = await supabase.from('members').select('*')
+          .eq('member_email', email).in('status', ['pending', 'spot_offered']);
+        const reqOut = [];
+        for (const m of pendingMine || []) {
+          const { data: g } = await supabase.from('groups').select('id, name, avatar_url, admin_email').eq('id', m.group_id).maybeSingle();
+          reqOut.push({ member: m, group: g });
+        }
+        // extra-spot requests on groups I already joined
+        for (const row of joinedOut) {
+          if (row.member?.extra_spots_request) reqOut.push({ member: row.member, group: row.group, extra: true });
+        }
+        setPendingReqs(reqOut);
+
         const { data: myGroups } = await supabase.from('groups').select('*')
           .eq('admin_email', email).order('created_at', { ascending: false });
         const managedOut = [];
@@ -110,6 +125,33 @@ export default function DashboardPage() {
   if (loading) {
     return <LoadingScreen label="Loading your dashboard…" />;
   }
+
+  const cancelMyRequest = async (item) => {
+    if (!window.confirm(item.extra ? 'Cancel your extra-spot request?' : item.member?.status === 'spot_offered' ? 'Decline this spot offer?' : 'Cancel this join request?')) return;
+    try {
+      const { supabase } = await import('@/lib/supabase');
+      const m = item.member;
+      if (item.extra) {
+        const { error } = await supabase.from('members').update({ extra_spots_request: null }).eq('id', m.id);
+        if (error) throw error;
+      } else if (m.status === 'spot_offered') {
+        const { error } = await supabase.from('members').update({ status: 'declined', spots: '' }).eq('id', m.id);
+        if (error) throw error;
+      } else {
+        const { error } = await supabase.from('members').update({ status: 'cancelled' }).eq('id', m.id).eq('status', 'pending');
+        if (error) throw error;
+      }
+      setPendingReqs(prev => prev.filter(x => !(x.member.id === m.id && !!x.extra === !!item.extra)));
+      toast.success('Request cancelled.');
+      try {
+        await supabase.from('notifications').insert({
+          id: `reqcancel-${Date.now()}`, type: 'request_cancelled', group_id: m.group_id, is_read: false,
+          user_email: (item.group?.admin_email || '').toLowerCase() || null,
+          message: `↩ ${(user.name || user.email)} cancelled a request on "${item.group?.name || m.group_id}".`,
+        });
+      } catch {}
+    } catch (e) { toast.error(`Could not cancel: ${e.message || 'try again'}`); }
+  };
 
   const isAdmin = managed.length > 0;
 
