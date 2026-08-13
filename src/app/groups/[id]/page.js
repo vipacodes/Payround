@@ -473,26 +473,31 @@ export default function GroupDetailsPage() {
         receipt_url: receiptData,
         status: 'pending',
       };
-      const { error } = await supabase.from('payments').insert(row);
+      const { writeWhenOnline } = await import('@/lib/offlineQueue');
+      const { queued, error } = await writeWhenOnline({ table: 'payments', op: 'insert', row });
       if (error) throw error;
-      await supabase.from('notifications').insert({
-        id: `paynew-${Date.now()}`, type: 'payment_submitted', group_id: params.id, is_read: false,
-        user_email: (group.admin_email || '').toLowerCase(),
-        message: `🧾 ${row.member_name || row.user_email} uploaded a receipt for spot${paySpots.length > 1 ? 's' : ''} #${paySpots.join(', #')} (${payWeeks} ${label}${payWeeks > 1 ? 's' : ''}, ₦${receiptAmount.toLocaleString()}) in "${group.name}" — review and approve/decline in Payments.`,
+      await writeWhenOnline({
+        table: 'notifications', op: 'insert',
+        row: {
+          id: `paynew-${Date.now()}`, type: 'payment_submitted', group_id: params.id, is_read: false,
+          user_email: (group.admin_email || '').toLowerCase(),
+          message: `🧾 ${row.member_name || row.user_email} uploaded a receipt for spot${paySpots.length > 1 ? 's' : ''} #${paySpots.join(', #')} (${payWeeks} ${label}${payWeeks > 1 ? 's' : ''}, ₦${receiptAmount.toLocaleString()}) in "${group.name}" — review and approve/decline in Payments.`,
+        },
       });
-      // 🧾 Post the receipt into the group chat — everyone sees the image, and the
-      // APPROVED / DECLINED stamp lands on it the moment the admin reviews it
-      try {
-        await supabase.from('group_messages').insert({
+      await writeWhenOnline({
+        table: 'group_messages', op: 'insert',
+        row: {
           id: `gm-${row.id}`, group_id: params.id, from_email: row.user_email,
           body: `🧾 ${row.member_name || row.user_email} paid ₦${receiptAmount.toLocaleString()} — spot${paySpots.length > 1 ? 's' : ''} #${paySpots.join(', #')} (${payWeeks} ${label}${payWeeks > 1 ? 's' : ''})`,
           image_url: receiptData, payment_id: row.id, receipt_status: 'pending',
-        });
-      } catch {}
+        },
+      });
       setPayments([row, ...payments]);
       setReceiptData(null); setReceiptName(''); setPayWeeks(1);
       sounds.success();
-      toast.success('Receipt sent! The admin will review it shortly — you will be notified.');
+      toast.success(queued
+        ? '📴 Receipt saved on this phone — it will be sent when you are back online.'
+        : 'Receipt sent! The admin will review it shortly — you will be notified.');
     } catch (e) { sounds.error(); toast.error(`Upload failed: ${e.message || 'try again'}`); }
     setUploading(false);
   };
