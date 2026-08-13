@@ -802,7 +802,7 @@ export default function GroupDetailsPage() {
                 ) : (
                   <>
                     <button
-              ck={() => router.push(`/login?redirect=${encodeURIComponent(`/groups/${group.id}`)}`)}
+              onClick={() => router.push(`/login?redirect=${encodeURIComponent(`/groups/${group.id}`)}`)}
                       className="w-full bg-primary-600 text-white font-semibold py-3.5 rounded-xl hover:bg-primary-700 transition-all shadow-lg shadow-primary-200"
                     >
                       Log In to Join
@@ -1027,7 +1027,7 @@ export default function GroupDetailsPage() {
                     title="Your own spots tick themselves paid every round — no receipts needed from you. Tap to switch off."
                     className={`flex items-center gap-1.5 text-[11px] font-bold px-3 py-1.5 rounded-full border transition-colors disabled:opacity-50 ${group.admin_auto_paid !== false ? 'bg-amber-100 border-amber-300 text-amber-800' : 'bg-gray-50 border-gray-200 text-gray-500'}`}
                   >
-                    👑 Auto    👑 Auto-tick my spots (#${mySpots.join(', #')}) {group.admin_auto_paid !== false ? 'ON' : 'OFF'}
+                    👑 Auto-tick my spots (#${mySpots.join(', #')}) {group.admin_auto_paid !== false ? 'ON' : 'OFF'}
                   </button>
                 )}
               </div>
@@ -1202,18 +1202,6 @@ export default function GroupDetailsPage() {
                   </div>
                 ))}
               </div>
-            )}
-          </>
-        )}
-      </div>
-
-      {zoomImg && <ImageLightbox src={zoomImg} alt="Receipt" onClose={() => setZoomImg(null)} />}
-
-      <Footer />
-    </div>
-  );
-}
-        </div>
             )}
           </>
         )}
