@@ -137,15 +137,9 @@ export default function EditGroupPage() {
       const { supabase } = await import('@/lib/supabase');
       const { error: reauthErr } = await supabase.auth.signInWithPassword({ email: me.email.toLowerCase(), password: delPass });
       if (reauthErr) { toast.error('Wrong password — the group was NOT deleted.'); setDeleting(false); return; }
-      // Best-effort cleanup of everything tied to the group, then the group itself
-      await supabase.from('group_messages').delete().eq('group_id', params.groupId);
-      await supabase.from('payments').delete().eq('group_id', params.groupId);
-      await supabase.from('payouts').delete().eq('group_id', params.groupId);
-      await supabase.from('members').delete().eq('group_id', params.groupId);
-      await supabase.from('notifications').delete().eq('group_id', params.groupId);
-      await supabase.from('group_edit_requests').delete().eq('group_id', params.groupId);
-      const { error } = await supabase.from('groups').delete().eq('id', params.groupId);
+      const { data: gone, error } = await supabase.rpc('delete_my_group', { p_group_id: String(params.groupId) });
       if (error) throw error;
+      if (!gone?.ok) throw new Error('Group was not removed.');
       toast.success(`"${group.name}" was deleted. Members can no longer see it.`);
       router.push('/dashboard');
     } catch (e) { toast.error(`Could not delete: ${e.message || 'try again'}`); }

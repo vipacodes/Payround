@@ -172,13 +172,13 @@ export default function SettingsPage() {
         setDeleting(false);
         return;
       }
-      await supabase.from('members').delete().eq('member_email', user.email.toLowerCase());
-      const { error } = await supabase.from('users').delete().eq('email', user.email.toLowerCase());
+      const { data: gone, error } = await supabase.rpc('delete_my_account');
       if (error) throw error;
+      if (!gone?.ok) throw new Error('Account was not removed. Try again.');
       const { signOutEverywhere } = await import('@/lib/session');
       await signOutEverywhere();
       logoutUser();
-      toast.success('Account deleted. We are sad to see you go.');
+      toast.success('Account deleted. You can no longer log in with this email.');
       router.push('/');
     } catch (e) {
       toast.error(`Delete failed: ${e.message}`);
