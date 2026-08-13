@@ -364,10 +364,11 @@ export default function ProfilePage() {
                 </div>
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1.5">Email (cannot be changed)</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1.5">Email</label>
                 <div className="relative">
                   <HiMail className="absolute left-3.5 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
                   <input type="email" value={user.email} disabled className="w-full pl-11 pr-4 py-3 border border-gray-100 bg-gray-50 text-gray-400 rounded-xl text-sm" />
+                  <p className="text-[11px] text-gray-500 mt-1">To change your email, open <button type="button" onClick={() => router.push('/settings')} className="text-primary-600 font-semibold underline">Settings</button> and enter your password.</p>
                 </div>
               </div>
               <div>

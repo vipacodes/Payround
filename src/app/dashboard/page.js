@@ -193,7 +193,7 @@ export default function DashboardPage() {
     const q = groupQ.trim().toLowerCase();
     if (!q) return true;
     return (g.name || '').toLowerCase().includes(q) || String(g.id).toLowerCase() === q || (g.admin_name || '').toLowerCase().includes(q);
-  });
+  }).sort((a, b) => (b.is_verified ? 1 : 0) - (a.is_verified ? 1 : 0));
 
   const Tab = ({ id, icon, label, badge }) => (
     <button

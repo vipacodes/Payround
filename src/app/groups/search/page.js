@@ -82,15 +82,16 @@ function SearchContent() {
   const [usersLoading, setUsersLoading] = useState(false);
 
   // Search by group name, unique group ID, or group admin name
+  const verifiedFirst = (list) => [...(list || [])].sort((a, b) => (b.is_verified ? 1 : 0) - (a.is_verified ? 1 : 0));
   const applySearch = (gs, q) => {
     const needle = q.trim().toLowerCase();
-    if (!needle) return gs;
-    return gs.filter(g =>
+    const base = !needle ? gs : gs.filter(g =>
       (g.name || '').toLowerCase().includes(needle) ||
       (g.id || '').toLowerCase() === needle ||
       (g.admin_name || '').toLowerCase().includes(needle) ||
       (g.admin_email || '').toLowerCase() === needle
     );
+    return verifiedFirst(base);
   };
 
   // Load ONLY live (owner-approved) groups from the database
@@ -133,12 +134,12 @@ function SearchContent() {
   // Search users by name, unique user ID, or email prefix
   const applyUserSearch = (us, q) => {
     const needle = q.trim().toLowerCase();
-    if (!needle) return us;
-    return us.filter(u =>
+    const base = !needle ? us : us.filter(u =>
       (u.name || '').toLowerCase().includes(needle) ||
       (u.id || '').toLowerCase().startsWith(needle) ||
       (u.email || '').toLowerCase().startsWith(needle)
     );
+    return verifiedFirst(base);
   };
 
   // Load approved users when the Users tab opens (once)

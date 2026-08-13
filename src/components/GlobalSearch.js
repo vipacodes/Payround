@@ -62,7 +62,12 @@ export default function GlobalSearch({ onClose }) {
           supabase.from('users').select('id, name, profile_pic, is_verified').ilike('name', like).limit(6),
           supabase.from('ads').select('id, business_name').eq('biz_status', 'approved').ilike('business_name', like).limit(6),
         ]);
-        setRes({ groups: g.data || [], users: u.data || [], biz: b.data || [] });
+        const vf = (a, b) => (b.is_verified ? 1 : 0) - (a.is_verified ? 1 : 0);
+        setRes({
+          groups: [...(g.data || [])].sort(vf),
+          users: [...(u.data || [])].sort(vf),
+          biz: b.data || [],
+        });
       } catch { /* keep previous */ }
       setSearching(false);
     }, 280);
