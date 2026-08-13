@@ -440,7 +440,10 @@ export default function AdsPage() {
   // Real submission — everything persisted in one go; receipt optional (can be added later from My Ads)
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!formData.businessName.trim() || !formData.description.trim()) { toast.error('Business name and description are required.'); return; }
+    if (!myEmail) {
+      toast.error('Create a free PayRound account first — visitors cannot run ads.');
+      return;
+    }
     if (!formData.contact.trim()) { toast.error('Contact phone is required.'); return; }
     if (mediaFiles.length === 0) { toast.error('Add at least 1 photo or video of your business.'); return; }
     if (!receipt && !window.confirm(`No payment receipt attached!\n\nYour ad will be SAVED as "Awaiting payment". Pay ₦${plan.price.toLocaleString()} to the PayRound account shown and upload the receipt later from "My Ads" on this page — nothing will be lost.\n\nSave the ad now without the receipt?`)) return;
@@ -774,13 +777,30 @@ export default function AdsPage() {
             <p className="text-primary-100 mb-2 max-w-lg mx-auto">
               Get your business in front of active savers across Nigeria. From just <b className="text-gold-400">₦{plans[0].price.toLocaleString()}/day</b>.
             </p>
-            <p className="text-primary-200 text-xs mb-6">Pay straight to the PayRound account, upload your receipt — advert goes live after payment is confirmed.</p>
-            <button
-              onClick={() => setShowForm(true)}
-              className="bg-gold-500 text-gray-900 font-semibold px-8 py-3.5 rounded-xl hover:bg-gold-600 transition-all shadow-xl shadow-gold-500/25"
-            >
-              Submit Your Ad Now
-            </button>
+            {myEmail ? (
+              <>
+                <p className="text-primary-200 text-xs mb-6">Pay straight to the PayRound account, upload your receipt — advert goes live after payment is confirmed.</p>
+                <button
+                  onClick={() => setShowForm(true)}
+                  className="bg-gold-500 text-gray-900 font-semibold px-8 py-3.5 rounded-xl hover:bg-gold-600 transition-all shadow-xl shadow-gold-500/25"
+                >
+                  Submit Your Ad Now
+                </button>
+              </>
+            ) : (
+              <>
+                <p className="text-primary-100 text-sm mb-2 font-semibold">Visitors cannot run ads.</p>
+                <p className="text-primary-200 text-xs mb-6">Create a free PayRound account first — then you can submit your business advert from this page.</p>
+                <div className="flex flex-col sm:flex-row gap-3 justify-center">
+                  <a href="/signup?redirect=%2Fads" className="bg-gold-500 text-gray-900 font-semibold px-8 py-3.5 rounded-xl hover:bg-gold-600 transition-all shadow-xl shadow-gold-500/25">
+                    Sign up free — then advertise
+                  </a>
+                  <a href="/login?redirect=%2Fads" className="bg-white/15 text-white font-semibold px-8 py-3.5 rounded-xl hover:bg-white/25 transition-all">
+                    I already have an account
+                  </a>
+                </div>
+              </>
+            )}
           </div>
         )}
 
