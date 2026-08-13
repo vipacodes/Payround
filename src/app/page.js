@@ -23,6 +23,7 @@ export default function HomePage() {
   const [showSearchResults, setShowSearchResults] = useState(false);
   const [stats, setStats] = useState({ users: 0, groups: 0, saved: 0, satisfaction: null });
   const [gate, setGate] = useState('checking'); // checking | guest — prevents landing-page flash for logged-in users
+  const [liveGroups, setLiveGroups] = useState([]);
 
   // Already logged in? Skip the landing page — go straight to the dashboard (no flash)
   useEffect(() => {
