@@ -390,13 +390,16 @@ function MessagesInner() {
     setSending(true);
     try {
       const { supabase } = await import('@/lib/supabase');
-      const { error } = await supabase.from('messages').insert({
+      const row = {
         id: `msg-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
         from_email: me, to_email: active, body: text,
-      });
+      };
+      const { writeWhenOnline } = await import('@/lib/offlineQueue');
+      const { queued, error } = await writeWhenOnline({ table: 'messages', op: 'insert', row });
       if (error) throw error;
       setBody('');
       sounds.send();
+      if (queued) toast('📴 Saved on this phone — will send when you are back online.');
       nearBottom.current = true;
       setMsgs(prev => [...prev, { id: `local-${Date.now()}`, from_email: me, to_email: active, body: text, created_at: new Date().toISOString(), read: false }]);
       scrollToEnd();

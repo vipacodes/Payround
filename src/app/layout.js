@@ -2,6 +2,7 @@ import './globals.css';
 import { Toaster } from 'react-hot-toast';
 import BootLoader from '@/components/BootLoader';
 import SupportChatFab from '@/components/SupportChatFab';
+import OfflineBanner from '@/components/OfflineBanner';
 
 export const viewport = {
   width: 'device-width',
@@ -39,7 +40,8 @@ export default function RootLayout({ children }) {
       </head>
       <body className="antialiased">
         <BootLoader />
-        <Toaster
+        <OfflineBanner />
+        <Toaster>
           position="top-center"
           toastOptions={{
             duration: 3000,

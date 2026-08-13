@@ -270,13 +270,16 @@ function GroupChatInner() {
     setSending(true);
     try {
       const { supabase } = await import('@/lib/supabase');
-      const { error } = await supabase.from('group_messages').insert({
+      const row = {
         id: `gmsg-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
         group_id: activeId, from_email: me, body: text,
-      });
+      };
+      const { writeWhenOnline } = await import('@/lib/offlineQueue');
+      const { queued, error } = await writeWhenOnline({ table: 'group_messages', op: 'insert', row });
       if (error) throw error;
       setBody('');
       sounds.send();
+      if (queued) toast('📴 Saved on this phone — will send when you are back online.');
       nearBottom.current = true;
       setMsgs(prev => [...prev, { id: `local-${Date.now()}`, group_id: activeId, from_email: me, body: text, created_at: new Date().toISOString() }]);
       scrollToEnd();

@@ -111,10 +111,16 @@ export default function SettingsPage() {
       const { compressImage } = await import('@/lib/image');
       const dataUrl = await compressImage(file, 512, 0.85);
       const { supabase } = await import('@/lib/supabase');
-      const { error } = await supabase.from('users').update({ pending_profile_pic: dataUrl }).eq('email', user.email.toLowerCase());
+      const { writeWhenOnline } = await import('@/lib/offlineQueue');
+      const { queued, error } = await writeWhenOnline({
+        table: 'users', op: 'update', row: { pending_profile_pic: dataUrl },
+        match: { col: 'email', val: user.email.toLowerCase() },
+      });
       if (error) throw error;
       setPendingPhoto(dataUrl);
-      toast.success('📷 Photo sent to PayRound for approval — it will appear after approval.');
+      toast.success(queued
+        ? '📴 Photo saved on this phone — it will be sent for approval when you are back online.'
+        : '📷 Photo sent to PayRound for approval — it will appear after approval.');
     } catch (err) {
       toast.error(`Could not send photo: ${err.message || 'please try again'}`);
     }
