@@ -509,17 +509,12 @@ export default function AdsPage() {
         status: 'pending',
         submitted_at: new Date().toISOString(),
       };
-      // Save through a hard-timeout fetch so the button ALWAYS comes back (never stuck on "Submitting…")
       const bodyKB = Math.round(JSON.stringify(payload).length / 1024);
       if (bodyKB > MAX_PAYLOAD_KB) throw new Error(`This ad is still too heavy (~${(bodyKB / 1024).toFixed(1)}MB) — remove a photo or two and try again.`);
-      const timeoutMs = bodyKB > 1400 ? 120000 : 60000;
-      if (editId) {
-        // fixing a declined ad — UPDATE the same row (keeps its original created date) and clear the rejection
-        const { submitted_at, ...rest } = payload;
-        await postgrestSave('PATCH', `ads?id=eq.${encodeURIComponent(editId)}`, { ...rest, reject_reason: null }, timeoutMs);
-      } else {
-        await postgrestSave('POST', 'ads', payload, timeoutMs);
-      }
+      const { supabase } = await import('@/lib/supabase');
+      const { data: saved, error: saveErr } = await supabase.rpc('submit_ad', { p: payload });
+      if (saveErr) throw saveErr;
+      if (!saved?.ok) throw new Error('Ad was not saved. Try again.');
       toast.success(editId
         ? 'Updated ad sent for review again! 🎉 The reason it was declined is cleared.'
         : receipt
