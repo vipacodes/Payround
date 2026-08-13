@@ -184,7 +184,7 @@ export default function Header() {
             aria-label="Payround home"
           >
             <img src="/images/logo-mark.png" alt="" className="w-8 h-8 rounded-lg shadow-sm object-cover shrink-0" />
-            <img src="/images/logo-wordmark.png" alt="Payround" className="hidden sm:block h-6 w-auto max-w-[110px] md:max-w-[140px] object-contain object-left" />
+            <img src="/images/logo-wordmark.png" alt="Payround" className="h-6 sm:h-7 w-auto max-w-[120px] sm:max-w-[150px] object-contain object-left" />
           </button>
 
           {/* Search Bar (Desktop) */}
