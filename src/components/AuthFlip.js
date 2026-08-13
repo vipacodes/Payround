@@ -68,7 +68,7 @@ function LoginPane({ go, autoSkip }) {
       if (error || !data?.user) {
         const msg = String(error?.message || '').toLowerCase();
         if (msg.includes('email not confirmed')) {
-          toast.error('Please confirm your email first — check your inbox.');
+          toast.error('Try logging in again. If it still fails, use Forgot password or email payroundsupport@gmail.com');
           setLoading(false);
           return;
         }
@@ -296,6 +296,12 @@ function SignupPane({ go }) {
       });
       if (authErr) {
         const m = String(authErr.message || '');
+        if (/already|registered|exists/i.test(m)) {
+          toast.error('This email already has an account — log in instead.');
+          setSubmitting(false);
+          go('login');
+          return;
+        }
         if (/fetch|network|failed to fetch/i.test(m)) {
           toast.error('Could not reach Payround servers. Check your internet and try again.');
         } else {
@@ -305,11 +311,17 @@ function SignupPane({ go }) {
         return;
       }
       if (!authData.session) {
-        try { await supabase.rpc('clear_account_takedown', { p_email: email }); } catch {}
-        toast.success('Check your email to confirm your account, then log in.');
-        setSubmitting(false);
-        go('login');
-        return;
+        const login = await supabase.auth.signInWithPassword({ email, password: formData.password });
+        if (login.data?.session) {
+          authData.session = login.data.session;
+          authData.user = login.data.user;
+        } else {
+          try { await supabase.rpc('clear_account_takedown', { p_email: email }); } catch {}
+          toast.success('Account is ready. Log in with the same email and password — no email to check.');
+          setSubmitting(false);
+          go('login');
+          return;
+        }
       }
       try { await supabase.rpc('clear_account_takedown', { p_email: email }); } catch {}
       const row = {
