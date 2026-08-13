@@ -37,13 +37,16 @@ export default function PublicUserProfilePage() {
     (async () => {
       try {
         const { supabase } = await import('@/lib/supabase');
-        const { data: u, error } = await supabase
-          .from('users')
-          .select('id, name, email, phone, profile_pic, is_verified, role, created_at, bank_name, account_number, account_name')
-          .eq('id', params.id)
-          .single();
+        let u = null;
+        const sel = 'id, name, email, phone, profile_pic, is_verified, role, created_at, bank_name, account_number, account_name';
+        const byId = await supabase.from('users').select(sel).eq('id', params.id).maybeSingle();
+        u = byId.data;
+        if (!u && String(params.id || '').length >= 6) {
+          const { data: list } = await supabase.from('users').select(sel).ilike('id', `${params.id}%`).limit(2);
+          if (list && list.length === 1) u = list[0];
+        }
         if (!mounted) return;
-        if (error || !u) { setNotFound(true); setLoading(false); return; }
+        if (!u) { setNotFound(true); setLoading(false); return; }
         setPerson(u);
         const email = (u.email || '').toLowerCase(); // used only to fetch their groups — never displayed
         // Groups they admin

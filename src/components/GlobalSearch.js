@@ -56,17 +56,12 @@ export default function GlobalSearch({ onClose }) {
     timer.current = setTimeout(async () => {
       try {
         const { supabase } = await import('@/lib/supabase');
-        const like = `%${query.replace(/[%_,]/g, ' ').trim()}%`;
-        const [g, u, b] = await Promise.all([
-          supabase.from('groups').select('id, name, amount, frequency, avatar_url, is_verified, badge_tier').ilike('name', like).limit(6),
-          supabase.from('users').select('id, name, profile_pic, is_verified').ilike('name', like).limit(6),
-          supabase.from('ads').select('id, business_name').eq('biz_status', 'approved').ilike('business_name', like).limit(6),
-        ]);
-        const vf = (a, b) => (b.is_verified ? 1 : 0) - (a.is_verified ? 1 : 0);
+        const { data, error } = await supabase.rpc('search_site', { p_q: query });
+        if (error) throw error;
         setRes({
-          groups: [...(g.data || [])].sort(vf),
-          users: [...(u.data || [])].sort(vf),
-          biz: b.data || [],
+          groups: data?.groups || [],
+          users: data?.users || [],
+          biz: data?.biz || [],
         });
       } catch { /* keep previous */ }
       setSearching(false);
@@ -99,7 +94,7 @@ export default function GlobalSearch({ onClose }) {
           {ql.length < 2 ? (
             <div className="px-5 py-6 text-center">
               <p className="text-sm font-semibold text-gray-700 mb-1">Search literally anything 🔍</p>
-              <p className="text-xs text-gray-400 mb-3">Type at least 2 letters — find <b>groups</b>, <b>people</b>, <b>businesses</b> & <b>pages</b></p>
+              <p className="text-xs text-gray-400 mb-3">Type a name or a unique ID — find <b>groups</b>, <b>people</b>, <b>businesses</b> & <b>pages</b></p>
               <div className="flex flex-wrap justify-center gap-1.5">
                 {['groups', 'settings', 'ads', 'bank', 'messages'].map(s => (
                   <button key={s} onClick={() => setQ(s)} className="text-[11px] font-semibold text-primary-700 bg-primary-50 border border-primary-100 px-2.5 py-1 rounded-full hover:bg-primary-100">{s}</button>
@@ -140,9 +135,12 @@ export default function GlobalSearch({ onClose }) {
                       ) : (
                         <span className="w-9 h-9 rounded-full bg-gray-100 text-gray-600 font-bold flex items-center justify-center text-sm shrink-0">{(u.name || 'P').charAt(0).toUpperCase()}</span>
                       )}
-                      <span className="flex-1 min-w-0 flex items-center gap-1 text-sm font-semibold text-gray-900">
-                        <span className="truncate">{u.name || 'PayRound member'}</span>
-                        {u.is_verified && <HiBadgeCheck className="w-4 h-4 text-blue-500 shrink-0" />}
+                      <span className="flex-1 min-w-0">
+                        <span className="flex items-center gap-1 text-sm font-semibold text-gray-900">
+                          <span className="truncate">{u.name || 'PayRound member'}</span>
+                          {u.is_verified && <HiBadgeCheck className="w-4 h-4 text-blue-500 shrink-0" />}
+                        </span>
+                        <span className="block text-[11px] text-purple-700 font-mono font-bold">ID: {String(u.id || '').slice(0, 8)}</span>
                       </span>
                       <span className="text-xs font-medium text-primary-600 shrink-0">View →</span>
                     </Row>
@@ -179,7 +177,7 @@ export default function GlobalSearch({ onClose }) {
               {nothing && (
                 <div className="px-5 py-6 text-center">
                   <p className="text-sm font-semibold text-gray-600">Nothing found for “{q.trim()}”</p>
-                  <p className="text-xs text-gray-400 mt-1">Try another spelling — group names, people's names, business names or page names.</p>
+                  <p className="text-xs text-gray-400 mt-1">Try a name or the 8-character unique ID under their name.</p>
                 </div>
               )}
             </div>
