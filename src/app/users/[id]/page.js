@@ -185,6 +185,11 @@ export default function PublicUserProfilePage() {
             {person.name}
             {person.is_verified && <HiBadgeCheck className="w-8 h-8 text-blue-500 shrink-0 badge-emboss" title="Verified by PayRound" />}
           </h1>
+          {person.id && (
+            <p className="text-[12px] text-purple-700 font-mono font-bold mt-1">
+              Unique ID: {String(person.id).slice(0, 8)}
+            </p>
+          )}
           {person.is_verified && (
             <p className="inline-flex items-center gap-1.5 text-xs font-semibold text-blue-700 bg-blue-50 border border-blue-200 rounded-full px-3 py-1.5 mt-3">
               <HiShieldCheck className="w-4 h-4" /> Verified by PayRound

@@ -42,7 +42,7 @@ export default function ProfilePage() {
         const { supabase } = await import('@/lib/supabase');
         const { data } = await supabase
           .from('users')
-          .select('name, email, phone, role, profile_pic, pending_profile_pic, is_verified, is_approved, approval_status, referral_earnings, referred_by, created_at, gender, dob, address, occupation, bio, bank_name, account_number, account_name')
+          .select('id, name, email, phone, role, profile_pic, pending_profile_pic, is_verified, is_approved, approval_status, referral_earnings, referred_by, created_at, gender, dob, address, occupation, bio, bank_name, account_number, account_name')
           .eq('email', (parsed.email || '').toLowerCase())
           .single();
         if (data) {
@@ -224,6 +224,16 @@ export default function ProfilePage() {
                 <span className="truncate">{account?.name || user.name}</span>
                 {account?.is_verified && <HiBadgeCheck className="w-7 h-7 text-blue-500 shrink-0 badge-emboss" title="Verified by PayRound" />}
               </h2>
+              {(account?.id || user.id) && (
+                <p className="text-[11px] text-purple-700 font-mono font-bold mt-0.5">
+                  Unique ID: {String(account?.id || user.id).slice(0, 8)}
+                  <button
+                    type="button"
+                    onClick={() => { try { navigator.clipboard.writeText(String(account?.id || user.id).slice(0, 8)); toast.success('Unique ID copied'); } catch {} }}
+                    className="ml-2 text-[10px] font-semibold text-primary-600 underline"
+                  >Copy</button>
+                </p>
+              )}
               {account?.approval_status === 'approved' && <p className="text-[11px] text-green-700 bg-green-50 border border-green-200 rounded-full px-2 py-0.5 mt-1 inline-block">✅ Account approved</p>}
               <button onClick={() => setShowFollowers(true)} title="See your followers"
                 className="inline-flex items-center gap-1.5 bg-gray-100 hover:bg-gray-200 border border-gray-200 rounded-full px-3 py-1 mt-2 text-[11px] font-semibold text-gray-700 transition-colors">

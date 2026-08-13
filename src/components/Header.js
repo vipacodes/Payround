@@ -19,6 +19,7 @@ export default function Header() {
   // Simple auth check from localStorage
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [userName, setUserName] = useState('');
+  const [userIdShort, setUserIdShort] = useState('');
   const [userRole, setUserRole] = useState('');
   const [unreadCount, setUnreadCount] = useState(0);
   const [unreadMsgs, setUnreadMsgs] = useState(0);
@@ -34,6 +35,7 @@ export default function Header() {
         const parsed = JSON.parse(stored);
         setIsLoggedIn(true);
         setUserName(parsed.name || '');
+        setUserIdShort(String(parsed.id || '').slice(0, 8));
         setUserRole(parsed.role || 'member');
       } catch (e) {}
     }
