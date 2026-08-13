@@ -13,6 +13,7 @@ import {
 } from 'react-icons/hi';
 import toast from 'react-hot-toast';
 import FollowersList from '@/components/FollowersList';
+import ShareButton, { siteUrl } from '@/components/ShareSheet';
 
 
 
@@ -193,6 +194,15 @@ export default function PublicUserProfilePage() {
               Unique ID: {String(person.id).slice(0, 8)}
             </p>
           )}
+          <div className="mt-3">
+            <ShareButton
+              compact
+              label="Share profile"
+              title={person.name || 'PayRound profile'}
+              text={`See ${person.name || 'this saver'} on PayRound. Unique ID: ${String(person.id || '').slice(0, 8)}`}
+              url={siteUrl(`/users/${person.id}`)}
+            />
+          </div>
           {person.is_verified && (
             <p className="inline-flex items-center gap-1.5 text-xs font-semibold text-blue-700 bg-blue-50 border border-blue-200 rounded-full px-3 py-1.5 mt-3">
               <HiShieldCheck className="w-4 h-4" /> Verified by PayRound

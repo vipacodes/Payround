@@ -17,6 +17,7 @@ import { parseSpots, formatSpots, currentPeriod, cycleLength, periodLabel, perio
 import { compressImage } from '@/lib/image';
 import toast from 'react-hot-toast';
 import { sounds } from '@/lib/sounds';
+import ShareButton, { siteUrl } from '@/components/ShareSheet';
 
 export default function GroupDetailsPage() {
   const router = useRouter();
@@ -565,6 +566,15 @@ export default function GroupDetailsPage() {
               </h1>
               <p className="text-xs text-gray-400 font-mono mt-0.5">ID: {group.id}</p>
               <p className="text-sm text-gray-600 mt-2">{group.description || 'Ajo savings group on PayRound.'}</p>
+              <div className="mt-3">
+                <ShareButton
+                  compact
+                  label="Share group"
+                  title={group.name}
+                  text={`Join "${group.name}" on PayRound. Group ID: ${group.id}`}
+                  url={siteUrl(`/groups/${group.id}`)}
+                />
+              </div>
             </div>
           </div>
 

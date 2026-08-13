@@ -8,6 +8,7 @@ import ImageLightbox from '@/components/ImageLightbox';
 import { HiUser, HiMail, HiPhone, HiCamera, HiPencil, HiSave, HiBadgeCheck, HiClock, HiGift, HiLockClosed, HiLocationMarker, HiBriefcase, HiCalendar, HiIdentification } from 'react-icons/hi';
 import toast from 'react-hot-toast';
 import FollowersList from '@/components/FollowersList';
+import ShareButton, { siteUrl } from '@/components/ShareSheet';
 
 export default function ProfilePage() {
   const router = useRouter();
@@ -236,10 +237,21 @@ export default function ProfilePage() {
                 </p>
               )}
               {account?.approval_status === 'approved' && <p className="text-[11px] text-green-700 bg-green-50 border border-green-200 rounded-full px-2 py-0.5 mt-1 inline-block">✅ Account approved</p>}
-              <button onClick={() => setShowFollowers(true)} title="See your followers"
-                className="inline-flex items-center gap-1.5 bg-gray-100 hover:bg-gray-200 border border-gray-200 rounded-full px-3 py-1 mt-2 text-[11px] font-semibold text-gray-700 transition-colors">
-                👥 {followersCount} Follower{followersCount === 1 ? '' : 's'} · view
-              </button>
+              <div className="flex flex-wrap items-center gap-2 mt-2">
+                <button onClick={() => setShowFollowers(true)} title="See your followers"
+                  className="inline-flex items-center gap-1.5 bg-gray-100 hover:bg-gray-200 border border-gray-200 rounded-full px-3 py-1 text-[11px] font-semibold text-gray-700 transition-colors">
+                  👥 {followersCount} Follower{followersCount === 1 ? '' : 's'} · view
+                </button>
+                {(account?.id || user.id) && (
+                  <ShareButton
+                    compact
+                    label="Share profile"
+                    title={account?.name || user.name || 'PayRound profile'}
+                    text={`See ${account?.name || user.name || 'me'} on PayRound. Unique ID: ${String(account?.id || user.id).slice(0, 8)}`}
+                    url={siteUrl(`/users/${account?.id || user.id}`)}
+                  />
+                )}
+              </div>
             </div>
           </div>
 

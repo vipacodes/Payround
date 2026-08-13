@@ -5,6 +5,7 @@ import { useRouter, usePathname } from 'next/navigation';
 import { HiMenu, HiX, HiSearch, HiBell, HiHome, HiUserGroup, HiCurrencyDollar, HiUser, HiLogout, HiChartBar, HiCog, HiChatAlt2, HiCalculator, HiSpeakerphone } from 'react-icons/hi';
 import QuickCalc from '@/components/QuickCalc';
 import GlobalSearch from '@/components/GlobalSearch';
+import ShareButton, { payroundInviteUrl } from '@/components/ShareSheet';
 import { logoutUser } from '@/lib/data';
 import { sounds } from '@/lib/sounds';
 import toast from 'react-hot-toast';
@@ -280,6 +281,13 @@ export default function Header() {
                   <HiSpeakerphone className="w-5 h-5" />
                   My Ads
                 </button>
+                <ShareButton
+                  compact
+                  label="Share PayRound"
+                  title="PayRound"
+                  text="Join me on PayRound — save together with people you can see. Sign up free."
+                  url={payroundInviteUrl()}
+                />
 
                 <button
                   onClick={() => setShowCalc(true)}
@@ -360,6 +368,13 @@ export default function Header() {
                 >
                   Login
                 </button>
+                <ShareButton
+                  compact
+                  label="Share PayRound"
+                  title="PayRound"
+                  text="Join PayRound — save together with people you can see. Sign up free."
+                  url={payroundInviteUrl()}
+                />
                 <button
                   onClick={() => router.push('/signup')}
                   className="bg-primary-600 text-white text-sm font-medium px-5 py-2.5 rounded-xl hover:bg-primary-700 transition-all shadow-lg shadow-primary-200"
@@ -463,6 +478,15 @@ export default function Header() {
                   )}
                   <MobileNavItem icon={<HiUser className="w-5 h-5" />} label="Profile" onClick={() => { router.push('/profile'); setIsMenuOpen(false); }} active={isActive('/profile')} />
                   <MobileNavItem icon={<HiCog className="w-5 h-5" />} label="Settings" onClick={() => { router.push('/settings'); setIsMenuOpen(false); }} active={isActive('/settings')} />
+                  <div className="px-1 pt-1">
+                    <ShareButton
+                      label="Share PayRound with friends"
+                      title="PayRound"
+                      text="Join me on PayRound — save together with people you can see. Sign up free."
+                      url={payroundInviteUrl()}
+                      className="w-full inline-flex items-center justify-center gap-2 text-sm font-semibold text-primary-800 bg-primary-50 border border-primary-200 px-4 py-3 rounded-xl"
+                    />
+                  </div>
                   <button
                     onClick={handleLogout}
                     className="flex items-center gap-3 w-full px-4 py-3 text-red-600 bg-red-50 rounded-xl text-sm font-medium"
