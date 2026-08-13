@@ -38,22 +38,15 @@ export default function HomePage() {
     const loadStats = async () => {
       try {
         const { supabase } = await import('@/lib/supabase');
-        const [u, g, rv, rc, s] = await Promise.all([
-          supabase.from('users').select('*', { count: 'exact', head: true }),
-          supabase.from('groups').select('*', { count: 'exact', head: true }).in('status', ['active', 'approved']),
-          supabase.from('group_reviews').select('rating'),
-          supabase.from('member_receipts').select('amount').in('status', ['active', 'approved']),
-          Promise.resolve({ data: null }),
-        ]);
+        const { data, error } = await supabase.rpc('public_site_stats');
+        if (error) throw error;
         if (!mounted) return;
-        const ratings = rv.data || [];
-        const realSat = ratings.length ? Math.round((ratings.reduce((a, x) => a + (x.rating || 0), 0) / (ratings.length * 5)) * 100) : null;
-        const realSaved = (rc.data || []).reduce((a, x) => a + (x.amount || 0), 0);
+        const row = data && typeof data === 'object' ? data : {};
         setStats({
-          users: u.count || 0,
-          groups: g.count || 0,
-          saved: realSaved,
-          satisfaction: realSat,
+          users: row.users ?? 0,
+          groups: row.groups ?? 0,
+          saved: row.saved ?? 0,
+          satisfaction: row.satisfaction ?? null,
         });
       } catch {}
     };
