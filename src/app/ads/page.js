@@ -69,6 +69,12 @@ const SUPA_FALLBACK_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
 const postgrestSave = async (method, path, body, timeoutMs) => {
   const base = process.env.NEXT_PUBLIC_SUPABASE_URL || SUPA_FALLBACK_URL;
   const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || SUPA_FALLBACK_KEY;
+  let bearer = key;
+  try {
+    const { supabase } = await import('@/lib/supabase');
+    const { data } = await supabase.auth.getSession();
+    if (data?.session?.access_token) bearer = data.session.access_token;
+  } catch {}
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), timeoutMs);
   let res;
@@ -77,7 +83,7 @@ const postgrestSave = async (method, path, body, timeoutMs) => {
       method,
       headers: {
         apikey: key,
-        Authorization: `Bearer ${key}`,
+        Authorization: `Bearer ${bearer}`,
         'Content-Type': 'application/json',
         // merge-duplicates = re-tapping Submit after a network hiccup safely overwrites instead of erroring
         Prefer: method === 'POST' ? 'return=minimal,resolution=merge-duplicates' : 'return=minimal',

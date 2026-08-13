@@ -7,7 +7,7 @@ import Footer from '@/components/Footer';
 import GroupCard from '@/components/GroupCard';
 import AdSlideshow from '@/components/AdSlideshow';
 import BroadcastAlert from '@/components/BroadcastAlert';
-import { groups, businessAds } from '@/lib/data';
+import { groups as mockGroups } from '@/lib/data';
 import {
   HiUserGroup, HiShieldCheck, HiBellAlert,
   HiChartBar, HiCurrencyDollar, HiCheckCircle, HiStar,
@@ -60,23 +60,35 @@ export default function HomePage() {
   useEffect(() => {
     (async () => {
       try {
-        const { getAdsFromSupabase } = await import('@/lib/supabase');
+        const { getAdsFromSupabase, getGroupsFromSupabase } = await import('@/lib/supabase');
         setAds(await getAdsFromSupabase());
+        const gs = await getGroupsFromSupabase();
+        setLiveGroups((gs || []).sort((a, b) => (b.adminVerified ? 1 : 0) - (a.adminVerified ? 1 : 0)));
       } catch {}
     })();
   }, []);
   const activeAds = ads;
+  const groups = liveGroups.length ? liveGroups : mockGroups;
 
-  const handleSearch = (e) => {
+  const handleSearch = async (e) => {
     e.preventDefault();
-    if (searchQuery.trim()) {
-      const results = groups.filter(g =>
-        g.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        g.id.toLowerCase().includes(searchQuery.toLowerCase())
-      );
-      setSearchResults(results);
-      setShowSearchResults(true);
+    const q = searchQuery.trim().toLowerCase();
+    if (!q) return;
+    let list = groups;
+    if (!list.length) {
+      try {
+        const { getGroupsFromSupabase } = await import('@/lib/supabase');
+        list = await getGroupsFromSupabase();
+        setLiveGroups(list || []);
+      } catch { list = []; }
     }
+    const results = (list || []).filter(g =>
+      (g.name || '').toLowerCase().includes(q) ||
+      String(g.id || '').toLowerCase() === q ||
+      (g.adminName || '').toLowerCase().includes(q)
+    ).sort((a, b) => (b.adminVerified ? 1 : 0) - (a.adminVerified ? 1 : 0));
+    setSearchResults(results);
+    setShowSearchResults(true);
   };
 
   const features = [
@@ -358,7 +370,13 @@ export default function HomePage() {
               <p className="text-primary-200 text-sm">Active Groups</p>
             </div>
             <div>
-              <p className="text-3xl md:text-4xl font-bold text-white mb-1">{typeof stats.saved === 'string' && stats.saved.trim() !== '' ? stats.saved : `₦${Intl.NumberFormat('en', { notation: 'compact', maximumFractionDigits: 1 }).format(Number(stats.saved) || 0)}`}</p>
+              <p className="text-3xl md:text-4xl font-bold text-white mb-1">{(() => {
+                const v = stats.saved;
+                if (v === null || v === undefined || v === '') return '₦0';
+                const s = String(v).trim();
+                if (/[A-Za-z+%₦]/.test(s) && !/^\d+(\.\d+)?$/.test(s)) return s;
+                return `₦${Intl.NumberFormat('en', { notation: 'compact', maximumFractionDigits: 1 }).format(Number(s) || 0)}`;
+              })()}</p>
               <p className="text-primary-200 text-sm">Saved Through Platform</p>
             </div>
             <div>
