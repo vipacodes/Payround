@@ -41,7 +41,7 @@ export default function RootLayout({ children }) {
       <body className="antialiased">
         <BootLoader />
         <OfflineBanner />
-        <Toaster>
+        <Toaster
           position="top-center"
           toastOptions={{
             duration: 3000,
