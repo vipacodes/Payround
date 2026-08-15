@@ -84,6 +84,24 @@ with verification as (
     (select count(*) from public.referral_claims) as recorded_relationship_count,
     (select count(*) from public.referral_claims where status in ('pending', 'awarded')) as new_bonus_count,
     (
+      not exists (
+        select 1
+        from public.users as u
+        where coalesce(u.referral_earnings, 0) is distinct from coalesce((
+          select sum(c.bonus_amount)
+          from public.referral_claims as c
+          where c.referrer_user_id = u.id
+            and c.status = 'awarded'
+        ), 0)
+      )
+    ) as balances_match_awarded_claims,
+    (
+      select count(*)
+      from public.notifications
+      where type = 'referral_bonus'
+        and (message ilike '%earned ₦200%' or message ilike '%earned N200%')
+    ) as obsolete_n200_notifications,
+    (
       select count(*)
       from public.referral_claims
       where (status = 'referred' and bonus_amount <> 0)
@@ -107,6 +125,8 @@ cross join lateral (
     ('10_excluded_group_count', v.excluded_group_count::text),
     ('11_recorded_relationship_count', v.recorded_relationship_count::text),
     ('12_new_bonus_count', v.new_bonus_count::text),
-    ('13_invalid_claim_count', v.invalid_claim_count::text)
+    ('13_balances_match_awarded_claims', v.balances_match_awarded_claims::text),
+    ('14_obsolete_n200_notifications', v.obsolete_n200_notifications::text),
+    ('15_invalid_claim_count', v.invalid_claim_count::text)
 ) as checks(item, result)
 order by item;
