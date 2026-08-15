@@ -3,7 +3,8 @@
 with verification as (
   select
     (
-      to_regprocedure('public.apply_referral(text,text)') is not null
+      to_regprocedure('public.resolve_authenticated_profile_id()') is not null
+      and to_regprocedure('public.apply_referral(text,text)') is not null
       and to_regprocedure('public.get_my_referral_dashboard()') is not null
       and to_regprocedure('public.set_profile_privacy(boolean,boolean)') is not null
       and to_regprocedure('public.set_referral_list_privacy(boolean)') is not null
@@ -34,6 +35,24 @@ with verification as (
       and has_function_privilege('authenticated', 'public.set_dob_privacy(boolean)', 'execute')
       and not has_function_privilege('anon', 'public.set_dob_privacy(boolean)', 'execute')
     ) as privacy_rpc_access_ok,
+    (
+      not has_function_privilege('authenticated', 'public.resolve_authenticated_profile_id()', 'execute')
+      and not has_function_privilege('anon', 'public.resolve_authenticated_profile_id()', 'execute')
+      and (
+        select count(*) = 5
+        from pg_proc as p
+        join pg_namespace as n on n.oid = p.pronamespace
+        where n.nspname = 'public'
+          and p.proname in (
+            'apply_referral',
+            'get_my_referral_dashboard',
+            'set_profile_privacy',
+            'set_referral_list_privacy',
+            'set_dob_privacy'
+          )
+          and p.prosrc ilike '%resolve_authenticated_profile_id%'
+      )
+    ) as identity_resolution_secure,
     (
       not has_table_privilege('authenticated', 'public.referral_claims', 'select')
       and not has_table_privilege('anon', 'public.referral_claims', 'select')
@@ -80,13 +99,14 @@ cross join lateral (
     ('02_required_triggers_ok', v.required_triggers_ok::text),
     ('03_referral_rpc_access_ok', v.referral_rpc_access_ok::text),
     ('04_privacy_rpc_access_ok', v.privacy_rpc_access_ok::text),
-    ('05_internal_tables_private', v.internal_tables_private::text),
-    ('06_sensitive_columns_private', v.sensitive_columns_private::text),
-    ('07_existing_approved_groups_excluded', v.existing_approved_groups_excluded::text),
-    ('08_migration_state_rows', v.migration_state_rows::text),
-    ('09_excluded_group_count', v.excluded_group_count::text),
-    ('10_recorded_relationship_count', v.recorded_relationship_count::text),
-    ('11_new_bonus_count', v.new_bonus_count::text),
-    ('12_invalid_claim_count', v.invalid_claim_count::text)
+    ('05_identity_resolution_secure', v.identity_resolution_secure::text),
+    ('06_internal_tables_private', v.internal_tables_private::text),
+    ('07_sensitive_columns_private', v.sensitive_columns_private::text),
+    ('08_existing_approved_groups_excluded', v.existing_approved_groups_excluded::text),
+    ('09_migration_state_rows', v.migration_state_rows::text),
+    ('10_excluded_group_count', v.excluded_group_count::text),
+    ('11_recorded_relationship_count', v.recorded_relationship_count::text),
+    ('12_new_bonus_count', v.new_bonus_count::text),
+    ('13_invalid_claim_count', v.invalid_claim_count::text)
 ) as checks(item, result)
 order by item;

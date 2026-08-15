@@ -5,6 +5,49 @@
 
 begin;
 
+-- Prefer the exact auth UUID, then safely resolve one legacy profile through the
+-- authoritative auth.users email. No client-supplied identity is accepted.
+create or replace function public.resolve_authenticated_profile_id()
+returns uuid
+language plpgsql
+stable
+security definer
+set search_path = pg_catalog, public, auth
+as $function$
+declare
+  v_auth_id uuid := auth.uid();
+  v_profile_id uuid;
+  v_email_matches integer := 0;
+begin
+  if v_auth_id is null then
+    return null;
+  end if;
+
+  select u.id into v_profile_id
+  from public.users as u
+  where u.id = v_auth_id;
+
+  if v_profile_id is not null then
+    return v_profile_id;
+  end if;
+
+  select count(*), min(u.id::text)::uuid
+    into v_email_matches, v_profile_id
+  from auth.users as a
+  join public.users as u
+    on lower(btrim(u.email)) = lower(btrim(a.email))
+  where a.id = v_auth_id
+    and nullif(btrim(a.email), '') is not null;
+
+  if v_email_matches = 1 then
+    return v_profile_id;
+  end if;
+  return null;
+end;
+$function$;
+
+revoke all on function public.resolve_authenticated_profile_id() from public, anon, authenticated;
+
 create or replace function public.get_my_referral_dashboard()
 returns jsonb
 language plpgsql
@@ -13,12 +56,18 @@ security definer
 set search_path = pg_catalog, public, auth
 as $function$
 declare
-  v_uid uuid := auth.uid();
+  v_auth_id uuid := auth.uid();
+  v_uid uuid;
   v_result jsonb;
   v_referrals jsonb;
 begin
-  if v_uid is null then
+  if v_auth_id is null then
     raise exception using errcode = '42501', message = 'Authentication required';
+  end if;
+
+  v_uid := public.resolve_authenticated_profile_id();
+  if v_uid is null then
+    raise exception using errcode = 'P0002', message = 'Profile not found';
   end if;
 
   -- Claims are the source of reward status. The second branch is a display-only
@@ -125,11 +174,17 @@ security definer
 set search_path = pg_catalog, public, auth
 as $function$
 declare
-  v_uid uuid := auth.uid();
+  v_auth_id uuid := auth.uid();
+  v_uid uuid;
   v_result jsonb;
 begin
-  if v_uid is null then
+  if v_auth_id is null then
     raise exception using errcode = '42501', message = 'Authentication required';
+  end if;
+
+  v_uid := public.resolve_authenticated_profile_id();
+  if v_uid is null then
+    raise exception using errcode = 'P0002', message = 'Profile not found';
   end if;
 
   update public.users
@@ -154,11 +209,17 @@ security definer
 set search_path = pg_catalog, public, auth
 as $function$
 declare
-  v_uid uuid := auth.uid();
+  v_auth_id uuid := auth.uid();
+  v_uid uuid;
   v_result jsonb;
 begin
-  if v_uid is null then
+  if v_auth_id is null then
     raise exception using errcode = '42501', message = 'Authentication required';
+  end if;
+
+  v_uid := public.resolve_authenticated_profile_id();
+  if v_uid is null then
+    raise exception using errcode = 'P0002', message = 'Profile not found';
   end if;
 
   update public.users

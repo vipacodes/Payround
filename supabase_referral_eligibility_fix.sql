@@ -524,6 +524,53 @@ create trigger on_referral_member_approved
 after insert or update of status on public.members
 for each row execute function public.on_referral_member_approved();
 
+-- Resolve the app profile belonging to the authenticated Supabase account. Newer
+-- profiles use auth.uid() directly; one legacy signup path allowed public.users to
+-- receive a different generated UUID, so that account is safely matched through the
+-- authoritative email in auth.users instead. Clients cannot supply either identity.
+create or replace function public.resolve_authenticated_profile_id()
+returns uuid
+language plpgsql
+stable
+security definer
+set search_path = pg_catalog, public, auth
+as $function$
+declare
+  v_auth_id uuid := auth.uid();
+  v_profile_id uuid;
+  v_email_matches integer := 0;
+begin
+  if v_auth_id is null then
+    return null;
+  end if;
+
+  select u.id into v_profile_id
+  from public.users as u
+  where u.id = v_auth_id;
+
+  if v_profile_id is not null then
+    return v_profile_id;
+  end if;
+
+  select count(*), min(u.id::text)::uuid
+    into v_email_matches, v_profile_id
+  from auth.users as a
+  join public.users as u
+    on lower(btrim(u.email)) = lower(btrim(a.email))
+  where a.id = v_auth_id
+    and nullif(btrim(a.email), '') is not null;
+
+  if v_email_matches = 1 then
+    return v_profile_id;
+  end if;
+
+  -- Missing or ambiguous normalized emails must never select an arbitrary profile.
+  return null;
+end;
+$function$;
+
+revoke all on function public.resolve_authenticated_profile_id() from public, anon, authenticated;
+
 -- Authenticated, identity-bound referral recording. No money moves at signup.
 drop function if exists public.apply_referral(text, text);
 
@@ -535,6 +582,7 @@ set search_path = pg_catalog, public, auth
 as $function$
 declare
   v_auth_id uuid := auth.uid();
+  v_profile_id uuid;
   v_new_email text;
   v_new_name text;
   v_ref_id uuid;
@@ -546,6 +594,11 @@ begin
     return jsonb_build_object('ok', false, 'why', 'not_authenticated');
   end if;
 
+  v_profile_id := public.resolve_authenticated_profile_id();
+  if v_profile_id is null then
+    return jsonb_build_object('ok', false, 'why', 'profile_not_found');
+  end if;
+
   if nullif(btrim(p_new_email), '') is null or nullif(btrim(p_ref), '') is null then
     return jsonb_build_object('ok', false, 'why', 'missing');
   end if;
@@ -553,7 +606,7 @@ begin
   select lower(btrim(u.email)), coalesce(nullif(btrim(u.name), ''), 'A new member')
     into v_new_email, v_new_name
   from public.users as u
-  where u.id = v_auth_id
+  where u.id = v_profile_id
   for update;
 
   if not found then
@@ -566,7 +619,7 @@ begin
 
   select c.status into v_existing_status
   from public.referral_claims as c
-  where c.referred_user_id = v_auth_id;
+  where c.referred_user_id = v_profile_id;
 
   if found then
     return jsonb_build_object(
@@ -592,7 +645,7 @@ begin
   if v_ref_matches <> 1 then
     return jsonb_build_object('ok', false, 'why', 'ambiguous_referrer');
   end if;
-  if v_ref_id = v_auth_id then
+  if v_ref_id = v_profile_id then
     return jsonb_build_object('ok', false, 'why', 'self_referral');
   end if;
 
@@ -603,18 +656,18 @@ begin
 
   update public.users
   set referred_by = v_ref_id::text
-  where id = v_auth_id;
+  where id = v_profile_id;
 
   insert into public.referral_claims (
     referred_user_id, referrer_user_id, bonus_amount, status
   ) values (
-    v_auth_id, v_ref_id, 0, 'referred'
+    v_profile_id, v_ref_id, 0, 'referred'
   );
 
   begin
     insert into public.notifications (id, type, user_email, message, is_read)
     values (
-      'ref-recorded-' || v_auth_id::text,
+      'ref-recorded-' || v_profile_id::text,
       'referral_recorded',
       v_ref_email,
       '👋 ' || v_new_name || ' joined with your referral link. No signup bonus is paid; you can earn ₦500 once PayRound approves their first group and you meet the group eligibility rule.',
@@ -640,8 +693,8 @@ $function$;
 revoke all on function public.apply_referral(text, text) from public, anon;
 grant execute on function public.apply_referral(text, text) to authenticated, service_role;
 
--- Private dashboard: only auth.uid() can retrieve their balance, DOB, settings, and
--- complete referral list. No client can choose another person's ID here.
+-- Private dashboard: only the securely resolved authenticated profile can retrieve
+-- its balance, DOB, settings, and complete referral list. No client chooses an ID.
 create or replace function public.get_my_referral_dashboard()
 returns jsonb
 language plpgsql
@@ -650,12 +703,18 @@ security definer
 set search_path = pg_catalog, public, auth
 as $function$
 declare
-  v_uid uuid := auth.uid();
+  v_auth_id uuid := auth.uid();
+  v_uid uuid;
   v_result jsonb;
   v_referrals jsonb;
 begin
-  if v_uid is null then
+  if v_auth_id is null then
     raise exception using errcode = '42501', message = 'Authentication required';
+  end if;
+
+  v_uid := public.resolve_authenticated_profile_id();
+  if v_uid is null then
+    raise exception using errcode = 'P0002', message = 'Profile not found';
   end if;
 
   -- Claims are the source of reward status. The second branch is a display-only
@@ -765,11 +824,17 @@ security definer
 set search_path = pg_catalog, public, auth
 as $function$
 declare
-  v_uid uuid := auth.uid();
+  v_auth_id uuid := auth.uid();
+  v_uid uuid;
   v_result jsonb;
 begin
-  if v_uid is null then
+  if v_auth_id is null then
     raise exception using errcode = '42501', message = 'Authentication required';
+  end if;
+
+  v_uid := public.resolve_authenticated_profile_id();
+  if v_uid is null then
+    raise exception using errcode = 'P0002', message = 'Profile not found';
   end if;
 
   update public.users
@@ -800,11 +865,17 @@ security definer
 set search_path = pg_catalog, public, auth
 as $function$
 declare
-  v_uid uuid := auth.uid();
+  v_auth_id uuid := auth.uid();
+  v_uid uuid;
   v_result jsonb;
 begin
-  if v_uid is null then
+  if v_auth_id is null then
     raise exception using errcode = '42501', message = 'Authentication required';
+  end if;
+
+  v_uid := public.resolve_authenticated_profile_id();
+  if v_uid is null then
+    raise exception using errcode = 'P0002', message = 'Profile not found';
   end if;
 
   update public.users
@@ -829,11 +900,17 @@ security definer
 set search_path = pg_catalog, public, auth
 as $function$
 declare
-  v_uid uuid := auth.uid();
+  v_auth_id uuid := auth.uid();
+  v_uid uuid;
   v_result jsonb;
 begin
-  if v_uid is null then
+  if v_auth_id is null then
     raise exception using errcode = '42501', message = 'Authentication required';
+  end if;
+
+  v_uid := public.resolve_authenticated_profile_id();
+  if v_uid is null then
+    raise exception using errcode = 'P0002', message = 'Profile not found';
   end if;
 
   update public.users
