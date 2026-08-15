@@ -74,7 +74,9 @@ export default function ProfilePage() {
           const { data: mine } = await supabase.rpc('get_my_referral_dashboard');
           privateFields = {
             dob: mine?.dob || '',
-            referral_earnings: Number(mine?.total_earnings || 0),
+            referral_available: Number(mine?.total_earnings || 0),
+            referral_lifetime_earned: Number(mine?.awarded_total || 0),
+            referral_lifetime_paid: Number(mine?.paid_total || 0),
             referrals_public: !!mine?.referrals_public,
             dob_public: !!mine?.dob_public,
           };
@@ -539,9 +541,13 @@ export default function ProfilePage() {
               {account?.bio && (
                 <div className="p-4 bg-gray-50 rounded-xl"><p className="text-xs text-gray-500 mb-1">Bio</p><p className="text-sm font-medium text-gray-900 whitespace-pre-line">{account.bio}</p></div>
               )}
-              <button onClick={() => router.push('/referrals')} className="flex items-center justify-between p-4 bg-primary-50 border border-primary-100 rounded-xl w-full text-left hover:bg-primary-100/70 transition-colors">
-                <div><p className="text-xs text-gray-500">Referral Earnings</p><p className="text-sm font-medium text-gray-900">₦{Number(account?.referral_earnings || 0).toLocaleString()} · View people referred</p></div>
-                <span className="inline-flex items-center gap-1 text-xs font-semibold text-primary-700"><HiGift className="w-5 h-5" /> Open →</span>
+              <button onClick={() => router.push('/referrals')} className="flex items-center justify-between gap-3 p-4 bg-primary-50 border border-primary-100 rounded-xl w-full text-left hover:bg-primary-100/70 transition-colors">
+                <div>
+                  <p className="text-xs text-gray-500">Available referral balance</p>
+                  <p className="text-sm font-bold text-gray-900">₦{Number(account?.referral_available || 0).toLocaleString()}</p>
+                  <p className="text-[10px] text-gray-500 mt-0.5">Lifetime earned ₦{Number(account?.referral_lifetime_earned || 0).toLocaleString()} · paid ₦{Number(account?.referral_lifetime_paid || 0).toLocaleString()}</p>
+                </div>
+                <span className="inline-flex items-center gap-1 text-xs font-semibold text-primary-700 shrink-0"><HiGift className="w-5 h-5" /> Open →</span>
               </button>
               <button onClick={() => setEditing(true)} className="w-full flex items-center justify-center gap-2 border border-gray-200 text-gray-700 font-medium py-3 rounded-xl hover:bg-gray-50 transition-all"><HiPencil className="w-4 h-4" /> Edit Profile</button>
             </div>

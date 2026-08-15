@@ -301,7 +301,7 @@ export default function PublicUserProfilePage() {
                 <HiGift className="w-5 h-5 text-primary-600" />
                 <div>
                   <p className="text-xs font-bold text-gray-500">REFERRALS</p>
-                  <p className="text-sm font-bold text-gray-900">₦{Number(profileExtras.total_earnings || 0).toLocaleString('en-NG')} total earnings</p>
+                  <p className="text-sm font-bold text-gray-900">₦{Number(profileExtras.total_earnings || 0).toLocaleString('en-NG')} available referral balance</p>
                 </div>
               </div>
               <span className="text-xs font-semibold text-gray-500">{Number(profileExtras.referral_count || 0)} people</span>

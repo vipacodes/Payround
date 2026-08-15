@@ -23,7 +23,7 @@ function ReferralStatus({ row }) {
   if (qualified && row.status === 'awarded') {
     return (
       <span className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2.5 py-1 rounded-full">
-        <HiCheckCircle className="w-3.5 h-3.5" /> {money(amount)} paid
+        <HiCheckCircle className="w-3.5 h-3.5" /> {money(amount)} earned
       </span>
     );
   }
@@ -149,22 +149,24 @@ export default function ReferralsPage() {
         </div>
 
         <section className="bg-gradient-to-br from-primary-700 via-emerald-700 to-primary-800 text-white rounded-2xl p-6 mb-5 shadow-lg shadow-primary-100">
-          <p className="text-xs font-semibold text-emerald-100 uppercase tracking-wider">Total referral earnings</p>
+          <p className="text-xs font-semibold text-emerald-100 uppercase tracking-wider">Available referral balance</p>
           <p className="text-4xl font-black mt-1">{money(dashboard?.total_earnings)}</p>
+          <p className="text-[11px] text-emerald-100 mt-1">Earned rewards that have not yet been paid out.</p>
           <div className="grid grid-cols-3 gap-2 mt-5">
             <div className="bg-white/10 border border-white/15 rounded-xl p-3">
-              <p className="text-xl font-bold">{referrals.length}</p>
-              <p className="text-[10px] text-emerald-100">People referred</p>
+              <p className="text-xl font-bold">{money(dashboard?.awarded_total)}</p>
+              <p className="text-[10px] text-emerald-100">Lifetime earned</p>
             </div>
             <div className="bg-white/10 border border-white/15 rounded-xl p-3">
-              <p className="text-xl font-bold">{qualified}</p>
-              <p className="text-[10px] text-emerald-100">Qualified</p>
+              <p className="text-xl font-bold">{money(dashboard?.paid_total)}</p>
+              <p className="text-[10px] text-emerald-100">Lifetime paid</p>
             </div>
             <div className="bg-white/10 border border-white/15 rounded-xl p-3">
               <p className="text-xl font-bold">{money(dashboard?.pending_total)}</p>
-              <p className="text-[10px] text-emerald-100">Pending</p>
+              <p className="text-[10px] text-emerald-100">Qualified, pending</p>
             </div>
           </div>
+          <div className="mt-3 text-xs text-emerald-50">{referrals.length} people referred · {qualified} qualified for a reward</div>
           <div className="mt-4 flex items-center gap-2 text-xs text-emerald-50">
             <HiShieldCheck className="w-4 h-4 shrink-0" />
             {dashboard?.eligible
@@ -248,7 +250,7 @@ export default function ReferralsPage() {
           <PrivacyToggle
             icon={dashboard?.referrals_public ? <HiEye className="w-5 h-5" /> : <HiEyeOff className="w-5 h-5" />}
             title="Show my referral list publicly"
-            description="When on, signed-in profile visitors can see the people you referred, their statuses, and your total referral earnings."
+            description="When on, signed-in profile visitors can see the people you referred, their statuses, and your available referral balance."
             enabled={!!dashboard?.referrals_public}
             disabled={privacyBusy}
             onChange={setReferralPrivacy}

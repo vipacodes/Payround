@@ -1,53 +1,16 @@
--- PayRound referral profile/privacy follow-up
--- Safe to run after supabase_referral_eligibility_fix.sql.
--- Keeps every referred profile visible, never assigns a display-only relationship
--- a bonus, and gives each privacy choice its own authenticated setter.
-
 begin;
 
--- Prefer the exact auth UUID, then safely resolve one legacy profile through the
--- authoritative auth.users email. No client-supplied identity is accepted.
-create or replace function public.resolve_authenticated_profile_id()
-returns uuid
-language plpgsql
-stable
-security definer
-set search_path = pg_catalog, public, auth
-as $function$
-declare
-  v_auth_id uuid := auth.uid();
-  v_profile_id uuid;
-  v_email_matches integer := 0;
+do $requirements$
 begin
-  if v_auth_id is null then
-    return null;
+  if to_regprocedure('public.owner_pay_referral_bonus(uuid,integer,text,uuid)') is null
+     or to_regprocedure('public.get_owner_referral_dashboard()') is null then
+    raise exception 'Run payout follow-up parts 1 and 2 first';
   end if;
-
-  select u.id into v_profile_id
-  from public.users as u
-  where u.id = v_auth_id;
-
-  if v_profile_id is not null then
-    return v_profile_id;
-  end if;
-
-  select count(*), min(u.id::text)::uuid
-    into v_email_matches, v_profile_id
-  from auth.users as a
-  join public.users as u
-    on lower(btrim(u.email)) = lower(btrim(a.email))
-  where a.id = v_auth_id
-    and nullif(btrim(a.email), '') is not null;
-
-  if v_email_matches = 1 then
-    return v_profile_id;
-  end if;
-  return null;
 end;
-$function$;
+$requirements$;
 
-revoke all on function public.resolve_authenticated_profile_id() from public, anon, authenticated;
-
+-- Private dashboard: only the securely resolved authenticated profile can retrieve
+-- its balance, DOB, settings, and complete referral list. No client chooses an ID.
 create or replace function public.get_my_referral_dashboard()
 returns jsonb
 language plpgsql
@@ -180,76 +143,9 @@ $function$;
 revoke all on function public.get_my_referral_dashboard() from public, anon;
 grant execute on function public.get_my_referral_dashboard() to authenticated, service_role;
 
-create or replace function public.set_referral_list_privacy(p_public boolean)
-returns jsonb
-language plpgsql
-security definer
-set search_path = pg_catalog, public, auth
-as $function$
-declare
-  v_auth_id uuid := auth.uid();
-  v_uid uuid;
-  v_result jsonb;
-begin
-  if v_auth_id is null then
-    raise exception using errcode = '42501', message = 'Authentication required';
-  end if;
-
-  v_uid := public.resolve_authenticated_profile_id();
-  if v_uid is null then
-    raise exception using errcode = 'P0002', message = 'Profile not found';
-  end if;
-
-  update public.users
-  set referrals_public = coalesce(p_public, false)
-  where id = v_uid
-  returning jsonb_build_object('referrals_public', referrals_public) into v_result;
-
-  if v_result is null then
-    raise exception using errcode = 'P0002', message = 'Profile not found';
-  end if;
-  return v_result;
-end;
-$function$;
-
-revoke all on function public.set_referral_list_privacy(boolean) from public, anon;
-grant execute on function public.set_referral_list_privacy(boolean) to authenticated, service_role;
-
-create or replace function public.set_dob_privacy(p_public boolean)
-returns jsonb
-language plpgsql
-security definer
-set search_path = pg_catalog, public, auth
-as $function$
-declare
-  v_auth_id uuid := auth.uid();
-  v_uid uuid;
-  v_result jsonb;
-begin
-  if v_auth_id is null then
-    raise exception using errcode = '42501', message = 'Authentication required';
-  end if;
-
-  v_uid := public.resolve_authenticated_profile_id();
-  if v_uid is null then
-    raise exception using errcode = 'P0002', message = 'Profile not found';
-  end if;
-
-  update public.users
-  set dob_public = coalesce(p_public, false)
-  where id = v_uid
-  returning jsonb_build_object('dob_public', dob_public) into v_result;
-
-  if v_result is null then
-    raise exception using errcode = 'P0002', message = 'Profile not found';
-  end if;
-  return v_result;
-end;
-$function$;
-
-revoke all on function public.set_dob_privacy(boolean) from public, anon;
-grant execute on function public.set_dob_privacy(boolean) to authenticated, service_role;
-
+-- Privacy-safe public projection. It returns no DOB or list data unless the target
+-- account explicitly enabled the relevant setting. Direct SELECT privileges for the
+-- underlying private columns are removed below.
 create or replace function public.get_public_profile_extras(p_user_id uuid)
 returns jsonb
 language plpgsql
@@ -364,5 +260,24 @@ $function$;
 
 revoke all on function public.get_public_profile_extras(uuid) from public, anon;
 grant execute on function public.get_public_profile_extras(uuid) to authenticated, service_role;
+
+-- Final hardening and deployment assertions.
+alter table public.referral_payouts enable row level security;
+revoke all on table public.referral_payouts from public, anon, authenticated;
+
+do $verify$
+begin
+  if to_regprocedure('public.owner_pay_referral_bonus(uuid,integer,text,uuid)') is null
+     or to_regprocedure('public.get_owner_referral_dashboard()') is null
+     or not has_function_privilege('authenticated', 'public.owner_pay_referral_bonus(uuid,integer,text,uuid)', 'execute')
+     or has_function_privilege('anon', 'public.owner_pay_referral_bonus(uuid,integer,text,uuid)', 'execute')
+     or not has_function_privilege('authenticated', 'public.get_owner_referral_dashboard()', 'execute')
+     or has_function_privilege('anon', 'public.get_owner_referral_dashboard()', 'execute')
+     or has_table_privilege('authenticated', 'public.referral_payouts', 'select')
+     or has_table_privilege('anon', 'public.referral_payouts', 'select') then
+    raise exception using errcode = '55000', message = 'Referral payout security verification failed';
+  end if;
+end;
+$verify$;
 
 commit;

@@ -265,7 +265,16 @@ begin
   from referral_rows as r;
 
   select jsonb_build_object(
-    'total_earnings', coalesce(u.referral_earnings, 0),
+    'total_earnings', greatest(
+      coalesce((
+        select sum(c.bonus_amount) from public.referral_claims c
+        where c.referrer_user_id = v_uid and c.status = 'awarded'
+      ), 0) - coalesce((
+        select sum(p.amount) from public.referral_payouts p
+        where p.user_id = v_uid
+      ), 0),
+      0
+    ),
     'eligible', public.referral_referrer_is_eligible(v_uid),
     'referrals_public', coalesce(u.referrals_public, false),
     'dob_public', coalesce(u.dob_public, false),
@@ -278,6 +287,10 @@ begin
     'awarded_total', coalesce((
       select sum(c.bonus_amount) from public.referral_claims c
       where c.referrer_user_id = v_uid and c.status = 'awarded'
+    ), 0),
+    'paid_total', coalesce((
+      select sum(p.amount) from public.referral_payouts p
+      where p.user_id = v_uid
     ), 0),
     'referrals', v_referrals
   ) into v_result

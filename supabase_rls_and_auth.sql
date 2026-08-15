@@ -131,6 +131,7 @@ declare
 begin
   foreach v_table in array array[
     'referral_claims',
+    'referral_payouts',
     'referral_bonus_migration_state',
     'referral_bonus_excluded_groups'
   ] loop

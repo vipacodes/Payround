@@ -11,6 +11,8 @@ with verification as (
       and to_regprocedure('public.set_dob_privacy(boolean)') is not null
       and to_regprocedure('public.get_public_profile_extras(uuid)') is not null
       and to_regprocedure('public.pay_pending_referral_bonuses(uuid)') is not null
+      and to_regprocedure('public.get_owner_referral_dashboard()') is not null
+      and to_regprocedure('public.owner_pay_referral_bonus(uuid,integer,text,uuid)') is not null
     ) as required_functions_ok,
     (
       select count(*) = 5
@@ -29,6 +31,12 @@ with verification as (
       has_function_privilege('authenticated', 'public.apply_referral(text,text)', 'execute')
       and not has_function_privilege('anon', 'public.apply_referral(text,text)', 'execute')
     ) as referral_rpc_access_ok,
+    (
+      has_function_privilege('authenticated', 'public.get_owner_referral_dashboard()', 'execute')
+      and not has_function_privilege('anon', 'public.get_owner_referral_dashboard()', 'execute')
+      and has_function_privilege('authenticated', 'public.owner_pay_referral_bonus(uuid,integer,text,uuid)', 'execute')
+      and not has_function_privilege('anon', 'public.owner_pay_referral_bonus(uuid,integer,text,uuid)', 'execute')
+    ) as owner_referral_rpc_access_ok,
     (
       has_function_privilege('authenticated', 'public.set_referral_list_privacy(boolean)', 'execute')
       and not has_function_privilege('anon', 'public.set_referral_list_privacy(boolean)', 'execute')
@@ -56,6 +64,8 @@ with verification as (
     (
       not has_table_privilege('authenticated', 'public.referral_claims', 'select')
       and not has_table_privilege('anon', 'public.referral_claims', 'select')
+      and not has_table_privilege('authenticated', 'public.referral_payouts', 'select')
+      and not has_table_privilege('anon', 'public.referral_payouts', 'select')
       and not has_table_privilege('authenticated', 'public.referral_bonus_migration_state', 'select')
       and not has_table_privilege('authenticated', 'public.referral_bonus_excluded_groups', 'select')
     ) as internal_tables_private,
@@ -87,14 +97,28 @@ with verification as (
       not exists (
         select 1
         from public.users as u
-        where coalesce(u.referral_earnings, 0) is distinct from coalesce((
-          select sum(c.bonus_amount)
-          from public.referral_claims as c
-          where c.referrer_user_id = u.id
-            and c.status = 'awarded'
-        ), 0)
+        where coalesce(u.referral_earnings, 0) is distinct from greatest(
+          coalesce((
+            select sum(c.bonus_amount)
+            from public.referral_claims as c
+            where c.referrer_user_id = u.id
+              and c.status = 'awarded'
+          ), 0) - coalesce((
+            select sum(p.amount)
+            from public.referral_payouts as p
+            where p.user_id = u.id
+          ), 0),
+          0
+        )
       )
-    ) as balances_match_awarded_claims,
+    ) as balances_match_awards_less_payouts,
+    (
+      select count(*)
+      from public.referral_payouts
+      where amount <= 0
+         or balance_before < amount
+         or balance_after <> balance_before - amount
+    ) as invalid_payout_count,
     (
       select count(*)
       from public.notifications
@@ -116,17 +140,19 @@ cross join lateral (
     ('01_required_functions_ok', v.required_functions_ok::text),
     ('02_required_triggers_ok', v.required_triggers_ok::text),
     ('03_referral_rpc_access_ok', v.referral_rpc_access_ok::text),
-    ('04_privacy_rpc_access_ok', v.privacy_rpc_access_ok::text),
-    ('05_identity_resolution_secure', v.identity_resolution_secure::text),
-    ('06_internal_tables_private', v.internal_tables_private::text),
-    ('07_sensitive_columns_private', v.sensitive_columns_private::text),
-    ('08_existing_approved_groups_excluded', v.existing_approved_groups_excluded::text),
-    ('09_migration_state_rows', v.migration_state_rows::text),
-    ('10_excluded_group_count', v.excluded_group_count::text),
-    ('11_recorded_relationship_count', v.recorded_relationship_count::text),
-    ('12_new_bonus_count', v.new_bonus_count::text),
-    ('13_balances_match_awarded_claims', v.balances_match_awarded_claims::text),
-    ('14_obsolete_n200_notifications', v.obsolete_n200_notifications::text),
-    ('15_invalid_claim_count', v.invalid_claim_count::text)
+    ('04_owner_referral_rpc_access_ok', v.owner_referral_rpc_access_ok::text),
+    ('05_privacy_rpc_access_ok', v.privacy_rpc_access_ok::text),
+    ('06_identity_resolution_secure', v.identity_resolution_secure::text),
+    ('07_internal_tables_private', v.internal_tables_private::text),
+    ('08_sensitive_columns_private', v.sensitive_columns_private::text),
+    ('09_existing_approved_groups_excluded', v.existing_approved_groups_excluded::text),
+    ('10_migration_state_rows', v.migration_state_rows::text),
+    ('11_excluded_group_count', v.excluded_group_count::text),
+    ('12_recorded_relationship_count', v.recorded_relationship_count::text),
+    ('13_new_bonus_count', v.new_bonus_count::text),
+    ('14_balances_match_awards_less_payouts', v.balances_match_awards_less_payouts::text),
+    ('15_invalid_payout_count', v.invalid_payout_count::text),
+    ('16_obsolete_n200_notifications', v.obsolete_n200_notifications::text),
+    ('17_invalid_claim_count', v.invalid_claim_count::text)
 ) as checks(item, result)
 order by item;

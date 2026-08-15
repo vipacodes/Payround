@@ -25,6 +25,16 @@ begin
     return 0;
   end if;
 
+  -- Use the same per-user lock as owner_pay_referral_bonus().
+  perform 1
+  from public.users
+  where id = p_referrer_id
+  for update;
+
+  if not found then
+    return 0;
+  end if;
+
   with paid as (
     update public.referral_claims as c
     set status = 'awarded',
@@ -44,16 +54,20 @@ begin
     return 0;
   end if;
 
-  -- Recompute from awarded claims instead of incrementing a legacy profile value.
-  -- This keeps the displayed ledger at exactly N500 per valid awarded person and
-  -- prevents an obsolete signup amount (such as N200) from carrying forward.
   update public.users as u
-  set referral_earnings = coalesce((
-    select sum(c.bonus_amount)
-    from public.referral_claims as c
-    where c.referrer_user_id = p_referrer_id
-      and c.status = 'awarded'
-  ), 0)
+  set referral_earnings = greatest(
+    coalesce((
+      select sum(c.bonus_amount)
+      from public.referral_claims as c
+      where c.referrer_user_id = p_referrer_id
+        and c.status = 'awarded'
+    ), 0) - coalesce((
+      select sum(p.amount)
+      from public.referral_payouts as p
+      where p.user_id = p_referrer_id
+    ), 0),
+    0
+  )
   where u.id = p_referrer_id
   returning lower(btrim(u.email)) into v_ref_email;
 
@@ -70,7 +84,7 @@ begin
         'referral_bonus',
         v_ref_email,
         '🎁 ' || coalesce(v_referred_name, 'A referred member') ||
-          ' created a PayRound-approved group — ₦500 has been added to your referral earnings.',
+          ' created a PayRound-approved group — ₦500 has been added to your referral balance.',
         false
       )
       on conflict (id) do nothing;
@@ -85,19 +99,30 @@ $function$;
 
 revoke all on function public.pay_pending_referral_bonuses(uuid) from public, anon, authenticated;
 
--- The profile column is a protected ledger/cache, never an independent source of
--- rewards. Reconcile it to awarded claims so old signup bonuses cannot be displayed.
+-- The profile column is a protected cache of available balance, never an independent
+-- source of rewards. Reconcile it to lifetime awards less recorded payouts.
 with awarded_totals as (
   select
     u.id,
-    coalesce(sum(c.bonus_amount) filter (where c.status = 'awarded'), 0)::integer as total
+    coalesce((
+      select sum(c.bonus_amount)
+      from public.referral_claims as c
+      where c.referrer_user_id = u.id
+        and c.status = 'awarded'
+    ), 0)::integer as lifetime_earned,
+    coalesce((
+      select sum(p.amount)
+      from public.referral_payouts as p
+      where p.user_id = u.id
+    ), 0)::integer as lifetime_paid
   from public.users as u
-  left join public.referral_claims as c on c.referrer_user_id = u.id
-  group by u.id
+), available_totals as (
+  select id, greatest(lifetime_earned - lifetime_paid, 0)::integer as total
+  from awarded_totals
 )
 update public.users as u
 set referral_earnings = t.total
-from awarded_totals as t
+from available_totals as t
 where u.id = t.id
   and coalesce(u.referral_earnings, 0) is distinct from t.total;
 

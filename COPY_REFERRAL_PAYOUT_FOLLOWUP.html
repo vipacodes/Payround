@@ -1,0 +1,805 @@
+<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>PayRound referral payout SQL</title><style>:root{color-scheme:light}*{box-sizing:border-box}body{margin:0;background:#f5f3ff;color:#1f2937;font-family:system-ui,-apple-system,sans-serif}.wrap{max-width:860px;margin:auto;padding:18px}header,section{background:white;border:1px solid #ddd6fe;border-radius:18px;padding:18px;margin-bottom:15px;box-shadow:0 4px 18px #6d28d90c}h1{font-size:24px;margin:4px 0 8px;color:#4c1d95}h2{font-size:17px;margin:5px 0}.lead,p{font-size:13px;line-height:1.5;color:#64748b}.notice{background:#ecfdf5;border:1px solid #a7f3d0;color:#065f46;padding:12px;border-radius:12px;font-size:13px}.head{display:flex;align-items:center;justify-content:space-between;gap:12px}.step{font-size:10px;font-weight:800;letter-spacing:.1em;color:#7c3aed}button{border:0;border-radius:999px;background:#6d28d9;color:white;font-weight:800;padding:10px 15px;white-space:nowrap}button.done{background:#047857}pre{white-space:pre-wrap;word-break:break-word;max-height:54vh;overflow:auto;background:#111827;color:#e5e7eb;padding:14px;border-radius:12px;font:11px/1.45 ui-monospace,SFMono-Regular,Menlo,monospace;-webkit-user-select:text;user-select:text}@media(max-width:520px){.wrap{padding:10px}header,section{padding:14px;border-radius:14px}.head{align-items:flex-start}h1{font-size:21px}button{padding:9px 12px;font-size:12px}}</style></head><body><main class="wrap"><header><span class="step">PAYROUND SECURE FOLLOW-UP</span><h1>Referral payouts — phone copy page</h1><p class="lead">Three small, ordered and rerunnable SQL parts. These preserve earned claims, privacy controls and the existing qualification rules while adding an owner-only, retry-safe audited payout ledger.</p><div class="notice"><b>Run in order:</b> copy Part 1, run it and wait for success; then Part 2; then Part 3. Do not skip a part.</div></header><section><div class="head"><div><span class="step">PART 1 OF 3</span><h2>1 — Ledger and payout-aware accounting</h2></div><button type="button" onclick="copySql('sql1',this)">Copy part 1</button></div><p>Run this part in Supabase SQL Editor and wait for success before continuing.</p><pre id="sql1">begin;
+
+do $requirements$
+begin
+  if to_regclass(&#x27;public.users&#x27;) is null
+     or to_regclass(&#x27;public.referral_claims&#x27;) is null
+     or to_regclass(&#x27;public.notifications&#x27;) is null
+     or to_regprocedure(&#x27;public.is_owner()&#x27;) is null
+     or to_regprocedure(&#x27;public.resolve_authenticated_profile_id()&#x27;) is null
+     or to_regprocedure(&#x27;public.referral_referrer_is_eligible(uuid)&#x27;) is null then
+    raise exception using
+      errcode = &#x27;55000&#x27;,
+      message = &#x27;Deploy the existing referral/privacy migration before this payout follow-up&#x27;;
+  end if;
+end;
+$requirements$;
+
+-- Cash payouts are a separate immutable audit trail. A referral claim records when
+-- a bonus was earned; this table records when the owner actually paid some or all of
+-- the user&#x27;s available referral balance.
+create table if not exists public.referral_payouts (
+  id uuid primary key default gen_random_uuid(),
+  request_id uuid not null default gen_random_uuid(),
+  user_id uuid references public.users(id) on delete set null,
+  user_email text not null,
+  user_name text,
+  amount integer not null check (amount &gt; 0),
+  balance_before integer not null check (balance_before &gt;= 0),
+  balance_after integer not null check (balance_after &gt;= 0),
+  paid_by_auth_user_id uuid,
+  paid_by_email text not null,
+  note text check (note is null or length(note) &lt;= 500),
+  created_at timestamptz not null default now(),
+  check (balance_after = balance_before - amount)
+);
+
+alter table public.referral_payouts
+  add column if not exists request_id uuid default gen_random_uuid();
+update public.referral_payouts set request_id = gen_random_uuid() where request_id is null;
+alter table public.referral_payouts alter column request_id set not null;
+
+create unique index if not exists referral_payouts_request_uidx
+  on public.referral_payouts (request_id);
+create index if not exists referral_payouts_user_created_idx
+  on public.referral_payouts (user_id, created_at desc);
+
+alter table public.referral_payouts enable row level security;
+revoke all on table public.referral_payouts from public, anon, authenticated;
+
+-- Pay every pending N500 claim for one newly eligible referrer. The profile row is
+-- locked before claims change so a simultaneous owner cash payout cannot be lost.
+-- The available balance is always lifetime awarded claims minus recorded payouts.
+create or replace function public.pay_pending_referral_bonuses(p_referrer_id uuid)
+returns integer
+language plpgsql
+security definer
+set search_path = pg_catalog, public
+as $function$
+declare
+  v_count integer := 0;
+  v_referred_ids uuid[] := array[]::uuid[];
+  v_referred_id uuid;
+  v_ref_email text;
+  v_referred_name text;
+begin
+  if p_referrer_id is null
+     or not public.referral_referrer_is_eligible(p_referrer_id) then
+    return 0;
+  end if;
+
+  -- Use the same per-user lock as owner_pay_referral_bonus().
+  perform 1
+  from public.users
+  where id = p_referrer_id
+  for update;
+
+  if not found then
+    return 0;
+  end if;
+
+  with paid as (
+    update public.referral_claims as c
+    set status = &#x27;awarded&#x27;,
+        bonus_amount = 500,
+        awarded_at = now()
+    where c.referrer_user_id = p_referrer_id
+      and c.status = &#x27;pending&#x27;
+      and c.qualifying_group_id is not null
+    returning c.referred_user_id
+  )
+  select count(*)::integer,
+         coalesce(array_agg(referred_user_id), array[]::uuid[])
+    into v_count, v_referred_ids
+  from paid;
+
+  if v_count = 0 then
+    return 0;
+  end if;
+
+  update public.users as u
+  set referral_earnings = greatest(
+    coalesce((
+      select sum(c.bonus_amount)
+      from public.referral_claims as c
+      where c.referrer_user_id = p_referrer_id
+        and c.status = &#x27;awarded&#x27;
+    ), 0) - coalesce((
+      select sum(p.amount)
+      from public.referral_payouts as p
+      where p.user_id = p_referrer_id
+    ), 0),
+    0
+  )
+  where u.id = p_referrer_id
+  returning lower(btrim(u.email)) into v_ref_email;
+
+  foreach v_referred_id in array v_referred_ids loop
+    select coalesce(nullif(btrim(name), &#x27;&#x27;), &#x27;A referred member&#x27;)
+      into v_referred_name
+    from public.users
+    where id = v_referred_id;
+
+    begin
+      insert into public.notifications (id, type, user_email, message, is_read)
+      values (
+        &#x27;ref500-paid-&#x27; || v_referred_id::text,
+        &#x27;referral_bonus&#x27;,
+        v_ref_email,
+        &#x27;🎁 &#x27; || coalesce(v_referred_name, &#x27;A referred member&#x27;) ||
+          &#x27; created a PayRound-approved group — ₦500 has been added to your referral balance.&#x27;,
+        false
+      )
+      on conflict (id) do nothing;
+    exception when others then
+      null;
+    end;
+  end loop;
+
+  return v_count;
+end;
+$function$;
+
+revoke all on function public.pay_pending_referral_bonuses(uuid) from public, anon, authenticated;
+
+-- The profile column is a protected available-balance cache, never an independent
+-- source of rewards. Reconcile it to awarded claims minus recorded cash payouts.
+with balances as (
+  select
+    u.id,
+    greatest(
+      coalesce((
+        select sum(c.bonus_amount)
+        from public.referral_claims as c
+        where c.referrer_user_id = u.id
+          and c.status = &#x27;awarded&#x27;
+      ), 0) - coalesce((
+        select sum(p.amount)
+        from public.referral_payouts as p
+        where p.user_id = u.id
+      ), 0),
+      0
+    )::integer as total
+  from public.users as u
+)
+update public.users as u
+set referral_earnings = b.total
+from balances as b
+where u.id = b.id
+  and coalesce(u.referral_earnings, 0) is distinct from b.total;
+
+commit;
+</pre></section><section><div class="head"><div><span class="step">PART 2 OF 3</span><h2>2 — Secure owner payout and activity RPCs</h2></div><button type="button" onclick="copySql('sql2',this)">Copy part 2</button></div><p>Run this part in Supabase SQL Editor and wait for success before continuing.</p><pre id="sql2">begin;
+
+do $requirements$
+begin
+  if to_regclass(&#x27;public.referral_payouts&#x27;) is null or to_regprocedure(&#x27;public.is_owner()&#x27;) is null then
+    raise exception &#x27;Run payout follow-up part 1 first&#x27;;
+  end if;
+end;
+$requirements$;
+
+-- Owner-only cash payout. The amount can be any whole-naira value up to the user&#x27;s
+-- available balance. A per-user row lock serializes payouts with automatic awards.
+drop function if exists public.owner_pay_referral_bonus(uuid, integer, text);
+
+create or replace function public.owner_pay_referral_bonus(
+  p_user_id uuid,
+  p_amount integer,
+  p_note text,
+  p_request_id uuid
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = pg_catalog, public, auth
+as $function$
+declare
+  v_user_email text;
+  v_user_name text;
+  v_lifetime_earned integer := 0;
+  v_already_paid integer := 0;
+  v_balance_before integer := 0;
+  v_balance_after integer := 0;
+  v_payout_id uuid;
+  v_note text := nullif(btrim(p_note), &#x27;&#x27;);
+  v_actor_email text;
+  v_existing public.referral_payouts%rowtype;
+begin
+  if auth.uid() is null or not public.is_owner() then
+    raise exception using errcode = &#x27;42501&#x27;, message = &#x27;PayRound owner access required&#x27;;
+  end if;
+
+  if p_user_id is null then
+    raise exception using errcode = &#x27;22004&#x27;, message = &#x27;Choose a referral earner&#x27;;
+  end if;
+
+  if p_request_id is null then
+    raise exception using errcode = &#x27;22004&#x27;, message = &#x27;Payout request ID is required&#x27;;
+  end if;
+
+  if p_amount is null or p_amount &lt;= 0 then
+    raise exception using errcode = &#x27;22023&#x27;, message = &#x27;Payout amount must be greater than zero&#x27;;
+  end if;
+
+  if v_note is not null and length(v_note) &gt; 500 then
+    raise exception using errcode = &#x27;22023&#x27;, message = &#x27;Payout note is too long&#x27;;
+  end if;
+
+  v_actor_email := nullif(lower(btrim(auth.jwt() -&gt;&gt; &#x27;email&#x27;)), &#x27;&#x27;);
+  if v_actor_email is null then
+    select lower(btrim(au.email)) into v_actor_email
+    from auth.users as au
+    where au.id = auth.uid();
+  end if;
+  if v_actor_email is null then
+    raise exception using errcode = &#x27;42501&#x27;, message = &#x27;Owner identity is unavailable&#x27;;
+  end if;
+
+  -- Serialize retries that carry the same client-generated request ID. If the first
+  -- HTTP response is lost, an exact retry returns its original audit row and never
+  -- deducts or notifies twice.
+  perform pg_advisory_xact_lock(hashtextextended(p_request_id::text, 0));
+  select p.* into v_existing
+  from public.referral_payouts as p
+  where p.request_id = p_request_id;
+
+  if found then
+    if v_existing.paid_by_auth_user_id is distinct from auth.uid()
+       or v_existing.user_id is distinct from p_user_id
+       or v_existing.amount is distinct from p_amount
+       or v_existing.note is distinct from v_note then
+      raise exception using errcode = &#x27;22023&#x27;, message = &#x27;Payout request ID was already used for different details&#x27;;
+    end if;
+
+    return jsonb_build_object(
+      &#x27;ok&#x27;, true,
+      &#x27;idempotent_replay&#x27;, true,
+      &#x27;request_id&#x27;, v_existing.request_id,
+      &#x27;payout_id&#x27;, v_existing.id,
+      &#x27;user_id&#x27;, v_existing.user_id,
+      &#x27;user_name&#x27;, v_existing.user_name,
+      &#x27;amount&#x27;, v_existing.amount,
+      &#x27;balance_before&#x27;, v_existing.balance_before,
+      &#x27;balance_after&#x27;, v_existing.balance_after,
+      &#x27;paid_at&#x27;, v_existing.created_at
+    );
+  end if;
+
+  select lower(btrim(u.email)), coalesce(nullif(btrim(u.name), &#x27;&#x27;), &#x27;PayRound member&#x27;)
+    into v_user_email, v_user_name
+  from public.users as u
+  where u.id = p_user_id
+  for update;
+
+  if not found then
+    raise exception using errcode = &#x27;P0002&#x27;, message = &#x27;Referral earner not found&#x27;;
+  end if;
+
+  select coalesce(sum(c.bonus_amount), 0)::integer
+    into v_lifetime_earned
+  from public.referral_claims as c
+  where c.referrer_user_id = p_user_id
+    and c.status = &#x27;awarded&#x27;;
+
+  select coalesce(sum(p.amount), 0)::integer
+    into v_already_paid
+  from public.referral_payouts as p
+  where p.user_id = p_user_id;
+
+  v_balance_before := greatest(v_lifetime_earned - v_already_paid, 0);
+
+  if p_amount &gt; v_balance_before then
+    raise exception using
+      errcode = &#x27;22023&#x27;,
+      message = format(
+        &#x27;Payout amount exceeds the available referral balance of ₦%s&#x27;,
+        v_balance_before
+      );
+  end if;
+
+  v_balance_after := v_balance_before - p_amount;
+
+  insert into public.referral_payouts (
+    request_id,
+    user_id,
+    user_email,
+    user_name,
+    amount,
+    balance_before,
+    balance_after,
+    paid_by_auth_user_id,
+    paid_by_email,
+    note
+  ) values (
+    p_request_id,
+    p_user_id,
+    v_user_email,
+    v_user_name,
+    p_amount,
+    v_balance_before,
+    v_balance_after,
+    auth.uid(),
+    v_actor_email,
+    v_note
+  )
+  returning id into v_payout_id;
+
+  update public.users
+  set referral_earnings = v_balance_after
+  where id = p_user_id;
+
+  insert into public.notifications (id, type, user_email, message, is_read)
+  values (
+    &#x27;referral-payout-&#x27; || v_payout_id::text,
+    &#x27;referral_payout&#x27;,
+    v_user_email,
+    &#x27;💸 PayRound paid ₦&#x27; || trim(to_char(p_amount, &#x27;FM999,999,999,990&#x27;)) ||
+      &#x27; from your referral balance. Your remaining referral balance is ₦&#x27; ||
+      trim(to_char(v_balance_after, &#x27;FM999,999,999,990&#x27;)) || &#x27;.&#x27;,
+    false
+  )
+  on conflict (id) do nothing;
+
+  return jsonb_build_object(
+    &#x27;ok&#x27;, true,
+    &#x27;idempotent_replay&#x27;, false,
+    &#x27;request_id&#x27;, p_request_id,
+    &#x27;payout_id&#x27;, v_payout_id,
+    &#x27;user_id&#x27;, p_user_id,
+    &#x27;user_name&#x27;, v_user_name,
+    &#x27;amount&#x27;, p_amount,
+    &#x27;balance_before&#x27;, v_balance_before,
+    &#x27;balance_after&#x27;, v_balance_after,
+    &#x27;paid_at&#x27;, now()
+  );
+end;
+$function$;
+
+revoke all on function public.owner_pay_referral_bonus(uuid, integer, text, uuid) from public, anon;
+grant execute on function public.owner_pay_referral_bonus(uuid, integer, text, uuid) to authenticated;
+
+-- Owner-only operational view. It exposes every recorded referral relationship and
+-- each qualification/award/payout event without weakening user-facing privacy.
+create or replace function public.get_owner_referral_dashboard()
+returns jsonb
+language plpgsql
+stable
+security definer
+set search_path = pg_catalog, public, auth
+as $function$
+declare
+  v_stats jsonb;
+  v_referrers jsonb;
+  v_payouts jsonb;
+begin
+  if auth.uid() is null or not public.is_owner() then
+    raise exception using errcode = &#x27;42501&#x27;, message = &#x27;PayRound owner access required&#x27;;
+  end if;
+
+  select jsonb_build_object(
+    &#x27;relationship_count&#x27;, (select count(*) from public.referral_claims),
+    &#x27;unqualified_count&#x27;, (select count(*) from public.referral_claims where status in (&#x27;referred&#x27;, &#x27;legacy&#x27;)),
+    &#x27;pending_count&#x27;, (select count(*) from public.referral_claims where status = &#x27;pending&#x27;),
+    &#x27;awarded_count&#x27;, (select count(*) from public.referral_claims where status = &#x27;awarded&#x27;),
+    &#x27;available_balance&#x27;, greatest(
+      (select coalesce(sum(bonus_amount), 0) from public.referral_claims where status = &#x27;awarded&#x27;) -
+      (select coalesce(sum(amount), 0) from public.referral_payouts),
+      0
+    ),
+    &#x27;lifetime_earned&#x27;, (
+      select coalesce(sum(bonus_amount), 0)
+      from public.referral_claims
+      where status = &#x27;awarded&#x27;
+    ),
+    &#x27;paid_out&#x27;, (select coalesce(sum(amount), 0) from public.referral_payouts)
+  ) into v_stats;
+
+  select coalesce(
+    jsonb_agg(
+      jsonb_build_object(
+        &#x27;user_id&#x27;, u.id,
+        &#x27;name&#x27;, coalesce(nullif(btrim(u.name), &#x27;&#x27;), &#x27;PayRound member&#x27;),
+        &#x27;email&#x27;, lower(btrim(u.email)),
+        &#x27;profile_pic&#x27;, u.profile_pic,
+        &#x27;eligible&#x27;, public.referral_referrer_is_eligible(u.id),
+        &#x27;available_balance&#x27;, greatest(
+          coalesce((
+            select sum(c.bonus_amount)
+            from public.referral_claims as c
+            where c.referrer_user_id = u.id and c.status = &#x27;awarded&#x27;
+          ), 0) - coalesce((
+            select sum(p.amount)
+            from public.referral_payouts as p
+            where p.user_id = u.id
+          ), 0),
+          0
+        ),
+        &#x27;lifetime_earned&#x27;, coalesce((
+          select sum(c.bonus_amount)
+          from public.referral_claims as c
+          where c.referrer_user_id = u.id and c.status = &#x27;awarded&#x27;
+        ), 0),
+        &#x27;paid_out&#x27;, coalesce((
+          select sum(p.amount)
+          from public.referral_payouts as p
+          where p.user_id = u.id
+        ), 0),
+        &#x27;referral_count&#x27;, (
+          select count(*) from public.referral_claims as c where c.referrer_user_id = u.id
+        ),
+        &#x27;unqualified_count&#x27;, (
+          select count(*) from public.referral_claims as c
+          where c.referrer_user_id = u.id and c.status in (&#x27;referred&#x27;, &#x27;legacy&#x27;)
+        ),
+        &#x27;pending_count&#x27;, (
+          select count(*) from public.referral_claims as c
+          where c.referrer_user_id = u.id and c.status = &#x27;pending&#x27;
+        ),
+        &#x27;awarded_count&#x27;, (
+          select count(*) from public.referral_claims as c
+          where c.referrer_user_id = u.id and c.status = &#x27;awarded&#x27;
+        ),
+        &#x27;referrals&#x27;, coalesce((
+          select jsonb_agg(
+            jsonb_build_object(
+              &#x27;user_id&#x27;, referred.id,
+              &#x27;name&#x27;, coalesce(nullif(btrim(referred.name), &#x27;&#x27;), &#x27;PayRound member&#x27;),
+              &#x27;email&#x27;, lower(btrim(referred.email)),
+              &#x27;profile_pic&#x27;, referred.profile_pic,
+              &#x27;status&#x27;, c.status,
+              &#x27;bonus_amount&#x27;, case when c.status in (&#x27;pending&#x27;, &#x27;awarded&#x27;) then c.bonus_amount else 0 end,
+              &#x27;source&#x27;, c.source,
+              &#x27;referred_at&#x27;, c.created_at,
+              &#x27;qualified_at&#x27;, c.qualified_at,
+              &#x27;awarded_at&#x27;, c.awarded_at,
+              &#x27;qualifying_group_id&#x27;, c.qualifying_group_id,
+              &#x27;qualifying_group_name&#x27;, g.name
+            ) order by c.created_at desc
+          )
+          from public.referral_claims as c
+          join public.users as referred on referred.id = c.referred_user_id
+          left join public.groups as g on g.id = c.qualifying_group_id
+          where c.referrer_user_id = u.id
+        ), &#x27;[]&#x27;::jsonb)
+      ) order by greatest(
+        coalesce((
+          select sum(c.bonus_amount) from public.referral_claims as c
+          where c.referrer_user_id = u.id and c.status = &#x27;awarded&#x27;
+        ), 0) - coalesce((
+          select sum(p.amount) from public.referral_payouts as p
+          where p.user_id = u.id
+        ), 0),
+        0
+      ) desc, u.created_at desc
+    ),
+    &#x27;[]&#x27;::jsonb
+  ) into v_referrers
+  from public.users as u
+  where exists (
+      select 1 from public.referral_claims as c where c.referrer_user_id = u.id
+    )
+    or exists (
+      select 1 from public.referral_payouts as p where p.user_id = u.id
+    );
+
+  select coalesce(
+    jsonb_agg(
+      jsonb_build_object(
+        &#x27;id&#x27;, p.id,
+        &#x27;request_id&#x27;, p.request_id,
+        &#x27;user_id&#x27;, p.user_id,
+        &#x27;user_name&#x27;, p.user_name,
+        &#x27;user_email&#x27;, p.user_email,
+        &#x27;amount&#x27;, p.amount,
+        &#x27;balance_before&#x27;, p.balance_before,
+        &#x27;balance_after&#x27;, p.balance_after,
+        &#x27;paid_by_email&#x27;, p.paid_by_email,
+        &#x27;note&#x27;, p.note,
+        &#x27;created_at&#x27;, p.created_at
+      ) order by p.created_at desc
+    ),
+    &#x27;[]&#x27;::jsonb
+  ) into v_payouts
+  from public.referral_payouts as p;
+
+  return jsonb_build_object(
+    &#x27;stats&#x27;, v_stats,
+    &#x27;referrers&#x27;, v_referrers,
+    &#x27;payouts&#x27;, v_payouts,
+    &#x27;generated_at&#x27;, now()
+  );
+end;
+$function$;
+
+revoke all on function public.get_owner_referral_dashboard() from public, anon;
+grant execute on function public.get_owner_referral_dashboard() to authenticated;
+
+alter table public.referral_payouts enable row level security;
+revoke all on table public.referral_payouts from public, anon, authenticated;
+
+commit;
+</pre></section><section><div class="head"><div><span class="step">PART 3 OF 3</span><h2>3 — User balances, public wording data and verification</h2></div><button type="button" onclick="copySql('sql3',this)">Copy part 3</button></div><p>Run this part in Supabase SQL Editor and wait for success before continuing.</p><pre id="sql3">begin;
+
+do $requirements$
+begin
+  if to_regprocedure(&#x27;public.owner_pay_referral_bonus(uuid,integer,text,uuid)&#x27;) is null
+     or to_regprocedure(&#x27;public.get_owner_referral_dashboard()&#x27;) is null then
+    raise exception &#x27;Run payout follow-up parts 1 and 2 first&#x27;;
+  end if;
+end;
+$requirements$;
+
+-- Private dashboard: only the securely resolved authenticated profile can retrieve
+-- its balance, DOB, settings, and complete referral list. No client chooses an ID.
+create or replace function public.get_my_referral_dashboard()
+returns jsonb
+language plpgsql
+stable
+security definer
+set search_path = pg_catalog, public, auth
+as $function$
+declare
+  v_auth_id uuid := auth.uid();
+  v_uid uuid;
+  v_result jsonb;
+  v_referrals jsonb;
+begin
+  if v_auth_id is null then
+    raise exception using errcode = &#x27;42501&#x27;, message = &#x27;Authentication required&#x27;;
+  end if;
+
+  v_uid := public.resolve_authenticated_profile_id();
+  if v_uid is null then
+    raise exception using errcode = &#x27;P0002&#x27;, message = &#x27;Profile not found&#x27;;
+  end if;
+
+  -- Claims are the source of reward status. The second branch is a display-only
+  -- fallback for any older relationship marker that somehow has no claim row, so
+  -- every referred member&#x27;s profile remains visible without inventing a reward.
+  with referral_rows as (
+    select
+      referred.id as user_id,
+      referred.name,
+      referred.profile_pic,
+      c.created_at as referred_at,
+      c.status,
+      case when c.status in (&#x27;pending&#x27;, &#x27;awarded&#x27;) then c.bonus_amount else 0 end as bonus_amount,
+      c.qualified_at,
+      c.awarded_at,
+      c.qualifying_group_id,
+      g.name as qualifying_group_name
+    from public.referral_claims as c
+    join public.users as referred on referred.id = c.referred_user_id
+    left join public.groups as g on g.id = c.qualifying_group_id
+    where c.referrer_user_id = v_uid
+
+    union all
+
+    select
+      referred.id,
+      referred.name,
+      referred.profile_pic,
+      referred.created_at,
+      &#x27;referred&#x27;::text,
+      0,
+      null::timestamptz,
+      null::timestamptz,
+      null::text,
+      null::text
+    from public.users as referred
+    where referred.id &lt;&gt; v_uid
+      and (
+        lower(btrim(referred.referred_by::text)) = lower(v_uid::text)
+        or (
+          length(btrim(referred.referred_by::text)) = 8
+          and lower(btrim(referred.referred_by::text)) = left(lower(v_uid::text), 8)
+        )
+      )
+      and not exists (
+        select 1 from public.referral_claims as existing
+        where existing.referred_user_id = referred.id
+      )
+  )
+  select coalesce(
+    jsonb_agg(
+      jsonb_build_object(
+        &#x27;user_id&#x27;, r.user_id,
+        &#x27;name&#x27;, coalesce(nullif(btrim(r.name), &#x27;&#x27;), &#x27;PayRound member&#x27;),
+        &#x27;profile_pic&#x27;, r.profile_pic,
+        &#x27;referred_at&#x27;, r.referred_at,
+        &#x27;status&#x27;, r.status,
+        &#x27;bonus_amount&#x27;, r.bonus_amount,
+        &#x27;qualified_at&#x27;, r.qualified_at,
+        &#x27;awarded_at&#x27;, r.awarded_at,
+        &#x27;qualifying_group_id&#x27;, r.qualifying_group_id,
+        &#x27;qualifying_group_name&#x27;, r.qualifying_group_name
+      ) order by r.referred_at desc
+    ),
+    &#x27;[]&#x27;::jsonb
+  ) into v_referrals
+  from referral_rows as r;
+
+  select jsonb_build_object(
+    &#x27;total_earnings&#x27;, greatest(
+      coalesce((
+        select sum(c.bonus_amount) from public.referral_claims c
+        where c.referrer_user_id = v_uid and c.status = &#x27;awarded&#x27;
+      ), 0) - coalesce((
+        select sum(p.amount) from public.referral_payouts p
+        where p.user_id = v_uid
+      ), 0),
+      0
+    ),
+    &#x27;eligible&#x27;, public.referral_referrer_is_eligible(v_uid),
+    &#x27;referrals_public&#x27;, coalesce(u.referrals_public, false),
+    &#x27;dob_public&#x27;, coalesce(u.dob_public, false),
+    &#x27;dob&#x27;, u.dob,
+    &#x27;referral_count&#x27;, jsonb_array_length(v_referrals),
+    &#x27;pending_total&#x27;, coalesce((
+      select sum(c.bonus_amount) from public.referral_claims c
+      where c.referrer_user_id = v_uid and c.status = &#x27;pending&#x27;
+    ), 0),
+    &#x27;awarded_total&#x27;, coalesce((
+      select sum(c.bonus_amount) from public.referral_claims c
+      where c.referrer_user_id = v_uid and c.status = &#x27;awarded&#x27;
+    ), 0),
+    &#x27;paid_total&#x27;, coalesce((
+      select sum(p.amount) from public.referral_payouts p
+      where p.user_id = v_uid
+    ), 0),
+    &#x27;referrals&#x27;, v_referrals
+  ) into v_result
+  from public.users as u
+  where u.id = v_uid;
+
+  if v_result is null then
+    raise exception using errcode = &#x27;P0002&#x27;, message = &#x27;Profile not found&#x27;;
+  end if;
+
+  return v_result;
+end;
+$function$;
+
+revoke all on function public.get_my_referral_dashboard() from public, anon;
+grant execute on function public.get_my_referral_dashboard() to authenticated, service_role;
+
+-- Privacy-safe public projection. It returns no DOB or list data unless the target
+-- account explicitly enabled the relevant setting. Direct SELECT privileges for the
+-- underlying private columns are removed below.
+create or replace function public.get_public_profile_extras(p_user_id uuid)
+returns jsonb
+language plpgsql
+stable
+security definer
+set search_path = pg_catalog, public
+as $function$
+declare
+  v_result jsonb;
+  v_referrals jsonb := &#x27;[]&#x27;::jsonb;
+  v_refs_public boolean := false;
+  v_dob_public boolean := false;
+  v_dob text;
+  v_total integer := 0;
+begin
+  select coalesce(u.referrals_public, false),
+         coalesce(u.dob_public, false),
+         u.dob,
+         greatest(
+           coalesce((
+             select sum(c.bonus_amount) from public.referral_claims c
+             where c.referrer_user_id = p_user_id and c.status = &#x27;awarded&#x27;
+           ), 0) - coalesce((
+             select sum(p.amount) from public.referral_payouts p
+             where p.user_id = p_user_id
+           ), 0),
+           0
+         )
+    into v_refs_public, v_dob_public, v_dob, v_total
+  from public.users as u
+  where u.id = p_user_id;
+
+  if not found then
+    return jsonb_build_object(
+      &#x27;found&#x27;, false,
+      &#x27;dob_visible&#x27;, false,
+      &#x27;referrals_visible&#x27;, false,
+      &#x27;referrals&#x27;, &#x27;[]&#x27;::jsonb
+    );
+  end if;
+
+  if v_refs_public then
+    with referral_rows as (
+      select
+        referred.id as user_id,
+        referred.name,
+        referred.profile_pic,
+        c.created_at as referred_at,
+        c.status,
+        case when c.status in (&#x27;pending&#x27;, &#x27;awarded&#x27;) then c.bonus_amount else 0 end as bonus_amount,
+        c.qualified_at,
+        c.awarded_at
+      from public.referral_claims as c
+      join public.users as referred on referred.id = c.referred_user_id
+      where c.referrer_user_id = p_user_id
+
+      union all
+
+      select
+        referred.id,
+        referred.name,
+        referred.profile_pic,
+        referred.created_at,
+        &#x27;referred&#x27;::text,
+        0,
+        null::timestamptz,
+        null::timestamptz
+      from public.users as referred
+      where referred.id &lt;&gt; p_user_id
+        and (
+          lower(btrim(referred.referred_by::text)) = lower(p_user_id::text)
+          or (
+            length(btrim(referred.referred_by::text)) = 8
+            and lower(btrim(referred.referred_by::text)) = left(lower(p_user_id::text), 8)
+          )
+        )
+        and not exists (
+          select 1 from public.referral_claims as existing
+          where existing.referred_user_id = referred.id
+        )
+    )
+    select coalesce(
+      jsonb_agg(
+        jsonb_build_object(
+          &#x27;user_id&#x27;, r.user_id,
+          &#x27;name&#x27;, coalesce(nullif(btrim(r.name), &#x27;&#x27;), &#x27;PayRound member&#x27;),
+          &#x27;profile_pic&#x27;, r.profile_pic,
+          &#x27;referred_at&#x27;, r.referred_at,
+          &#x27;status&#x27;, r.status,
+          &#x27;bonus_amount&#x27;, r.bonus_amount,
+          &#x27;qualified_at&#x27;, r.qualified_at,
+          &#x27;awarded_at&#x27;, r.awarded_at
+        ) order by r.referred_at desc
+      ),
+      &#x27;[]&#x27;::jsonb
+    ) into v_referrals
+    from referral_rows as r;
+  end if;
+
+  v_result := jsonb_build_object(
+    &#x27;found&#x27;, true,
+    &#x27;dob_visible&#x27;, v_dob_public,
+    &#x27;dob&#x27;, case when v_dob_public then to_jsonb(v_dob) else &#x27;null&#x27;::jsonb end,
+    &#x27;referrals_visible&#x27;, v_refs_public,
+    &#x27;total_earnings&#x27;, case when v_refs_public then v_total else 0 end,
+    &#x27;referral_count&#x27;, case when v_refs_public then jsonb_array_length(v_referrals) else 0 end,
+    &#x27;referrals&#x27;, case when v_refs_public then v_referrals else &#x27;[]&#x27;::jsonb end
+  );
+  return v_result;
+end;
+$function$;
+
+revoke all on function public.get_public_profile_extras(uuid) from public, anon;
+grant execute on function public.get_public_profile_extras(uuid) to authenticated, service_role;
+
+-- Final hardening and deployment assertions.
+alter table public.referral_payouts enable row level security;
+revoke all on table public.referral_payouts from public, anon, authenticated;
+
+do $verify$
+begin
+  if to_regprocedure(&#x27;public.owner_pay_referral_bonus(uuid,integer,text,uuid)&#x27;) is null
+     or to_regprocedure(&#x27;public.get_owner_referral_dashboard()&#x27;) is null
+     or not has_function_privilege(&#x27;authenticated&#x27;, &#x27;public.owner_pay_referral_bonus(uuid,integer,text,uuid)&#x27;, &#x27;execute&#x27;)
+     or has_function_privilege(&#x27;anon&#x27;, &#x27;public.owner_pay_referral_bonus(uuid,integer,text,uuid)&#x27;, &#x27;execute&#x27;)
+     or not has_function_privilege(&#x27;authenticated&#x27;, &#x27;public.get_owner_referral_dashboard()&#x27;, &#x27;execute&#x27;)
+     or has_function_privilege(&#x27;anon&#x27;, &#x27;public.get_owner_referral_dashboard()&#x27;, &#x27;execute&#x27;)
+     or has_table_privilege(&#x27;authenticated&#x27;, &#x27;public.referral_payouts&#x27;, &#x27;select&#x27;)
+     or has_table_privilege(&#x27;anon&#x27;, &#x27;public.referral_payouts&#x27;, &#x27;select&#x27;) then
+    raise exception using errcode = &#x27;55000&#x27;, message = &#x27;Referral payout security verification failed&#x27;;
+  end if;
+end;
+$verify$;
+
+commit;
+</pre></section></main><script>async function copySql(id,btn){const text=document.getElementById(id).textContent;try{await navigator.clipboard.writeText(text)}catch(e){const t=document.createElement('textarea');t.value=text;document.body.appendChild(t);t.select();document.execCommand('copy');t.remove()}const old=btn.textContent;btn.textContent='Copied ✓';btn.classList.add('done');setTimeout(()=>{btn.textContent=old;btn.classList.remove('done')},1800)}</script></body></html>
