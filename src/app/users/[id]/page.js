@@ -9,7 +9,8 @@ import LoadingScreen from '@/components/LoadingScreen';
 import ImageLightbox from '@/components/ImageLightbox';
 import {
   HiArrowLeft, HiBadgeCheck, HiUserGroup, HiCalendar,
-  HiShieldCheck, HiUser, HiCheck, HiUserAdd, HiPhone, HiChatAlt2
+  HiShieldCheck, HiUser, HiCheck, HiUserAdd, HiPhone, HiChatAlt2,
+  HiGift, HiClock, HiCheckCircle
 } from 'react-icons/hi';
 import toast from 'react-hot-toast';
 import FollowersList from '@/components/FollowersList';
@@ -32,6 +33,7 @@ export default function PublicUserProfilePage() {
   const [busyFollow, setBusyFollow] = useState(false);
   const [bizAds, setBizAds] = useState([]); // approved businesses this person runs on PayRound
   const [showFollowers, setShowFollowers] = useState(false);
+  const [profileExtras, setProfileExtras] = useState(null); // privacy-safe DOB/referral projection
 
   useEffect(() => {
     let mounted = true;
@@ -49,6 +51,10 @@ export default function PublicUserProfilePage() {
         if (!mounted) return;
         if (!u) { setNotFound(true); setLoading(false); return; }
         setPerson(u);
+        try {
+          const { data: extras } = await supabase.rpc('get_public_profile_extras', { p_user_id: u.id });
+          if (mounted) setProfileExtras(extras || null);
+        } catch { if (mounted) setProfileExtras(null); }
         const email = (u.email || '').toLowerCase(); // used only to fetch their groups — never displayed
         // Groups they admin
         const { data: ag } = await supabase.from('groups').select('id, name, avatar_url, is_verified, badge_tier, amount, frequency').eq('admin_email', email).in('status', ['active', 'approved']);
@@ -241,6 +247,11 @@ export default function PublicUserProfilePage() {
             <HiCalendar className="w-4 h-4" />
             Member since {person.created_at ? new Date(person.created_at).toLocaleDateString('en-NG', { month: 'long', year: 'numeric' }) : '—'}
           </div>
+          {profileExtras?.dob_visible && profileExtras?.dob && (
+            <p className="inline-flex items-center gap-1.5 text-xs text-gray-600 bg-gray-50 border border-gray-200 rounded-full px-3 py-1.5 mt-3">
+              <HiCalendar className="w-4 h-4" /> Date of birth: {new Date(`${profileExtras.dob}T00:00:00`).toLocaleDateString('en-NG', { day: 'numeric', month: 'long', year: 'numeric' })}
+            </p>
+          )}
         </div>
 
         {/* Their bank details — so members can pay them (and admins can pay payouts) */}
@@ -279,6 +290,48 @@ export default function PublicUserProfilePage() {
                 </button>
               ))}
             </div>
+          </div>
+        )}
+
+        {/* Referral list appears only after this person explicitly makes it public. */}
+        {profileExtras?.referrals_visible && (
+          <div className="bg-white rounded-2xl border border-gray-100 p-4 mb-6">
+            <div className="flex items-center justify-between gap-3 mb-3">
+              <div className="flex items-center gap-2">
+                <HiGift className="w-5 h-5 text-primary-600" />
+                <div>
+                  <p className="text-xs font-bold text-gray-500">REFERRALS</p>
+                  <p className="text-sm font-bold text-gray-900">₦{Number(profileExtras.total_earnings || 0).toLocaleString('en-NG')} total earnings</p>
+                </div>
+              </div>
+              <span className="text-xs font-semibold text-gray-500">{Number(profileExtras.referral_count || 0)} people</span>
+            </div>
+            {(profileExtras.referrals || []).length === 0 ? (
+              <p className="text-xs text-gray-400 border border-dashed border-gray-200 rounded-xl p-4 text-center">No referrals listed yet.</p>
+            ) : (
+              <div className="space-y-2">
+                {(profileExtras.referrals || []).map(row => (
+                  <button key={row.user_id} onClick={() => router.push(`/users/${row.user_id}`)} className="w-full flex items-center gap-3 bg-gray-50 border border-gray-100 rounded-xl p-3 text-left hover:bg-gray-100 transition-colors">
+                    {row.profile_pic ? (
+                      <img src={row.profile_pic} alt="" className="w-10 h-10 rounded-lg object-cover border border-gray-100 shrink-0" />
+                    ) : (
+                      <span className="w-10 h-10 rounded-lg bg-primary-100 text-primary-700 font-bold flex items-center justify-center shrink-0">{(row.name || 'P').charAt(0).toUpperCase()}</span>
+                    )}
+                    <span className="flex-1 min-w-0">
+                      <span className="block text-sm font-semibold text-gray-900 truncate">{row.name || 'PayRound member'}</span>
+                      <span className="block text-[10px] text-gray-400">Referred {row.referred_at ? new Date(row.referred_at).toLocaleDateString('en-NG', { day: 'numeric', month: 'short', year: 'numeric' }) : '—'}</span>
+                    </span>
+                    {row.status === 'awarded' ? (
+                      <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-full px-2 py-1 shrink-0"><HiCheckCircle className="w-3 h-3" /> ₦500 paid</span>
+                    ) : row.status === 'pending' ? (
+                      <span className="inline-flex items-center gap-1 text-[10px] font-bold text-amber-700 bg-amber-50 border border-amber-200 rounded-full px-2 py-1 shrink-0"><HiClock className="w-3 h-3" /> ₦500 pending</span>
+                    ) : (
+                      <span className="text-[10px] font-semibold text-gray-400 shrink-0">Not qualified</span>
+                    )}
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
         )}
 

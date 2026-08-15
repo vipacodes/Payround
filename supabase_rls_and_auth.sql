@@ -97,6 +97,53 @@ create policy users_update on public.users
   using (lower(email) = public.jwt_email())
   with check (lower(email) = public.jwt_email());
 
+-- Sensitive profile/referral fields are never part of the broad authenticated
+-- projection. Own-account and public-opt-in reads use the security-definer RPCs in
+-- supabase_referral_eligibility_fix.sql. Keep this block here too so re-running this
+-- base RLS script cannot accidentally undo that privacy boundary.
+revoke select on table public.users from public, anon, authenticated;
+do $grant_safe_user_columns$
+declare
+  v_columns text;
+begin
+  select string_agg(quote_ident(column_name), ', ' order by ordinal_position)
+    into v_columns
+  from information_schema.columns
+  where table_schema = 'public'
+    and table_name = 'users'
+    and column_name not in (
+      'dob',
+      'referred_by',
+      'referral_earnings',
+      'referrals_public',
+      'dob_public'
+    );
+
+  if nullif(v_columns, '') is not null then
+    execute 'grant select (' || v_columns || ') on table public.users to authenticated';
+  end if;
+end;
+$grant_safe_user_columns$;
+
+do $protect_referral_tables$
+declare
+  v_table text;
+begin
+  foreach v_table in array array[
+    'referral_claims',
+    'referral_bonus_migration_state',
+    'referral_bonus_excluded_groups'
+  ] loop
+    if to_regclass('public.' || v_table) is not null then
+      execute format(
+        'revoke all on table public.%I from public, anon, authenticated',
+        v_table
+      );
+    end if;
+  end loop;
+end;
+$protect_referral_tables$;
+
 -- GROUPS
 create policy groups_select on public.groups
   for select to authenticated using (true);

@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { useRouter } from 'next/navigation';
 import Header from '@/components/Header';
 import Footer from '@/components/Footer';
 import AdBanner from '@/components/AdBanner';
@@ -18,7 +19,11 @@ const isVideoSrc = (m) => typeof m === 'string'
 
 // ⬆️ Upload one video to the public `ads-media` storage bucket — with LIVE % progress (XHR, since
 // fetch can't show upload progress on phones). A stall watchdog aborts if NOTHING moves for 30s.
-const uploadAdVideoOnce = (file, path, onPct) => new Promise((resolve, reject) => {
+const uploadAdVideoOnce = (file, path, onPct, accessToken) => new Promise((resolve, reject) => {
+  if (!accessToken) {
+    reject(new Error('Your login expired — log in again before uploading an ad.'));
+    return;
+  }
   const base = process.env.NEXT_PUBLIC_SUPABASE_URL || SUPA_FALLBACK_URL;
   const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || SUPA_FALLBACK_KEY;
   const xhr = new XMLHttpRequest();
@@ -40,18 +45,19 @@ const uploadAdVideoOnce = (file, path, onPct) => new Promise((resolve, reject) =
   xhr.timeout = 8 * 60 * 1000; // absolute ceiling — stall watchdog normally trips far earlier (30s of zero movement)
   xhr.open('POST', `${base}/storage/v1/object/ads-media/${path}`);
   xhr.setRequestHeader('apikey', key);
-  xhr.setRequestHeader('Authorization', `Bearer ${key}`);
+  // Storage writes must carry the signed-in user's JWT, never the public anon key.
+  xhr.setRequestHeader('Authorization', `Bearer ${accessToken}`);
   xhr.setRequestHeader('x-upsert', 'true');
   xhr.setRequestHeader('Content-Type', file.type || 'video/mp4');
   xhr.send(file);
 });
 
 // 🔁 Up to 3 goes per video (instant retry keeps the % climbing); permanent errors (over limit) fail fast.
-const uploadAdVideo = async (file, path, onPct) => {
+const uploadAdVideo = async (file, path, onPct, accessToken) => {
   let lastErr = null;
   for (let attempt = 1; attempt <= 3; attempt++) {
     try {
-      return await uploadAdVideoOnce(file, path, onPct);
+      return await uploadAdVideoOnce(file, path, onPct, accessToken);
     } catch (err) {
       lastErr = err;
       if (err?.message === '413') throw new Error('That video is over storage\'s 15MB hard limit — keep clips under 12MB (≈30 seconds).');
@@ -69,12 +75,13 @@ const SUPA_FALLBACK_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
 const postgrestSave = async (method, path, body, timeoutMs) => {
   const base = process.env.NEXT_PUBLIC_SUPABASE_URL || SUPA_FALLBACK_URL;
   const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || SUPA_FALLBACK_KEY;
-  let bearer = key;
+  let bearer = '';
   try {
     const { supabase } = await import('@/lib/supabase');
     const { data } = await supabase.auth.getSession();
-    if (data?.session?.access_token) bearer = data.session.access_token;
+    bearer = data?.session?.access_token || '';
   } catch {}
+  if (!bearer) throw new Error('Your login expired — log in again to change this ad.');
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), timeoutMs);
   let res;
@@ -259,6 +266,7 @@ function SlotFitPreview({ media }) {
 }
 
 export default function AdsPage() {
+  const router = useRouter();
   const [showForm, setShowForm] = useState(false);
 
   const [formData, setFormData] = useState({ businessName: '', description: '', contact: '', whatsapp: '', website: '' });
@@ -277,7 +285,9 @@ export default function AdsPage() {
   const [category, setCategory] = useState('auto'); // 🎯 what are you selling? — drives the AI writer
 
   const [settings, setSettings] = useState(null); // owner bank + ad prices (owner-editable)
-  const [myEmail, setMyEmail] = useState('');
+  const [authChecked, setAuthChecked] = useState(false);
+  const authSyncSeq = useRef(0); // Newer auth checks invalidate slower results from older lifecycle events.
+  const [myEmail, setMyEmail] = useState(''); // Set only from a verified Supabase Auth user, never localStorage.
   const [myAds, setMyAds] = useState([]);
   const [tab, setTab] = useState('create');           // 📑 'create' (📢) | 'mine' (📂 My Ads)
   const [mineFilter, setMineFilter] = useState('all'); // all | live | review | await_receipt | declined
@@ -328,32 +338,109 @@ export default function AdsPage() {
   ];
   const plan = plans.find(p => p.days === planDays) || plans[1];
 
-  const loadMyAds = useCallback(async (email) => {
-    if (!email) return;
+  const loadMyAds = useCallback(async (email, shouldApply = () => true) => {
+    if (!email) {
+      if (shouldApply()) setMyAds([]);
+      return [];
+    }
     try {
       const { supabase } = await import('@/lib/supabase');
       const { data } = await supabase.from('ads').select('*').eq('submitter_email', email).order('submitted_at', { ascending: false });
-      setMyAds(data || []);
-    } catch {}
+      if (shouldApply()) setMyAds(data || []);
+      return data || [];
+    } catch {
+      if (shouldApply()) setMyAds([]);
+      return [];
+    }
   }, []);
+
+  // localStorage is only a display cache and is forgeable/stale. Supabase Auth is the
+  // source of truth. Re-check on browser Back/Forward because those pages may be restored
+  // from the back-forward cache without remounting this component.
+  const syncAuth = useCallback(async () => {
+    const requestId = ++authSyncSeq.current;
+    let user = null;
+    let error = null;
+    try {
+      const { supabase } = await import('@/lib/supabase');
+      const result = await supabase.auth.getUser();
+      user = result.data?.user || null;
+      error = result.error || null;
+    } catch (err) {
+      error = err;
+    }
+
+    const email = (user?.email || '').trim().toLowerCase();
+    // pageshow/focus/visibility/auth-change can fire together. A slower, older
+    // response must never overwrite the newest verified auth state.
+    if (requestId !== authSyncSeq.current) return { user, email, stale: true };
+
+    if (email) {
+      setMyEmail(email);
+      await loadMyAds(email, () => requestId === authSyncSeq.current);
+    } else {
+      setMyEmail('');
+      setMyAds([]);
+      setTab('create');
+      setShowForm(false);
+      setEditId('');
+      // Remove a stale display cache when Auth confirms that there is no valid user.
+      const msg = String(error?.message || '').toLowerCase();
+      if (!error || msg.includes('session') || msg.includes('jwt') || msg.includes('auth')) {
+        try { localStorage.removeItem('payround_user'); } catch {}
+      }
+    }
+    if (requestId === authSyncSeq.current) setAuthChecked(true);
+    return { user, email, stale: requestId !== authSyncSeq.current };
+  }, [loadMyAds]);
+
+  useEffect(() => {
+    let subscription;
+    const recheck = () => {
+      setAuthChecked(false);
+      syncAuth();
+    };
+    const onVisible = () => { if (document.visibilityState === 'visible') recheck(); };
+
+    recheck();
+    window.addEventListener('pageshow', recheck);
+    window.addEventListener('focus', recheck);
+    document.addEventListener('visibilitychange', onVisible);
+
+    (async () => {
+      try {
+        const { supabase } = await import('@/lib/supabase');
+        const { data } = supabase.auth.onAuthStateChange(() => {
+          // Run outside the auth callback to avoid competing with Supabase's session lock.
+          setTimeout(recheck, 0);
+        });
+        subscription = data.subscription;
+      } catch {}
+    })();
+
+    return () => {
+      // Prevent an in-flight check from updating state after this page unmounts.
+      authSyncSeq.current += 1;
+      window.removeEventListener('pageshow', recheck);
+      window.removeEventListener('focus', recheck);
+      document.removeEventListener('visibilitychange', onVisible);
+      subscription?.unsubscribe();
+    };
+  }, [syncAuth]);
 
   useEffect(() => {
     (async () => {
-      let email = '';
-      try { email = (JSON.parse(localStorage.getItem('payround_user') || '{}').email || '').toLowerCase(); } catch {}
-      setMyEmail(email);
       try {
         const { supabase } = await import('@/lib/supabase');
         const { data: s } = await supabase.from('public_pricing').select('bank_name, account_number, account_name, ad_1day, ad_1week, ad_1month').eq('id', 1).single();
         if (s) setSettings(s);
       } catch {}
-      loadMyAds(email);
       try {
         const { getAdsFromSupabase } = await import('@/lib/supabase');
         setActiveAds(await getAdsFromSupabase());
       } catch {}
     })();
-  }, [loadMyAds]);
+  }, []);
 
   const pickMedia = async (files) => {
     setMediaError('');
@@ -440,10 +527,32 @@ export default function AdsPage() {
   // Real submission — everything persisted in one go; receipt optional (can be added later from My Ads)
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!myEmail) {
-      toast.error('Create a free PayRound account first — visitors cannot run ads.');
+
+    // Revalidate at the point of submission. Never trust myEmail/localStorage for ownership.
+    let supabaseClient;
+    let authUser;
+    let authEmail = '';
+    let accessToken = '';
+    try {
+      const mod = await import('@/lib/supabase');
+      supabaseClient = mod.supabase;
+      const { data, error } = await supabaseClient.auth.getUser();
+      if (error || !data?.user?.email) throw new Error('not-authenticated');
+      authUser = data.user;
+      authEmail = data.user.email.trim().toLowerCase();
+      const { data: sessionData } = await supabaseClient.auth.getSession();
+      accessToken = sessionData?.session?.access_token || '';
+      if (!accessToken) throw new Error('not-authenticated');
+      setMyEmail(authEmail);
+    } catch {
+      setMyEmail('');
+      setMyAds([]);
+      setShowForm(false);
+      toast.error('Please log in before submitting an ad.');
+      setTimeout(() => router.push('/login?redirect=%2Fads'), 500);
       return;
     }
+
     if (!formData.contact.trim()) { toast.error('Contact phone is required.'); return; }
     if (mediaFiles.length === 0) { toast.error('Add at least 1 photo or video of your business.'); return; }
     if (!receipt && !window.confirm(`No payment receipt attached!\n\nYour ad will be SAVED as "Awaiting payment". Pay ₦${plan.price.toLocaleString()} to the PayRound account shown and upload the receipt later from "My Ads" on this page — nothing will be lost.\n\nSave the ad now without the receipt?`)) return;
@@ -459,7 +568,8 @@ export default function AdsPage() {
         const file = rawVid.current[m];
         if (file) {
           const ext = (file.name.split('.').pop() || 'mp4').toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 5) || 'mp4';
-          jobs.push({ idx, m, file, path: `ads/${adId}/media-${idx + 1}.${ext}`, fraction: 0, url: '' });
+          // User id in the path lets Storage RLS prove who owns each upload.
+          jobs.push({ idx, m, file, path: `ads/${authUser.id}/${adId}/media-${idx + 1}.${ext}`, fraction: 0, url: '' });
         }
       });
       if (jobs.length) {
@@ -476,7 +586,7 @@ export default function AdsPage() {
         bump();
         await Promise.all(jobs.map(async (j) => {
           try {
-            j.url = await uploadAdVideo(j.file, j.path, (f) => { j.fraction = f; bump(); });
+            j.url = await uploadAdVideo(j.file, j.path, (f) => { j.fraction = f; bump(); }, accessToken);
           } catch (vErr) {
             // Backup plan: a small clip can still ride inside the ad; a big one must give up with a clear message
             if (j.file.size <= 3.5 * 1024 * 1024) j.url = ''; // empty url → falls back to inline dataUrl below
@@ -508,14 +618,13 @@ export default function AdsPage() {
         price: plan.price,
         payment_receipt_url: receipt || null,
         receipt_uploaded_at: receipt ? new Date().toISOString() : null,
-        submitter_email: myEmail || 'visitor',
+        submitter_email: authEmail,
         status: 'pending',
         submitted_at: new Date().toISOString(),
       };
       const bodyKB = Math.round(JSON.stringify(payload).length / 1024);
       if (bodyKB > MAX_PAYLOAD_KB) throw new Error(`This ad is still too heavy (~${(bodyKB / 1024).toFixed(1)}MB) — remove a photo or two and try again.`);
-      const { supabase } = await import('@/lib/supabase');
-      const { data: saved, error: saveErr } = await supabase.rpc('submit_ad', { p: payload });
+      const { data: saved, error: saveErr } = await supabaseClient.rpc('submit_ad', { p: payload });
       if (saveErr) throw saveErr;
       if (!saved?.ok) throw new Error('Ad was not saved. Try again.');
       toast.success(editId
@@ -532,7 +641,7 @@ export default function AdsPage() {
       setMediaAlts([]);
       setEditId('');
       setShowForm(false);
-      loadMyAds(myEmail);
+      loadMyAds(authEmail);
       // Straight to the My Ads tab, already filtered to where the new ad landed 🎯
       if (!editId) setTimeout(() => { setTab('mine'); setMineFilter(receipt ? 'review' : 'await_receipt'); }, 450);
     } catch (err) {
@@ -547,17 +656,36 @@ export default function AdsPage() {
     if (!file || !file.type.startsWith('image/')) { toast.error('Receipt must be an image.'); return; }
     const t = toast.loading('Uploading receipt…', { duration: Infinity });
     try {
+      const { email, stale } = await syncAuth();
+      if (stale) throw new Error('Your sign-in changed — please try again.');
+      if (!email) throw new Error('Your login expired — log in again.');
+      if ((ad.submitter_email || '').toLowerCase() !== email) throw new Error('You can only change your own ads.');
       const { compressImage } = await import('@/lib/image');
       const dataUrl = await compressImage(file, 1000, 0.82);
-      await postgrestSave('PATCH', `ads?id=eq.${encodeURIComponent(ad.id)}`, { payment_receipt_url: dataUrl, receipt_uploaded_at: new Date().toISOString() }, 60000);
+      await postgrestSave('PATCH', `ads?id=eq.${encodeURIComponent(ad.id)}&submitter_email=eq.${encodeURIComponent(email)}`, { payment_receipt_url: dataUrl, receipt_uploaded_at: new Date().toISOString() }, 60000);
       toast.success('Receipt uploaded! PayRound will review and set your ad LIVE. 🎉', { id: t, duration: 5000 });
       setMineFilter('review'); // show it land under ⏳ Pending
-      loadMyAds(myEmail);
+      loadMyAds(email);
     } catch (err) { toast.error(`Upload failed: ${err.message || 'try again'}`, { id: t, duration: 7000 }); }
   };
 
   // ✏️ Fix a declined ad — load it back into the form; submitting UPDATEs the same row
-  const startEdit = (ad) => {
+  const startEdit = async (ad) => {
+    const { email, stale } = await syncAuth();
+    if (stale) {
+      toast.error('Your sign-in changed — please tap Edit again.');
+      return;
+    }
+    if (!email) {
+      toast.error('Please log in before editing an ad.');
+      router.push('/login?redirect=%2Fads');
+      return;
+    }
+    if ((ad.submitter_email || '').trim().toLowerCase() !== email) {
+      toast.error('You can only edit your own ads.');
+      return;
+    }
+
     let media = [], alts = [];
     try { const m = JSON.parse(ad.media_urls || '[]'); if (Array.isArray(m)) media = m; } catch {}
     try { const a = JSON.parse(ad.media_alts || '[]'); if (Array.isArray(a)) alts = a; } catch {}
@@ -587,11 +715,15 @@ export default function AdsPage() {
     if (!window.confirm(`Delete the ad "${ad.business_name}" permanently? This cannot be undone.`)) return;
     const t = toast.loading('Deleting…');
     try {
+      const { email, stale } = await syncAuth();
+      if (stale) throw new Error('Your sign-in changed — please try again.');
+      if (!email) throw new Error('Your login expired — log in again.');
+      if ((ad.submitter_email || '').toLowerCase() !== email) throw new Error('You can only delete your own ads.');
       const { supabase } = await import('@/lib/supabase');
-      const { error } = await supabase.from('ads').delete().eq('id', ad.id);
+      const { error } = await supabase.from('ads').delete().eq('id', ad.id).eq('submitter_email', email);
       if (error) throw error;
       toast.success('Ad deleted.', { id: t, duration: 3500 });
-      loadMyAds(myEmail);
+      loadMyAds(email);
     } catch (err) { toast.error(`Could not delete: ${err.message || 'try again'}`, { id: t, duration: 6000 }); }
   };
 
@@ -636,7 +768,7 @@ export default function AdsPage() {
         </div>
 
         {/* 📑 Tabs — Create Ad vs My Ads */}
-        {myEmail && (
+        {authChecked && myEmail && (
           <div className="flex justify-center gap-2 mb-6">
             <button onClick={() => setTab('create')}
               className={`px-5 py-2.5 rounded-full text-sm font-bold transition-all ${tab === 'create' ? 'bg-primary-600 text-white shadow-lg shadow-primary-200' : 'bg-white text-gray-600 border border-gray-200 hover:border-primary-300'}`}>
@@ -650,7 +782,7 @@ export default function AdsPage() {
         )}
 
         {/* 📂 MY ADS TAB — everything the advertiser ever submitted, grouped by status */}
-        {myEmail && tab === 'mine' && (
+        {authChecked && myEmail && tab === 'mine' && (
           <div className="mb-8">
             <h2 className="text-lg font-semibold text-gray-900 mb-1">📂 My Ads ({myAds.length})</h2>
             <p className="text-xs mb-3 ad-hint">Your ads stay saved here forever — unless you delete them yourself. Saved one to pay later? It waits under <b>💾 Saved</b> — upload the receipt whenever you're ready.</p>
@@ -769,8 +901,16 @@ export default function AdsPage() {
           </div>
         )}
 
+        {/* Do not reveal either visitor or advertiser controls until Auth has been verified. */}
+        {tab === 'create' && !authChecked && (
+          <div className="text-center bg-white border border-gray-100 rounded-2xl p-8 shadow-sm" role="status" aria-live="polite">
+            <div className="w-8 h-8 border-4 border-primary-100 border-t-primary-600 rounded-full animate-spin mx-auto mb-3" />
+            <p className="text-sm font-semibold text-gray-700">Checking your sign-in…</p>
+          </div>
+        )}
+
         {/* CTA */}
-        {tab === 'create' && !showForm && (
+        {tab === 'create' && authChecked && !showForm && (
           <div className="text-center bg-gradient-to-br from-primary-600 to-primary-700 rounded-2xl p-8 md:p-12">
             <HiPhotograph className="w-12 h-12 text-primary-200 mx-auto mb-4" />
             <h2 className="text-2xl font-bold text-white mb-3">Advertise Your Business Here</h2>
@@ -804,8 +944,8 @@ export default function AdsPage() {
           </div>
         )}
 
-        {/* Form */}
-        {tab === 'create' && showForm && (
+        {/* Form — a verified Supabase user is required; cached browser data is never enough. */}
+        {tab === 'create' && authChecked && myEmail && showForm && (
           <div className="max-w-lg mx-auto">
             <div className="bg-white rounded-2xl border border-gray-100 p-6 md:p-8 shadow-sm">
               <h3 className="text-lg font-semibold text-gray-900 mb-1">Advertise Your Business</h3>

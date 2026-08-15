@@ -43,15 +43,26 @@ export default function ProfilePage() {
         const { supabase } = await import('@/lib/supabase');
         const { data } = await supabase
           .from('users')
-          .select('id, name, email, phone, role, profile_pic, pending_profile_pic, is_verified, is_approved, approval_status, referral_earnings, referred_by, created_at, gender, dob, address, occupation, bio, bank_name, account_number, account_name')
+          .select('id, name, email, phone, role, profile_pic, pending_profile_pic, is_verified, is_approved, approval_status, created_at, gender, address, occupation, bio, bank_name, account_number, account_name')
           .eq('email', (parsed.email || '').toLowerCase())
           .single();
+        let privateFields = {};
+        try {
+          const { data: mine } = await supabase.rpc('get_my_referral_dashboard');
+          privateFields = {
+            dob: mine?.dob || '',
+            referral_earnings: Number(mine?.total_earnings || 0),
+            referrals_public: !!mine?.referrals_public,
+            dob_public: !!mine?.dob_public,
+          };
+        } catch {}
         if (data) {
-          setAccount(data);
+          const fullAccount = { ...data, ...privateFields };
+          setAccount(fullAccount);
           setFormData({
-            name: data.name || '', phone: data.phone || '',
-            gender: data.gender || '', dob: data.dob || '',
-            address: data.address || '', occupation: data.occupation || '', bio: data.bio || '',
+            name: fullAccount.name || '', phone: fullAccount.phone || '',
+            gender: fullAccount.gender || '', dob: fullAccount.dob || '',
+            address: fullAccount.address || '', occupation: fullAccount.occupation || '', bio: fullAccount.bio || '',
           });
         }
         try {
@@ -195,8 +206,6 @@ export default function ProfilePage() {
     setSaving(false);
   };
 
-  const uniqueId = String(account?.id || user.id || '').slice(0, 8);
-  const refLink = `https://payround-omega.vercel.app/signup?ref=${uniqueId}`;
   // Extra profile details unlock after PayRound approves the account
   const extrasUnlocked = !!(account?.is_approved || account?.approval_status === 'approved');
 
@@ -474,7 +483,10 @@ export default function ProfilePage() {
               {account?.bio && (
                 <div className="p-4 bg-gray-50 rounded-xl"><p className="text-xs text-gray-500 mb-1">Bio</p><p className="text-sm font-medium text-gray-900 whitespace-pre-line">{account.bio}</p></div>
               )}
-              <div className="flex items-center justify-between p-4 bg-gray-50 rounded-xl"><div><p className="text-xs text-gray-500">Referral Earnings</p><p className="text-sm font-medium text-gray-900">₦{Number(account?.referral_earnings || 0).toLocaleString()}</p></div><HiGift className="w-5 h-5 text-gray-400" /></div>
+              <button onClick={() => router.push('/referrals')} className="flex items-center justify-between p-4 bg-primary-50 border border-primary-100 rounded-xl w-full text-left hover:bg-primary-100/70 transition-colors">
+                <div><p className="text-xs text-gray-500">Referral Earnings</p><p className="text-sm font-medium text-gray-900">₦{Number(account?.referral_earnings || 0).toLocaleString()} · View people referred</p></div>
+                <span className="inline-flex items-center gap-1 text-xs font-semibold text-primary-700"><HiGift className="w-5 h-5" /> Open →</span>
+              </button>
               <button onClick={() => setEditing(true)} className="w-full flex items-center justify-center gap-2 border border-gray-200 text-gray-700 font-medium py-3 rounded-xl hover:bg-gray-50 transition-all"><HiPencil className="w-4 h-4" /> Edit Profile</button>
             </div>
           )}

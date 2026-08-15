@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
-import { HiMenu, HiX, HiSearch, HiBell, HiHome, HiUserGroup, HiCurrencyDollar, HiUser, HiLogout, HiChartBar, HiCog, HiChatAlt2, HiCalculator, HiSpeakerphone } from 'react-icons/hi';
+import { HiMenu, HiX, HiSearch, HiBell, HiHome, HiUserGroup, HiCurrencyDollar, HiUser, HiLogout, HiChartBar, HiCog, HiChatAlt2, HiCalculator, HiSpeakerphone, HiGift } from 'react-icons/hi';
 import QuickCalc from '@/components/QuickCalc';
 import GlobalSearch from '@/components/GlobalSearch';
 import ShareButton, { payroundInviteUrl } from '@/components/ShareSheet';
@@ -285,7 +285,7 @@ export default function Header() {
                   compact
                   label="Share PayRound"
                   title="PayRound"
-                  text="Join me on PayRound — save together with people you can see. Sign up free."
+                  text="Join me on PayRound. Sign up with my link and create a group. If PayRound approves your first group, I can earn a ₦500 referral bonus."
                   url={payroundInviteUrl()}
                 />
 
@@ -471,6 +471,7 @@ export default function Header() {
                   <MobileNavItem icon={<HiUserGroup className="w-5 h-5" />} label="Join Group" onClick={() => { router.push('/groups/search'); setIsMenuOpen(false); }} active={isActive('/groups/search')} />
                   <MobileNavItem icon={<HiChartBar className="w-5 h-5" />} label="Create Group" onClick={() => { router.push('/groups/create'); setIsMenuOpen(false); }} active={isActive('/groups/create')} />
                   <MobileNavItem icon={<HiSpeakerphone className="w-5 h-5" />} label="My Ads" onClick={() => { router.push('/ads?tab=mine'); setIsMenuOpen(false); }} active={isActive('/ads')} />
+                  <MobileNavItem icon={<HiGift className="w-5 h-5" />} label="My Referrals" onClick={() => { router.push('/referrals'); setIsMenuOpen(false); }} active={isActive('/referrals')} />
                   <MobileNavItem icon={<HiBell className="w-5 h-5" />} label={`Notifications${unreadCount > 0 ? ` (${unreadCount})` : ''}`} onClick={() => { router.push('/notifications'); setIsMenuOpen(false); }} active={isActive('/notifications')} />
                   <MobileNavItem icon={<HiChatAlt2 className="w-5 h-5" />} label={`Messages${unreadMsgs > 0 ? ` (${unreadMsgs})` : ''}`} onClick={() => { router.push('/messages'); setIsMenuOpen(false); }} active={isActive('/messages')} />
                   {gchatShow && (
@@ -482,7 +483,7 @@ export default function Header() {
                     <ShareButton
                       label="Share PayRound with friends"
                       title="PayRound"
-                      text="Join me on PayRound — save together with people you can see. Sign up free."
+                      text="Join me on PayRound. Sign up with my link and create a group. If PayRound approves your first group, I can earn a ₦500 referral bonus."
                       url={payroundInviteUrl()}
                       className="w-full inline-flex items-center justify-center gap-2 text-sm font-semibold text-primary-800 bg-primary-50 border border-primary-200 px-4 py-3 rounded-xl"
                     />

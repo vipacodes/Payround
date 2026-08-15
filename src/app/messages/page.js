@@ -153,8 +153,8 @@ function botReply(text, ctx = {}) {
   if (has('change email', 'new email', 'update email', 'wrong email', 'change my email', 'email address'))
     return withChips(`📧 Changing your login email:\nSettings → Security → Change Email — your password is required.\n• Everything moves with you: groups, messages, ads, profile.\n• Afterwards log in with the NEW email; your password stays the same.`, ['I forgot my password', HUMAN_CHIP]);
 
-  if (has('refer', 'invite', 'bonus', 'earn money', 'earn from', '200 per'))
-    return withChips(`🎁 Referral bonus:\n• Share your personal referral link (Dashboard) — earn ₦200 for EVERY person who registers through it.\n• Withdraw once you reach ₦1,000 (that's 5+ referrals).\n• You must be a member or admin of a group to cash referral earnings.\nYour Dashboard lists everyone who joined through you.`, ['How do groups work?', HUMAN_CHIP]);
+  if (has('refer', 'invite', 'bonus', 'earn money', 'earn from', '500 per', 'my referrals'))
+    return withChips(`🎁 Referral bonus:\n• Every account gets a personal referral link in Menu → My Referrals. No group membership is needed to share it.\n• Signup records the referral but pays no instant bonus.\n• You can earn one ₦500 bonus when the person you referred creates their first group and PayRound approves it — extra groups do not create extra bonuses.\n• To receive the money, you must own or be an approved member of a PayRound-approved group. If not, the ₦500 stays pending and releases automatically when you qualify.\n• Your referral list and date of birth are private unless you switch either one public in My Referrals.`, ['How do groups work?', HUMAN_CHIP]);
 
   if (has('announcement'))
     return withChips(`📣 Group announcements:\n• Posted by the group admin — shown in a bright box at the very TOP of the group chat.\n• They stay there until the admin clears them — always check there first for deadlines & rule changes.`, ['How do I pay?', HUMAN_CHIP]);

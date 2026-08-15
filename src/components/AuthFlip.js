@@ -467,7 +467,7 @@ function SignupPane({ go }) {
             <HiUser className="absolute left-3.5 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
             <input type="text" value={formData.referredBy} onChange={e => updateField('referredBy', e.target.value)} placeholder="Unique ID of who referred you" className="w-full pl-11 pr-4 py-3 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary-500" />
           </div>
-          <p className="text-xs text-gray-400 mt-1">Auto-filled when you open someone&apos;s referral link. The referrer earns ₦200.</p>
+          <p className="text-xs text-gray-400 mt-1">Auto-filled from a personal referral link. No signup bonus is paid. If PayRound later approves your first group, the referrer can earn one ₦500 bonus under the group eligibility rule.</p>
         </div>
         <button type="submit" disabled={submitting} className="w-full bg-primary-600 text-white font-semibold py-3.5 rounded-xl hover:bg-primary-700 transition-all shadow-lg shadow-primary-200 disabled:opacity-50">
           {submitting ? 'Creating Account...' : 'Create Account'}
