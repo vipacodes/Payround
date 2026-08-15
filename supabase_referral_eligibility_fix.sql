@@ -658,27 +658,71 @@ begin
     raise exception using errcode = '42501', message = 'Authentication required';
   end if;
 
+  -- Claims are the source of reward status. The second branch is a display-only
+  -- fallback for any older relationship marker that somehow has no claim row, so
+  -- every referred member's profile remains visible without inventing a reward.
+  with referral_rows as (
+    select
+      referred.id as user_id,
+      referred.name,
+      referred.profile_pic,
+      c.created_at as referred_at,
+      c.status,
+      case when c.status in ('pending', 'awarded') then c.bonus_amount else 0 end as bonus_amount,
+      c.qualified_at,
+      c.awarded_at,
+      c.qualifying_group_id,
+      g.name as qualifying_group_name
+    from public.referral_claims as c
+    join public.users as referred on referred.id = c.referred_user_id
+    left join public.groups as g on g.id = c.qualifying_group_id
+    where c.referrer_user_id = v_uid
+
+    union all
+
+    select
+      referred.id,
+      referred.name,
+      referred.profile_pic,
+      referred.created_at,
+      'referred'::text,
+      0,
+      null::timestamptz,
+      null::timestamptz,
+      null::text,
+      null::text
+    from public.users as referred
+    where referred.id <> v_uid
+      and (
+        lower(btrim(referred.referred_by::text)) = lower(v_uid::text)
+        or (
+          length(btrim(referred.referred_by::text)) = 8
+          and lower(btrim(referred.referred_by::text)) = left(lower(v_uid::text), 8)
+        )
+      )
+      and not exists (
+        select 1 from public.referral_claims as existing
+        where existing.referred_user_id = referred.id
+      )
+  )
   select coalesce(
     jsonb_agg(
       jsonb_build_object(
-        'user_id', referred.id,
-        'name', coalesce(nullif(btrim(referred.name), ''), 'PayRound member'),
-        'profile_pic', referred.profile_pic,
-        'referred_at', c.created_at,
-        'status', c.status,
-        'bonus_amount', case when c.status in ('pending', 'awarded') then c.bonus_amount else 0 end,
-        'qualified_at', c.qualified_at,
-        'awarded_at', c.awarded_at,
-        'qualifying_group_id', c.qualifying_group_id,
-        'qualifying_group_name', g.name
-      ) order by c.created_at desc
+        'user_id', r.user_id,
+        'name', coalesce(nullif(btrim(r.name), ''), 'PayRound member'),
+        'profile_pic', r.profile_pic,
+        'referred_at', r.referred_at,
+        'status', r.status,
+        'bonus_amount', r.bonus_amount,
+        'qualified_at', r.qualified_at,
+        'awarded_at', r.awarded_at,
+        'qualifying_group_id', r.qualifying_group_id,
+        'qualifying_group_name', r.qualifying_group_name
+      ) order by r.referred_at desc
     ),
     '[]'::jsonb
   ) into v_referrals
-  from public.referral_claims as c
-  join public.users as referred on referred.id = c.referred_user_id
-  left join public.groups as g on g.id = c.qualifying_group_id
-  where c.referrer_user_id = v_uid;
+  from referral_rows as r;
 
   select jsonb_build_object(
     'total_earnings', coalesce(u.referral_earnings, 0),
@@ -747,6 +791,66 @@ $function$;
 revoke all on function public.set_profile_privacy(boolean, boolean) from public, anon;
 grant execute on function public.set_profile_privacy(boolean, boolean) to authenticated, service_role;
 
+-- Single-purpose setters keep the two privacy choices truly independent. They also
+-- prevent one page from overwriting the other setting with stale client state.
+create or replace function public.set_referral_list_privacy(p_public boolean)
+returns jsonb
+language plpgsql
+security definer
+set search_path = pg_catalog, public, auth
+as $function$
+declare
+  v_uid uuid := auth.uid();
+  v_result jsonb;
+begin
+  if v_uid is null then
+    raise exception using errcode = '42501', message = 'Authentication required';
+  end if;
+
+  update public.users
+  set referrals_public = coalesce(p_public, false)
+  where id = v_uid
+  returning jsonb_build_object('referrals_public', referrals_public) into v_result;
+
+  if v_result is null then
+    raise exception using errcode = 'P0002', message = 'Profile not found';
+  end if;
+  return v_result;
+end;
+$function$;
+
+revoke all on function public.set_referral_list_privacy(boolean) from public, anon;
+grant execute on function public.set_referral_list_privacy(boolean) to authenticated, service_role;
+
+create or replace function public.set_dob_privacy(p_public boolean)
+returns jsonb
+language plpgsql
+security definer
+set search_path = pg_catalog, public, auth
+as $function$
+declare
+  v_uid uuid := auth.uid();
+  v_result jsonb;
+begin
+  if v_uid is null then
+    raise exception using errcode = '42501', message = 'Authentication required';
+  end if;
+
+  update public.users
+  set dob_public = coalesce(p_public, false)
+  where id = v_uid
+  returning jsonb_build_object('dob_public', dob_public) into v_result;
+
+  if v_result is null then
+    raise exception using errcode = 'P0002', message = 'Profile not found';
+  end if;
+  return v_result;
+end;
+$function$;
+
+revoke all on function public.set_dob_privacy(boolean) from public, anon;
+grant execute on function public.set_dob_privacy(boolean) to authenticated, service_role;
+
 -- Privacy-safe public projection. It returns no DOB or list data unless the target
 -- account explicitly enabled the relevant setting. Direct SELECT privileges for the
 -- underlying private columns are removed below.
@@ -783,24 +887,61 @@ begin
   end if;
 
   if v_refs_public then
+    with referral_rows as (
+      select
+        referred.id as user_id,
+        referred.name,
+        referred.profile_pic,
+        c.created_at as referred_at,
+        c.status,
+        case when c.status in ('pending', 'awarded') then c.bonus_amount else 0 end as bonus_amount,
+        c.qualified_at,
+        c.awarded_at
+      from public.referral_claims as c
+      join public.users as referred on referred.id = c.referred_user_id
+      where c.referrer_user_id = p_user_id
+
+      union all
+
+      select
+        referred.id,
+        referred.name,
+        referred.profile_pic,
+        referred.created_at,
+        'referred'::text,
+        0,
+        null::timestamptz,
+        null::timestamptz
+      from public.users as referred
+      where referred.id <> p_user_id
+        and (
+          lower(btrim(referred.referred_by::text)) = lower(p_user_id::text)
+          or (
+            length(btrim(referred.referred_by::text)) = 8
+            and lower(btrim(referred.referred_by::text)) = left(lower(p_user_id::text), 8)
+          )
+        )
+        and not exists (
+          select 1 from public.referral_claims as existing
+          where existing.referred_user_id = referred.id
+        )
+    )
     select coalesce(
       jsonb_agg(
         jsonb_build_object(
-          'user_id', referred.id,
-          'name', coalesce(nullif(btrim(referred.name), ''), 'PayRound member'),
-          'profile_pic', referred.profile_pic,
-          'referred_at', c.created_at,
-          'status', c.status,
-          'bonus_amount', case when c.status in ('pending', 'awarded') then c.bonus_amount else 0 end,
-          'qualified_at', c.qualified_at,
-          'awarded_at', c.awarded_at
-        ) order by c.created_at desc
+          'user_id', r.user_id,
+          'name', coalesce(nullif(btrim(r.name), ''), 'PayRound member'),
+          'profile_pic', r.profile_pic,
+          'referred_at', r.referred_at,
+          'status', r.status,
+          'bonus_amount', r.bonus_amount,
+          'qualified_at', r.qualified_at,
+          'awarded_at', r.awarded_at
+        ) order by r.referred_at desc
       ),
       '[]'::jsonb
     ) into v_referrals
-    from public.referral_claims as c
-    join public.users as referred on referred.id = c.referred_user_id
-    where c.referrer_user_id = p_user_id;
+    from referral_rows as r;
   end if;
 
   v_result := jsonb_build_object(

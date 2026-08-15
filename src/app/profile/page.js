@@ -5,10 +5,32 @@ import { useRouter } from 'next/navigation';
 import Header from '@/components/Header';
 import Footer from '@/components/Footer';
 import ImageLightbox from '@/components/ImageLightbox';
-import { HiUser, HiMail, HiPhone, HiCamera, HiPencil, HiSave, HiBadgeCheck, HiClock, HiGift, HiLockClosed, HiLocationMarker, HiBriefcase, HiCalendar, HiIdentification } from 'react-icons/hi';
+import { HiUser, HiMail, HiPhone, HiCamera, HiPencil, HiSave, HiBadgeCheck, HiClock, HiGift, HiLockClosed, HiLocationMarker, HiBriefcase, HiCalendar, HiIdentification, HiEye, HiEyeOff } from 'react-icons/hi';
 import toast from 'react-hot-toast';
 import FollowersList from '@/components/FollowersList';
 import ShareButton, { siteUrl } from '@/components/ShareSheet';
+
+function DobPrivacySwitch({ enabled, disabled, onChange }) {
+  return (
+    <div className="flex flex-col items-end gap-1.5 shrink-0">
+      <span className={`inline-flex items-center gap-1 text-[10px] font-bold ${enabled ? 'text-primary-700' : 'text-gray-500'}`}>
+        {enabled ? <HiEye className="w-3.5 h-3.5" /> : <HiEyeOff className="w-3.5 h-3.5" />}
+        {disabled ? 'Saving…' : enabled ? 'Public' : 'Private'}
+      </span>
+      <button
+        type="button"
+        role="switch"
+        aria-checked={enabled}
+        aria-label={enabled ? 'Make date of birth private' : 'Make date of birth public'}
+        disabled={disabled}
+        onClick={() => onChange(!enabled)}
+        className={`relative w-12 h-7 rounded-full transition-colors disabled:opacity-60 ${enabled ? 'bg-primary-600' : 'bg-gray-300'}`}
+      >
+        <span className={`absolute left-0 top-1 w-5 h-5 bg-white rounded-full shadow transition-transform ${enabled ? 'translate-x-6' : 'translate-x-1'}`} />
+      </button>
+    </div>
+  );
+}
 
 export default function ProfilePage() {
   const router = useRouter();
@@ -16,6 +38,7 @@ export default function ProfilePage() {
   const [account, setAccount] = useState(null); // real row from Supabase
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [dobPrivacyBusy, setDobPrivacyBusy] = useState(false);
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
   const [zoomPhoto, setZoomPhoto] = useState(null); // expanded photo src
   const [formData, setFormData] = useState({ name: '', phone: '', gender: '', dob: '', address: '', occupation: '', bio: '' });
@@ -204,6 +227,28 @@ export default function ProfilePage() {
       toast.error(`Save failed: ${e.message || 'try again'}`);
     }
     setSaving(false);
+  };
+
+  const setDobPrivacy = async (value) => {
+    if (!account || dobPrivacyBusy) return;
+    const previous = !!account.dob_public;
+
+    // Give immediate feedback, then roll back if the database does not confirm it.
+    setAccount(prev => prev ? { ...prev, dob_public: value } : prev);
+    setDobPrivacyBusy(true);
+    try {
+      const { supabase } = await import('@/lib/supabase');
+      const { data, error } = await supabase.rpc('set_dob_privacy', { p_public: value });
+      if (error) throw error;
+      if (!!data?.dob_public !== value) throw new Error('The saved privacy state could not be confirmed');
+      setAccount(prev => prev ? { ...prev, dob_public: !!data.dob_public } : prev);
+      toast.success(value ? 'Date of birth is now public' : 'Date of birth is now private');
+    } catch (error) {
+      setAccount(prev => prev ? { ...prev, dob_public: previous } : prev);
+      toast.error(`DOB privacy update failed: ${error.message || 'try again'}`);
+    } finally {
+      setDobPrivacyBusy(false);
+    }
   };
 
   // Extra profile details unlock after PayRound approves the account
@@ -477,7 +522,18 @@ export default function ProfilePage() {
                 <span className="text-xs font-semibold text-primary-600 shrink-0 ml-2">Edit →</span>
               </button>
               <div className="flex items-center justify-between p-4 bg-gray-50 rounded-xl"><div><p className="text-xs text-gray-500">Gender</p><p className="text-sm font-medium text-gray-900">{account?.gender || (extrasUnlocked ? '—' : 'Unlocks after approval')}</p></div><HiIdentification className="w-5 h-5 text-gray-400" /></div>
-              <div className="flex items-center justify-between p-4 bg-gray-50 rounded-xl"><div><p className="text-xs text-gray-500">Date of Birth</p><p className="text-sm font-medium text-gray-900">{account?.dob || '—'}</p></div><HiCalendar className="w-5 h-5 text-gray-400" /></div>
+              <div className="flex items-center justify-between gap-4 p-4 bg-gray-50 rounded-xl">
+                <div className="min-w-0">
+                  <p className="text-xs text-gray-500 flex items-center gap-1.5"><HiCalendar className="w-4 h-4" /> Date of Birth</p>
+                  <p className="text-sm font-medium text-gray-900 mt-0.5">{account?.dob || '—'}</p>
+                  <p className="text-[10px] text-gray-400 mt-1">Private by default. Use this switch to show or hide it on your public profile.</p>
+                </div>
+                <DobPrivacySwitch
+                  enabled={!!account?.dob_public}
+                  disabled={dobPrivacyBusy}
+                  onChange={setDobPrivacy}
+                />
+              </div>
               <div className="flex items-center justify-between p-4 bg-gray-50 rounded-xl"><div><p className="text-xs text-gray-500">Address</p><p className="text-sm font-medium text-gray-900">{account?.address || '—'}</p></div><HiLocationMarker className="w-5 h-5 text-gray-400" /></div>
               <div className="flex items-center justify-between p-4 bg-gray-50 rounded-xl"><div><p className="text-xs text-gray-500">Occupation</p><p className="text-sm font-medium text-gray-900">{account?.occupation || '—'}</p></div><HiBriefcase className="w-5 h-5 text-gray-400" /></div>
               {account?.bio && (

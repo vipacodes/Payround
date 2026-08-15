@@ -8,7 +8,7 @@ import LoadingScreen from '@/components/LoadingScreen';
 import ShareButton, { payroundInviteUrl } from '@/components/ShareSheet';
 import {
   HiGift, HiClock, HiCheckCircle, HiUserGroup, HiEye, HiEyeOff,
-  HiShieldCheck, HiExternalLink, HiCalendar,
+  HiShieldCheck, HiExternalLink,
 } from 'react-icons/hi';
 import toast from 'react-hot-toast';
 
@@ -17,45 +17,53 @@ function money(value) {
 }
 
 function ReferralStatus({ row }) {
-  if (row.status === 'awarded') {
+  const amount = Number(row.bonus_amount || 0);
+  const qualified = amount > 0 && (row.status === 'pending' || row.status === 'awarded');
+
+  if (qualified && row.status === 'awarded') {
     return (
       <span className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2.5 py-1 rounded-full">
-        <HiCheckCircle className="w-3.5 h-3.5" /> {money(row.bonus_amount || 500)} paid
+        <HiCheckCircle className="w-3.5 h-3.5" /> {money(amount)} paid
       </span>
     );
   }
-  if (row.status === 'pending') {
+  if (qualified && row.status === 'pending') {
     return (
       <span className="inline-flex items-center gap-1 text-[11px] font-bold text-amber-700 bg-amber-50 border border-amber-200 px-2.5 py-1 rounded-full">
-        <HiClock className="w-3.5 h-3.5" /> {money(row.bonus_amount || 500)} pending
+        <HiClock className="w-3.5 h-3.5" /> {money(amount)} pending
       </span>
     );
   }
   if (row.status === 'legacy') {
-    return <span className="text-[11px] font-semibold text-gray-500">Previous referral record</span>;
+    return <span className="text-[11px] font-semibold text-gray-500">Previous referral record · no new bonus</span>;
   }
-  return <span className="text-[11px] font-semibold text-gray-500">Waiting for their first approved group</span>;
+  return <span className="text-[11px] font-semibold text-gray-500">Not qualified yet · waiting for their first approved group</span>;
 }
 
 function PrivacyToggle({ icon, title, description, enabled, disabled, onChange }) {
   return (
-    <div className="flex items-start gap-3 py-4 first:pt-0 last:pb-0">
+    <div className="flex items-start gap-3">
       <div className="w-9 h-9 rounded-xl bg-gray-100 flex items-center justify-center text-gray-600 shrink-0">{icon}</div>
       <div className="flex-1 min-w-0">
         <p className="text-sm font-bold text-gray-900">{title}</p>
         <p className="text-xs text-gray-500 mt-0.5">{description}</p>
       </div>
-      <button
-        type="button"
-        role="switch"
-        aria-checked={enabled}
-        disabled={disabled}
-        onClick={() => onChange(!enabled)}
-        className={`relative w-12 h-7 rounded-full transition-colors shrink-0 disabled:opacity-50 ${enabled ? 'bg-primary-600' : 'bg-gray-300'}`}
-      >
-        <span className={`absolute top-1 w-5 h-5 bg-white rounded-full shadow transition-transform ${enabled ? 'translate-x-6' : 'translate-x-1'}`} />
-        <span className="sr-only">{enabled ? 'Make private' : 'Make public'}</span>
-      </button>
+      <div className="flex flex-col items-end gap-1.5 shrink-0">
+        <span className={`text-[10px] font-bold ${enabled ? 'text-primary-700' : 'text-gray-500'}`}>
+          {disabled ? 'Saving…' : enabled ? 'Public' : 'Private'}
+        </span>
+        <button
+          type="button"
+          role="switch"
+          aria-checked={enabled}
+          aria-label={enabled ? 'Make referral list private' : 'Make referral list public'}
+          disabled={disabled}
+          onClick={() => onChange(!enabled)}
+          className={`relative w-12 h-7 rounded-full transition-colors disabled:opacity-60 ${enabled ? 'bg-primary-600' : 'bg-gray-300'}`}
+        >
+          <span className={`absolute left-0 top-1 w-5 h-5 bg-white rounded-full shadow transition-transform ${enabled ? 'translate-x-6' : 'translate-x-1'}`} />
+        </button>
+      </div>
     </div>
   );
 }
@@ -90,32 +98,32 @@ export default function ReferralsPage() {
     return () => { mounted = false; };
   }, [router]);
 
-  const setPrivacy = async (field, value) => {
+  const setReferralPrivacy = async (value) => {
     if (!dashboard || privacyBusy) return;
-    const next = {
-      referrals_public: field === 'referrals_public' ? value : !!dashboard.referrals_public,
-      dob_public: field === 'dob_public' ? value : !!dashboard.dob_public,
-    };
+    const previous = !!dashboard.referrals_public;
+
+    // Move the switch immediately; restore it if the saved update fails.
+    setDashboard(prev => ({ ...prev, referrals_public: value }));
     setPrivacyBusy(true);
     try {
       const { supabase } = await import('@/lib/supabase');
-      const { data, error } = await supabase.rpc('set_profile_privacy', {
-        p_referrals_public: next.referrals_public,
-        p_dob_public: next.dob_public,
-      });
+      const { data, error } = await supabase.rpc('set_referral_list_privacy', { p_public: value });
       if (error) throw error;
-      setDashboard(prev => ({ ...prev, ...next, ...(data || {}) }));
-      toast.success(value ? 'Now visible on your public profile' : 'Changed back to private');
+      if (!!data?.referrals_public !== value) throw new Error('The saved privacy state could not be confirmed');
+      setDashboard(prev => ({ ...prev, referrals_public: !!data.referrals_public }));
+      toast.success(value ? 'Referral list is now public' : 'Referral list is now private');
     } catch (error) {
+      setDashboard(prev => ({ ...prev, referrals_public: previous }));
       toast.error(`Privacy update failed: ${error.message || 'try again'}`);
+    } finally {
+      setPrivacyBusy(false);
     }
-    setPrivacyBusy(false);
   };
 
   if (loading) return <LoadingScreen label="Loading your referrals…" />;
 
   const referrals = Array.isArray(dashboard?.referrals) ? dashboard.referrals : [];
-  const qualified = referrals.filter(row => row.status === 'pending' || row.status === 'awarded').length;
+  const qualified = referrals.filter(row => Number(row.bonus_amount || 0) > 0 && (row.status === 'pending' || row.status === 'awarded')).length;
   const inviteText = 'Join me on PayRound. Sign up with my link and create a group. If PayRound approves your first group, I can earn a ₦500 referral bonus.';
 
   return (
@@ -197,7 +205,13 @@ export default function ReferralsPage() {
           ) : (
             <div className="space-y-3">
               {referrals.map(row => (
-                <div key={row.user_id} className="bg-white rounded-2xl border border-gray-100 p-4 flex items-center gap-3">
+                <button
+                  type="button"
+                  key={row.user_id}
+                  onClick={() => router.push(`/users/${row.user_id}`)}
+                  className="w-full bg-white hover:border-primary-200 hover:shadow-sm rounded-2xl border border-gray-100 p-4 flex items-center gap-3 text-left transition-all"
+                  aria-label={`View ${row.name || 'referred member'}'s profile`}
+                >
                   {row.profile_pic ? (
                     <img src={row.profile_pic} alt="" className="w-12 h-12 rounded-xl object-cover border border-gray-100 shrink-0" />
                   ) : (
@@ -205,17 +219,19 @@ export default function ReferralsPage() {
                       {(row.name || 'P').charAt(0).toUpperCase()}
                     </span>
                   )}
-                  <div className="flex-1 min-w-0">
-                    <button onClick={() => router.push(`/users/${row.user_id}`)} className="font-bold text-sm text-gray-900 hover:text-primary-700 truncate max-w-full inline-flex items-center gap-1">
-                      <span className="truncate">{row.name || 'PayRound member'}</span><HiExternalLink className="w-3 h-3 shrink-0" />
-                    </button>
-                    <p className="text-[10px] text-gray-400 mt-0.5">
+                  <span className="flex-1 min-w-0">
+                    <span className="font-bold text-sm text-gray-900 truncate max-w-full flex items-center gap-1">
+                      <span className="truncate">{row.name || 'PayRound member'}</span>
+                      <HiExternalLink className="w-3 h-3 shrink-0 text-primary-600" />
+                    </span>
+                    <span className="block text-[10px] text-gray-400 mt-0.5">
                       Referred {row.referred_at ? new Date(row.referred_at).toLocaleDateString('en-NG', { day: 'numeric', month: 'short', year: 'numeric' }) : '—'}
                       {row.qualifying_group_name ? ` · ${row.qualifying_group_name}` : ''}
-                    </p>
-                    <div className="mt-2"><ReferralStatus row={row} /></div>
-                  </div>
-                </div>
+                    </span>
+                    <span className="block mt-2"><ReferralStatus row={row} /></span>
+                  </span>
+                  <span className="text-[10px] font-bold text-primary-700 shrink-0">View profile →</span>
+                </button>
               ))}
             </div>
           )}
@@ -225,28 +241,18 @@ export default function ReferralsPage() {
           <div className="flex items-center gap-2 mb-4">
             <HiShieldCheck className="w-5 h-5 text-primary-600" />
             <div>
-              <h2 className="font-bold text-gray-900">Profile privacy</h2>
-              <p className="text-xs text-gray-500">Both are private by default. You control each one.</p>
+              <h2 className="font-bold text-gray-900">Referral-list privacy</h2>
+              <p className="text-xs text-gray-500">Private by default. This setting controls only your referral list.</p>
             </div>
           </div>
-          <div className="divide-y divide-gray-100">
-            <PrivacyToggle
-              icon={dashboard?.referrals_public ? <HiEye className="w-5 h-5" /> : <HiEyeOff className="w-5 h-5" />}
-              title="Show my referral list publicly"
-              description="When on, profile visitors can see this list, statuses, and your total referral earnings."
-              enabled={!!dashboard?.referrals_public}
-              disabled={privacyBusy}
-              onChange={value => setPrivacy('referrals_public', value)}
-            />
-            <PrivacyToggle
-              icon={<HiCalendar className="w-5 h-5" />}
-              title="Show my date of birth publicly"
-              description="When off, only you can retrieve your date of birth. Turn it on to show it on your public profile."
-              enabled={!!dashboard?.dob_public}
-              disabled={privacyBusy}
-              onChange={value => setPrivacy('dob_public', value)}
-            />
-          </div>
+          <PrivacyToggle
+            icon={dashboard?.referrals_public ? <HiEye className="w-5 h-5" /> : <HiEyeOff className="w-5 h-5" />}
+            title="Show my referral list publicly"
+            description="When on, signed-in profile visitors can see the people you referred, their statuses, and your total referral earnings."
+            enabled={!!dashboard?.referrals_public}
+            disabled={privacyBusy}
+            onChange={setReferralPrivacy}
+          />
         </section>
       </main>
       <Footer />

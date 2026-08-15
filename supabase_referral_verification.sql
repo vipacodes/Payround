@@ -6,6 +6,8 @@ with verification as (
       to_regprocedure('public.apply_referral(text,text)') is not null
       and to_regprocedure('public.get_my_referral_dashboard()') is not null
       and to_regprocedure('public.set_profile_privacy(boolean,boolean)') is not null
+      and to_regprocedure('public.set_referral_list_privacy(boolean)') is not null
+      and to_regprocedure('public.set_dob_privacy(boolean)') is not null
       and to_regprocedure('public.get_public_profile_extras(uuid)') is not null
       and to_regprocedure('public.pay_pending_referral_bonuses(uuid)') is not null
     ) as required_functions_ok,
@@ -26,6 +28,12 @@ with verification as (
       has_function_privilege('authenticated', 'public.apply_referral(text,text)', 'execute')
       and not has_function_privilege('anon', 'public.apply_referral(text,text)', 'execute')
     ) as referral_rpc_access_ok,
+    (
+      has_function_privilege('authenticated', 'public.set_referral_list_privacy(boolean)', 'execute')
+      and not has_function_privilege('anon', 'public.set_referral_list_privacy(boolean)', 'execute')
+      and has_function_privilege('authenticated', 'public.set_dob_privacy(boolean)', 'execute')
+      and not has_function_privilege('anon', 'public.set_dob_privacy(boolean)', 'execute')
+    ) as privacy_rpc_access_ok,
     (
       not has_table_privilege('authenticated', 'public.referral_claims', 'select')
       and not has_table_privilege('anon', 'public.referral_claims', 'select')
@@ -71,13 +79,14 @@ cross join lateral (
     ('01_required_functions_ok', v.required_functions_ok::text),
     ('02_required_triggers_ok', v.required_triggers_ok::text),
     ('03_referral_rpc_access_ok', v.referral_rpc_access_ok::text),
-    ('04_internal_tables_private', v.internal_tables_private::text),
-    ('05_sensitive_columns_private', v.sensitive_columns_private::text),
-    ('06_existing_approved_groups_excluded', v.existing_approved_groups_excluded::text),
-    ('07_migration_state_rows', v.migration_state_rows::text),
-    ('08_excluded_group_count', v.excluded_group_count::text),
-    ('09_recorded_relationship_count', v.recorded_relationship_count::text),
-    ('10_new_bonus_count', v.new_bonus_count::text),
-    ('11_invalid_claim_count', v.invalid_claim_count::text)
+    ('04_privacy_rpc_access_ok', v.privacy_rpc_access_ok::text),
+    ('05_internal_tables_private', v.internal_tables_private::text),
+    ('06_sensitive_columns_private', v.sensitive_columns_private::text),
+    ('07_existing_approved_groups_excluded', v.existing_approved_groups_excluded::text),
+    ('08_migration_state_rows', v.migration_state_rows::text),
+    ('09_excluded_group_count', v.excluded_group_count::text),
+    ('10_recorded_relationship_count', v.recorded_relationship_count::text),
+    ('11_new_bonus_count', v.new_bonus_count::text),
+    ('12_invalid_claim_count', v.invalid_claim_count::text)
 ) as checks(item, result)
 order by item;

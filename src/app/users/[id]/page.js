@@ -321,10 +321,10 @@ export default function PublicUserProfilePage() {
                       <span className="block text-sm font-semibold text-gray-900 truncate">{row.name || 'PayRound member'}</span>
                       <span className="block text-[10px] text-gray-400">Referred {row.referred_at ? new Date(row.referred_at).toLocaleDateString('en-NG', { day: 'numeric', month: 'short', year: 'numeric' }) : '—'}</span>
                     </span>
-                    {row.status === 'awarded' ? (
-                      <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-full px-2 py-1 shrink-0"><HiCheckCircle className="w-3 h-3" /> ₦500 paid</span>
-                    ) : row.status === 'pending' ? (
-                      <span className="inline-flex items-center gap-1 text-[10px] font-bold text-amber-700 bg-amber-50 border border-amber-200 rounded-full px-2 py-1 shrink-0"><HiClock className="w-3 h-3" /> ₦500 pending</span>
+                    {row.status === 'awarded' && Number(row.bonus_amount || 0) > 0 ? (
+                      <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-full px-2 py-1 shrink-0"><HiCheckCircle className="w-3 h-3" /> ₦{Number(row.bonus_amount).toLocaleString('en-NG')} paid</span>
+                    ) : row.status === 'pending' && Number(row.bonus_amount || 0) > 0 ? (
+                      <span className="inline-flex items-center gap-1 text-[10px] font-bold text-amber-700 bg-amber-50 border border-amber-200 rounded-full px-2 py-1 shrink-0"><HiClock className="w-3 h-3" /> ₦{Number(row.bonus_amount).toLocaleString('en-NG')} pending</span>
                     ) : (
                       <span className="text-[10px] font-semibold text-gray-400 shrink-0">Not qualified</span>
                     )}
