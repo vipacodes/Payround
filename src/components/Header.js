@@ -100,7 +100,6 @@ export default function Header() {
   // ❄️ Frozen-account watch — if PayRound freezes this account, the whole app is covered
   useEffect(() => {
     let mounted = true;
-    let channel = null;
     const kickOff = async (reason) => {
       try { const { signOutEverywhere } = await import('@/lib/session'); await signOutEverywhere(); } catch {}
       try { localStorage.removeItem('payround_user'); } catch {}
@@ -115,39 +114,24 @@ export default function Header() {
     };
     const check = async () => {
       try {
-        const stored = localStorage.getItem('payround_user');
-        const email = stored ? (JSON.parse(stored).email || '').toLowerCase() : '';
-        if (!email) { if (mounted) setFrozen(false); return; }
         const { supabase } = await import('@/lib/supabase');
-        const { data: td } = await supabase.rpc('account_takedown', { p_email: email });
-        if (td?.taken_down) { await kickOff(td.reason); return; }
-        const { data: acc } = await supabase.from('users').select('is_frozen').eq('email', email).maybeSingle();
-        if (!acc) {
-          const { data: { user } } = await supabase.auth.getUser();
-          if (!user) { await kickOff('PayRound removed this account.'); return; }
-        }
-        if (mounted) setFrozen(!!acc?.is_frozen);
+        const authResult = await supabase.auth.getUser();
+        if (authResult.error) return;
+        if (!authResult.data?.user) { if (mounted) setFrozen(false); return; }
+        const takedownResult = await supabase.rpc('get_my_takedown');
+        if (takedownResult.error) return;
+        if (takedownResult.data?.taken_down) { await kickOff(takedownResult.data.reason); return; }
+        const profileResult = await supabase.rpc('get_my_profile');
+        if (profileResult.error) return;
+        if (!profileResult.data) { await kickOff('PayRound removed this account.'); return; }
+        if (mounted) setFrozen(!!profileResult.data.is_frozen);
       } catch {}
     };
     check();
     const t = setInterval(check, 8000);
-    (async () => {
-      try {
-        const stored = localStorage.getItem('payround_user');
-        const email = stored ? (JSON.parse(stored).email || '').toLowerCase() : '';
-        if (!email) return;
-        const { supabase } = await import('@/lib/supabase');
-        channel = supabase.channel(`takedown-${email}`)
-          .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'account_takedowns', filter: `email=eq.${email}` }, (payload) => {
-            kickOff(payload?.new?.reason);
-          })
-          .subscribe();
-      } catch {}
-    })();
     return () => {
       mounted = false;
       clearInterval(t);
-      try { if (channel) channel.unsubscribe(); } catch {}
     };
   }, [pathname]);
 

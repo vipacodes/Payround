@@ -28,11 +28,20 @@ function LoginPane({ go, autoSkip }) {
     if (p.get('takedown') === '1') {
       setTakedownNote(why || 'PayRound removed this account.');
     }
+    let cancelled = false;
     if (autoSkip && p.get('takedown') !== '1') {
-      try {
-        if (localStorage.getItem('payround_user')) router.replace(r && r.startsWith('/') ? r : '/dashboard');
-      } catch {}
+      (async () => {
+        try {
+          const { supabase } = await import('@/lib/supabase');
+          const { persistProfileFromAuth } = await import('@/lib/session');
+          const { data: { session } } = await supabase.auth.getSession();
+          if (!session || cancelled) return;
+          const profile = await persistProfileFromAuth();
+          if (profile && !cancelled) router.replace(r && r.startsWith('/') ? r : '/dashboard');
+        } catch {}
+      })();
     }
+    return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -50,45 +59,28 @@ function LoginPane({ go, autoSkip }) {
     setLoading(true);
     try {
       const { supabase } = await import('@/lib/supabase');
-      const { persistProfileFromAuth } = await import('@/lib/session');
+      const { persistProfileFromAuth, signOutEverywhere } = await import('@/lib/session');
       const email = formData.email.trim().toLowerCase();
-      let takedown = null;
-      try {
-        const { data: td } = await supabase.rpc('account_takedown', { p_email: email });
-        if (td?.taken_down) takedown = td;
-      } catch {}
-      if (takedown) {
-        const why = takedown.reason || 'PayRound removed this account.';
-        setErrors({ email: 'This account was taken down' });
-        toast.error(`This account was taken down. Reason: ${why} You can create a new free account with the same details, or email payroundsupport@gmail.com if this is wrong.`, { duration: 10000 });
-        setLoading(false);
-        return;
-      }
       const { data, error } = await supabase.auth.signInWithPassword({ email, password: formData.password });
       if (error || !data?.user) {
         const msg = String(error?.message || '').toLowerCase();
         if (msg.includes('email not confirmed')) {
           toast.error('Try logging in again. If it still fails, use Forgot password or email payroundsupport@gmail.com');
-          setLoading(false);
-          return;
-        }
-        let exists = null;
-        try {
-          const { data: flag, error: rpcErr } = await supabase.rpc('account_exists', { p_email: email });
-          if (!rpcErr) exists = !!flag;
-        } catch {}
-        if (exists === false) {
-          setErrors({ email: 'This email is not assigned to any account' });
-          toast.error('This email is not assigned to any account');
         } else {
-          setErrors({ password: 'Incorrect password' });
-          toast.error('Incorrect password');
+          setErrors({ password: 'Incorrect email or password' });
+          toast.error('Incorrect email or password');
         }
         setLoading(false);
         return;
       }
       const profile = await persistProfileFromAuth();
-      toast.success(`Welcome back, ${profile?.name || 'there'}!`);
+      if (!profile) {
+        await signOutEverywhere();
+        toast.error('We could not restore your PayRound profile. No replacement account was created. Please contact payroundsupport@gmail.com.');
+        setLoading(false);
+        return;
+      }
+      toast.success(`Welcome back, ${profile.name || 'there'}!`);
       router.push(redirect);
     } catch (err) {
       toast.error('Login failed: ' + err.message);
@@ -283,12 +275,6 @@ function SignupPane({ go }) {
       const { persistProfileFromAuth } = await import('@/lib/session');
       const email = formData.email.trim().toLowerCase();
       const pendingRef = (formData.referredBy || '').trim();
-      if (pendingRef) {
-        try {
-          localStorage.setItem('payround_pending_ref', pendingRef);
-          sessionStorage.setItem('payround_pending_ref', pendingRef);
-        } catch {}
-      }
       const { data: authData, error: authErr } = await supabase.auth.signUp({
         email,
         password: formData.password,
@@ -310,20 +296,25 @@ function SignupPane({ go }) {
         setSubmitting(false);
         return;
       }
+      if (pendingRef) {
+        try {
+          localStorage.setItem('payround_pending_ref', pendingRef);
+          sessionStorage.setItem('payround_pending_ref', pendingRef);
+        } catch {}
+      }
       if (!authData.session) {
         const login = await supabase.auth.signInWithPassword({ email, password: formData.password });
         if (login.data?.session) {
           authData.session = login.data.session;
           authData.user = login.data.user;
         } else {
-          try { await supabase.rpc('clear_account_takedown', { p_email: email }); } catch {}
           toast.success('Account is ready. Log in with the same email and password — no email to check.');
           setSubmitting(false);
           go('login');
           return;
         }
       }
-      try { await supabase.rpc('clear_account_takedown', { p_email: email }); } catch {}
+      try { await supabase.rpc('clear_my_account_takedown'); } catch {}
       const row = {
         id: authData.user.id,
         email,
@@ -332,21 +323,20 @@ function SignupPane({ go }) {
         trial_used: false,
         role: 'member',
         is_verified: false,
-        referred_by: formData.referredBy?.trim() || null,
         profile_pic: profilePic || null,
       };
       const { error } = await supabase.from('users').insert(row);
       if (error && !String(error.message || '').toLowerCase().includes('duplicate')) {
-        const retry = await supabase.from('users').insert({
-          email, name: formData.name, phone: formData.phone, trial_used: false, role: 'member',
-        });
-        if (retry.error) console.log('profile insert', retry.error.message);
+        toast.error('Your login was created, but the PayRound profile could not be saved. Please log in and try again.');
+        setSubmitting(false);
+        return;
       }
-      const ref = pendingRef || (formData.referredBy || '').trim();
-      if (ref) {
-        try { await supabase.rpc('apply_referral', { p_new_email: email, p_ref: ref }); } catch {}
+      const profile = await persistProfileFromAuth();
+      if (!profile) {
+        toast.error('Your login was created, but the PayRound profile could not be restored. Please contact payroundsupport@gmail.com.');
+        setSubmitting(false);
+        return;
       }
-      await persistProfileFromAuth();
       toast.success('Account created! Welcome to Payround 🎉');
       sessionStorage.removeItem(STORAGE_KEY);
       setDone(true);
