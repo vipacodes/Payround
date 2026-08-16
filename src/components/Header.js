@@ -27,7 +27,8 @@ export default function Header() {
   const [gchatShow, setGchatShow] = useState(false);
   const [showCalc, setShowCalc] = useState(false);   // 👥 icon appears ONLY for group admins & members
   const [gchatUnread, setGchatUnread] = useState(0);
-  const [frozen, setFrozen] = useState(false);       // ❄️ owner froze this account — app is covered with a notice
+  const [frozen, setFrozen] = useState(false);       // ❄️ limited to approved-group admins + PayRound Support
+  const [freezeInfo, setFreezeInfo] = useState(null);
   const [deletionQueue, setDeletionQueue] = useState(null); // 🗓 voluntary deletion remains recoverable for 7 days
   const [restoringAccount, setRestoringAccount] = useState(false);
 
@@ -108,6 +109,7 @@ export default function Header() {
       if (!mounted) return;
       setIsLoggedIn(false);
       setFrozen(false);
+      setFreezeInfo(null);
       setDeletionQueue(null);
       const q = new URLSearchParams();
       q.set('takedown', '1');
@@ -121,7 +123,7 @@ export default function Header() {
         const authResult = await supabase.auth.getUser();
         if (authResult.error) return;
         if (!authResult.data?.user) {
-          if (mounted) { setFrozen(false); setDeletionQueue(null); }
+          if (mounted) { setFrozen(false); setFreezeInfo(null); setDeletionQueue(null); }
           return;
         }
         const takedownResult = await supabase.rpc('get_my_takedown');
@@ -139,7 +141,14 @@ export default function Header() {
         const profileResult = await supabase.rpc('get_my_profile');
         if (profileResult.error) return;
         if (!profileResult.data) { await kickOff('PayRound removed this account.'); return; }
-        if (mounted) setFrozen(!!profileResult.data.is_frozen);
+        const isFrozen = !!profileResult.data.is_frozen;
+        if (mounted) setFrozen(isFrozen);
+        if (isFrozen) {
+          const freezeResult = await supabase.rpc('get_my_account_freeze_status');
+          if (!freezeResult.error && mounted) setFreezeInfo(freezeResult.data || null);
+        } else if (mounted) {
+          setFreezeInfo(null);
+        }
       } catch {}
     };
     check();
@@ -252,16 +261,34 @@ export default function Header() {
           <button onClick={handleLogout} className="mt-3 text-xs font-semibold text-gray-500 px-4 py-2 hover:text-gray-800">Log out</button>
         </div>
       )}
-      {frozen && !deletionQueue && (
-        <div className="fixed inset-0 z-[200] bg-white flex flex-col items-center justify-center px-6 text-center">
+      {frozen && !deletionQueue && pathname !== '/messages' && (
+        <div className="fixed inset-0 z-[200] bg-gradient-to-b from-white to-sky-50 flex flex-col items-center justify-center px-5 text-center overflow-y-auto py-8">
           <div className="w-20 h-20 bg-sky-50 border border-sky-200 rounded-full flex items-center justify-center text-4xl mb-5">❄️</div>
           <h1 className="text-2xl font-bold text-gray-900 mb-2">Account frozen by PayRound</h1>
-          <p className="text-sm text-gray-600 max-w-md mb-1">The PayRound owner froze your account. Your app access is paused, and a private account notification has been recorded for you.</p>
-          <p className="text-xs text-gray-400 max-w-md mb-6">Think this is a mistake? Contact PayRound support on WhatsApp: <b className="text-gray-600">+234 915 1723 199</b></p>
-          <button
-            onClick={() => { try { localStorage.removeItem('payround_user'); } catch {} router.push('/login'); }}
-            className="bg-primary-600 text-white text-sm font-semibold px-6 py-3 rounded-xl hover:bg-primary-700"
-          >Log out</button>
+          <p className="text-sm text-gray-600 max-w-lg">Your account is restricted while PayRound reviews an account matter.</p>
+          <div className="w-full max-w-lg text-left bg-white border border-sky-200 rounded-2xl p-4 mt-4 shadow-sm">
+            <p className="text-[10px] font-bold text-sky-700 uppercase tracking-wider mb-1">Private reason for you</p>
+            <p className="text-sm text-gray-800">{freezeInfo?.reason || 'PayRound temporarily restricted this account while an account matter is reviewed.'}</p>
+          </div>
+          <div className="w-full max-w-lg bg-white border border-gray-200 rounded-2xl p-4 mt-3 text-left">
+            <p className="text-xs font-bold text-gray-900 mb-2">What remains available</p>
+            <ul className="text-xs text-gray-600 space-y-1.5 list-disc pl-5">
+              <li>Private chat with admins of groups where you are an approved member.</li>
+              <li>Private chat with PayRound Support.</li>
+              <li>Read-only group board and history for frozen groups.</li>
+            </ul>
+            <p className="text-xs text-red-600 mt-3">All other app actions, group activity and unrelated direct chats are blocked.</p>
+          </div>
+          <div className="w-full max-w-lg grid sm:grid-cols-2 gap-2 mt-4">
+            <button onClick={() => router.push('/messages')} className="bg-gray-900 text-white text-sm font-bold px-5 py-3 rounded-xl hover:bg-gray-800">
+              Chat group admins ({freezeInfo?.admins?.length || 0})
+            </button>
+            <button onClick={() => router.push('/messages?support=1')} className="bg-primary-600 text-white text-sm font-bold px-5 py-3 rounded-xl hover:bg-primary-700">
+              Chat PayRound Support
+            </button>
+          </div>
+          <a href="https://wa.me/2349151723199" target="_blank" rel="noreferrer" className="text-xs font-semibold text-emerald-700 mt-4">WhatsApp support: +234 915 1723 199</a>
+          <button onClick={handleLogout} className="mt-4 text-xs font-semibold text-gray-500 px-4 py-2 hover:text-gray-800">Log out</button>
         </div>
       )}
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">

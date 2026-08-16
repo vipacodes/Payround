@@ -145,8 +145,8 @@ export default function CreateGroupPage() {
   const removeRule = (index) => { if (formData.rules.length>1) setFormData(prev=>({...prev, rules: prev.rules.filter((_,i)=>i!==index)})); };
   const updateField = (field, value) => setFormData(prev=>({...prev, [field]:value}));
 
-  // Subscription plans — prices controlled by the owner. 1mo ₦1,500 / 6mo ₦8,000 / 12mo ₦15,000
-  const PLAN_MONTHS = [1, 6, 12];
+  // Subscription plans — owner-controlled 1/6/12-month base prices with package/add-on pricing.
+  const PLAN_MONTHS = Array.from({ length: 12 }, (_, index) => index + 1);
   const [planPrices, setPlanPrices] = useState({ 1: 1500, 6: 8000, 12: 15000 });
   const [selectedPlan, setSelectedPlan] = useState(6);
   useEffect(() => {
@@ -189,7 +189,17 @@ export default function CreateGroupPage() {
     } catch (e) { toast.error(`Could not delete: ${e.message || 'try again'}`); }
   };
 
-  const planPrice = planPrices[selectedPlan] || 8000;
+  const priceForMonths = (months) => {
+    const oneMonth = Number(planPrices[1] || 0);
+    const sixMonths = Number(planPrices[6] || 0);
+    const annual = Number(planPrices[12] || 0);
+    if (months >= 1 && months <= 5) return oneMonth * months;
+    if (months === 6) return sixMonths;
+    if (months >= 7 && months <= 11) return sixMonths + (oneMonth * (months - 6));
+    if (months === 12) return annual;
+    return 0;
+  };
+  const planPrice = priceForMonths(selectedPlan);
 
   // Shrink any already-picked photo so big camera shots never break the upload
   const shrinkDataUrl = (dataUrl, maxSize = 900, quality = 0.8) => new Promise((resolve) => {
@@ -462,7 +472,8 @@ export default function CreateGroupPage() {
 
                   <div className="p-5 bg-gold-50 rounded-2xl border border-gold-100">
                     <div className="text-sm font-medium mb-3">Choose a subscription plan</div>
-                    <div className="grid grid-cols-3 gap-2 mb-4">
+                    <p className="text-[11px] text-gray-500 mb-3">1–5 months use the monthly rate · 6 months uses the package price · 7–11 add the monthly rate to the 6-month package · 12 months uses the annual price.</p>
+                    <div className="grid grid-cols-3 sm:grid-cols-4 gap-2 mb-4">
                       {PLAN_MONTHS.map(m => (
                         <button
                           key={m}
@@ -471,7 +482,7 @@ export default function CreateGroupPage() {
                           className={`rounded-xl border-2 p-3 text-center transition-all ${selectedPlan === m ? 'border-primary-600 bg-white shadow-md' : 'border-transparent bg-white/60 hover:bg-white'}`}
                         >
                           <div className="font-bold text-gray-900 text-sm">{m} Month{m > 1 ? 's' : ''}</div>
-                          <div className={`text-xs font-bold mt-0.5 ${selectedPlan === m ? 'text-primary-700' : 'text-gray-500'}`}>₦{(planPrices[m] || 0).toLocaleString()}</div>
+                          <div className={`text-xs font-bold mt-0.5 ${selectedPlan === m ? 'text-primary-700' : 'text-gray-500'}`}>₦{priceForMonths(m).toLocaleString()}</div>
                         </button>
                       ))}
                     </div>

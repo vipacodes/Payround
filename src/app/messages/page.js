@@ -80,7 +80,13 @@ function botReply(text, ctx = {}) {
   const acctNo = pickSet(s, 'account_number', 'accountNumber');
   const acctName = pickSet(s, 'account_name', 'accountName');
   const hasBank = !!(bankName || acctNo);
-  const plansLine = p1 == null ? '' : `\n• 1 Month — ${money(p1)}\n• 6 Months — ${money(p6)}\n• 12 Months — ${money(p12)}`;
+  const plansLine = p1 == null ? '' : Array.from({ length: 12 }, (_, index) => index + 1).map(months => {
+    const oneMonth = Number(p1 || 0);
+    const sixMonths = Number(p6 ?? oneMonth * 6);
+    const annual = Number(p12 ?? sixMonths + oneMonth * 6);
+    const price = months <= 5 ? oneMonth * months : months === 6 ? sixMonths : months <= 11 ? sixMonths + oneMonth * (months - 6) : annual;
+    return `\n• ${months} Month${months > 1 ? 's' : ''} — ${money(price)}`;
+  }).join('');
   const bankBlock = hasBank ? `\n\n🏦 PayRound account:\n${bankName || ''}\n${acctNo || ''}\n${acctName || ''}` : '';
   const HUMAN_CHIP = '🙋 Talk to a human';
 
@@ -181,7 +187,7 @@ function botReply(text, ctx = {}) {
     return withChips(`🛡 Staying safe on PayRound:\n• Pay ONLY the admin account shown INSIDE your group — never personal accounts sent in DMs.\n• PayRound staff will NEVER ask for your password or OTP.\n• Badges & verification are FREE and only come from inside the app.\n• Suspicious user? Open their profile and report — or type "human" right now and we'll step in.`, [HUMAN_CHIP]);
 
   if (has('price', 'cost', 'how much', 'plan', 'subscription', 'fee'))
-    return withChips(`💎 Costs at a glance:\n• Registering & joining groups: FREE\n• Holding a spot: just the group contribution shown on the group page (e.g. the weekly amount) — nothing else.\n• Starting your OWN group (one-off group fee, NOT a spot payment):${plansLine || ' 1, 6 & 12-month plans — shown in the app'}\n• Ads: 1 Day ${money(adD)} · 1 Week ${money(adW)} · 1 Month ${money(adM)}\n• Verification & badges: FREE`, ['How does PayRound work?', 'Ad prices?', HUMAN_CHIP]);
+    return withChips(`💎 Costs at a glance:\n• Registering & joining groups: FREE\n• Holding a spot: just the group contribution shown on the group page (e.g. the weekly amount) — nothing else.\n• Starting your OWN group (one-off group fee, NOT a spot payment):${plansLine || ' choose any duration from 1 to 12 months — prices are shown in the app'}\n• Ads: 1 Day ${money(adD)} · 1 Week ${money(adW)} · 1 Month ${money(adM)}\n• Verification & badges: FREE`, ['How does PayRound work?', 'Ad prices?', HUMAN_CHIP]);
 
   if (has('profile', 'my photo', 'avatar', 'change name', 'edit name', 'picture', 'bio'))
     return withChips(`👤 Your profile: Profile → Edit — change your name, photo, bio & occupation.\n📸 New photos go live after a quick safety review; you get notified the moment they're approved.`, ['How do I get verified?', HUMAN_CHIP]);
@@ -216,6 +222,8 @@ function MessagesInner() {
   const [botSettings, setBotSettings] = useState(null); // live prices, plans & bank for the bot brain
   const [botTyping, setBotTyping] = useState(false);    // 🤖 "typing…" indicator
   const [threadQuery, setThreadQuery] = useState('');   // 🔍 search conversations
+  const [freezeInfo, setFreezeInfo] = useState(null);  // frozen users see only approved-group admins + support
+  const [peerContext, setPeerContext] = useState(null); // group admins see frozen-member status + safe note
   const cs = useChatSearch(active === SUPPORT_ID ? supMsgs : msgs); // 🔍 WhatsApp-style search INSIDE the open chat
   // switching conversations closes any open in-chat search
   useEffect(() => { cs.close(); }, [active]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -236,14 +244,40 @@ function MessagesInner() {
     setMe(email);
     setMeName(parsed.name || '');
     loadThreads(email);
+    (async () => {
+      try {
+        const { supabase } = await import('@/lib/supabase');
+        const { data, error } = await supabase.rpc('get_my_account_freeze_status');
+        if (!error) setFreezeInfo(data || { frozen: false, admins: [] });
+      } catch { setFreezeInfo({ frozen: false, admins: [] }); }
+    })();
     const to = (searchParams.get('to') || '').toLowerCase();
+    const supportRequested = searchParams.get('support') === '1' || to === SUPPORT_ID;
     const userHint = (searchParams.get('user') || '').toLowerCase();
     const validUserHint = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(userHint) ? userHint : '';
-    if (validUserHint) setActiveUserHint(validUserHint);
-    if (to && to !== email) setActive(to);
-    else if (validUserHint) setActive(`user:${validUserHint}`);
+    if (supportRequested) setActive(SUPPORT_ID);
+    else {
+      if (validUserHint) setActiveUserHint(validUserHint);
+      if (to && to !== email) setActive(to);
+      else if (validUserHint) setActive(`user:${validUserHint}`);
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useEffect(() => {
+    if (!freezeInfo?.frozen || !active || active === SUPPORT_ID) return;
+    const allowedEmails = new Set((freezeInfo.admins || []).map(admin => (admin.email || '').toLowerCase()));
+    const allowedIds = new Set((freezeInfo.admins || []).map(admin => String(admin.id || '').toLowerCase()));
+    const allowed = active.startsWith('user:')
+      ? allowedIds.has(active.slice(5).toLowerCase())
+      : allowedEmails.has(active.toLowerCase());
+    if (!allowed) {
+      setActive('');
+      setActiveUserHint('');
+      setOtherUser(null);
+      toast.error('While frozen, you can chat only with approved-group admins or PayRound Support.');
+    }
+  }, [freezeInfo, active]);
 
   const loadThreads = async (email) => {
     try {
@@ -274,7 +308,7 @@ function MessagesInner() {
       // 💚 Pinned PayRound Support row (always first)
       let supLast = null, supUnread = 0;
       try {
-        const { data: th } = await supabase.from('support_threads').select('id, last_message, last_at, user_read').eq('user_email', email).maybeSingle();
+        const { data: th } = await supabase.from('support_threads').select('id, last_message, last_at, user_read').eq('user_email', email).order('last_at', { ascending: false }).limit(1).maybeSingle();
         if (th) { supLast = { body: th.last_message, created_at: th.last_at, from_email: th.user_read ? email : 'owner' }; supUnread = th.user_read ? 0 : 1; }
       } catch {}
       setThreads([{ email: SUPPORT_ID, last: supLast, unread: supUnread, user: null, support: true }, ...map.values()]);
@@ -289,6 +323,7 @@ function MessagesInner() {
     let alive = true;
     const userRef = active.startsWith('user:') ? active.slice(5) : activeUserHint;
     const peerEmail = active.startsWith('user:') ? '' : active;
+    setPeerContext(null);
 
     const load = async () => {
       if (!peerEmail) {
@@ -323,13 +358,23 @@ function MessagesInner() {
           const result = await supabase.rpc('get_my_direct_message_people');
           if (!result.error) u = (result.data || []).find(person => (person.email || '').toLowerCase() === peerEmail) || null;
         }
+        if (!u) {
+          u = (freezeInfo?.admins || []).find(admin =>
+            (peerEmail && (admin.email || '').toLowerCase() === peerEmail)
+            || (userRef && String(admin.id || '').toLowerCase() === String(userRef).toLowerCase())
+          ) || null;
+        }
+        if (peerEmail) {
+          const contextResult = await supabase.rpc('get_direct_message_peer_context', { p_peer_email: peerEmail });
+          if (!contextResult.error && alive) setPeerContext(contextResult.data || null);
+        }
         if (alive) setOtherUser(u);
-      } catch { if (alive) setOtherUser(null); }
+      } catch { if (alive) { setOtherUser(null); setPeerContext(null); } }
     };
     load(); loadUser();
     const t = peerEmail ? setInterval(load, 5000) : null;
     return () => { alive = false; if (t) clearInterval(t); };
-  }, [active, activeUserHint, me]);
+  }, [active, activeUserHint, me, freezeInfo]);
 
   // 💚 Support chat: load thread + poll every 4s while open
   useEffect(() => {
@@ -340,7 +385,7 @@ function MessagesInner() {
     const load = async () => {
       try {
         const { supabase } = await import('@/lib/supabase');
-        const { data: th } = await supabase.from('support_threads').select('*').eq('user_email', me).maybeSingle();
+        const { data: th } = await supabase.from('support_threads').select('*').eq('user_email', me).order('last_at', { ascending: false }).limit(1).maybeSingle();
         if (!alive) return;
         setSupThread(th || null);
         const { data: st } = await supabase.from('public_pricing').select('*').eq('id', 1).single();
@@ -354,8 +399,7 @@ function MessagesInner() {
           if (prev.length && after > before) { try { sounds.pop(); } catch {} }
           return ms || [];
         });
-        await supabase.from('support_messages').update({ read: true }).eq('thread_id', th.id).eq('sender_type', 'owner').eq('read', false);
-        await supabase.from('support_threads').update({ user_read: true }).eq('id', th.id);
+        await supabase.rpc('mark_my_support_read');
         if (firstOpen.current || nearBottom.current) scrollToEnd();
         firstOpen.current = false;
       } catch {}
@@ -374,34 +418,28 @@ function MessagesInner() {
     setSupSending(true);
     try {
       const { supabase } = await import('@/lib/supabase');
-      const now = new Date().toISOString();
-      let tid = supThread?.id;
-      if (!tid) {
-        tid = `st-${Date.now()}`;
-        const { error } = await supabase.from('support_threads').insert({ id: tid, user_email: me, user_name: meName || me, last_message: text, last_at: now, user_read: true, owner_read: false });
-        if (error) throw error;
-        setSupThread({ id: tid, user_email: me });
-      } else {
-        await supabase.from('support_threads').update({ last_message: text, last_at: now, owner_read: false, user_read: true }).eq('id', tid);
-      }
-      const row = { id: `sm-${Date.now()}`, thread_id: tid, sender_type: 'user', body: text };
-      const { error: mErr } = await supabase.from('support_messages').insert(row);
-      if (mErr) throw mErr;
+      const { data: sent, error: sendError } = await supabase.rpc('send_my_support_message', { p_body: text });
+      if (sendError) throw sendError;
+      const now = sent?.created_at || new Date().toISOString();
+      const tid = sent?.thread_id;
+      if (!tid) throw new Error('Support thread could not be created');
+      const row = { id: sent?.message_id || `sm-${Date.now()}`, thread_id: tid, sender_type: 'user', body: text };
+      setSupThread(prev => ({ ...(prev || {}), id: tid, user_email: me }));
       setBody('');
       sounds.send();
       nearBottom.current = true;
-      setSupMsgs(prev => [...prev, { ...row, created_at: now }]);
+      setSupMsgs(prev => prev.some(x => x.id === row.id) ? prev : [...prev, { ...row, created_at: now }]);
       scrollToEnd();
       if (!ownerOnline) {
         const reply = botReply(text, { name: meName, settings: botSettings, msgs: supMsgs, email: me });
-        const theTid = tid;
         setBotTyping(true);
         setTimeout(async () => {
           try {
             const { supabase: sb } = await import('@/lib/supabase');
-            const brow = { id: `sm-${Date.now()}-bot`, thread_id: theTid, sender_type: 'bot', body: reply };
-            await sb.from('support_messages').insert(brow);
-            setSupMsgs(prev => prev.some(x => x.id === brow.id) ? prev : [...prev, { ...brow, created_at: new Date().toISOString() }]);
+            const { data: botSent, error: botError } = await sb.rpc('send_my_support_bot_message', { p_thread_id: tid, p_body: reply });
+            if (botError) throw botError;
+            const brow = { id: botSent?.id || `sm-${Date.now()}-bot`, thread_id: tid, sender_type: 'bot', body: reply };
+            setSupMsgs(prev => prev.some(x => x.id === brow.id) ? prev : [...prev, { ...brow, created_at: botSent?.created_at || new Date().toISOString() }]);
             sounds.pop();
             scrollToEnd();
           } catch {}
@@ -416,6 +454,19 @@ function MessagesInner() {
     e?.preventDefault();
     const text = body.trim();
     if (!text || sending || !active) return;
+    if (peerContext?.can_message === false) {
+      toast.error('This direct chat is unavailable while the account is frozen.');
+      return;
+    }
+    if (freezeInfo?.frozen) {
+      const allowedEmails = new Set((freezeInfo.admins || []).map(admin => (admin.email || '').toLowerCase()));
+      const allowedIds = new Set((freezeInfo.admins || []).map(admin => String(admin.id || '').toLowerCase()));
+      const allowed = active.startsWith('user:') ? allowedIds.has(active.slice(5).toLowerCase()) : allowedEmails.has(active.toLowerCase());
+      if (!allowed) {
+        toast.error('While frozen, you can message only approved-group admins or PayRound Support.');
+        return;
+      }
+    }
     setSending(true);
     try {
       let peerEmail = active.startsWith('user:') ? '' : active;
@@ -460,6 +511,10 @@ function MessagesInner() {
 
   // Delete a message you sent — it is removed for BOTH sides
   const del = async (m) => {
+    if (freezeInfo?.frozen) {
+      toast.error('Message deletion is unavailable while your account is frozen.');
+      return;
+    }
     if (String(m.id).startsWith('local-')) { toast('Just sent — try again in a second'); return; }
     if (!window.confirm('Delete this message? It disappears for both of you.')) return;
     setDeleting(true);
@@ -477,6 +532,19 @@ function MessagesInner() {
   const nameOf = (t) => t?.user?.name || 'PayRound member';
   const timeOf = (iso) => iso ? new Date(iso).toLocaleTimeString('en-NG', { hour: 'numeric', minute: '2-digit' }) : '';
   const dateOf = (iso) => iso ? new Date(iso).toLocaleDateString('en-NG', { day: 'numeric', month: 'short' }) : '';
+
+  const inboxThreads = threads === null ? null : (() => {
+    if (!freezeInfo?.frozen) return threads;
+    const source = Array.isArray(threads) ? threads : [];
+    const support = source.find(thread => thread.support) || { email: SUPPORT_ID, last: null, unread: 0, user: null, support: true };
+    const byEmail = new Map(source.filter(thread => !thread.support).map(thread => [(thread.email || '').toLowerCase(), thread]));
+    const admins = (freezeInfo.admins || []).map(admin => {
+      const email = (admin.email || '').toLowerCase();
+      const existing = byEmail.get(email);
+      return existing ? { ...existing, user: { ...admin, ...(existing.user || {}) } } : { email, last: null, unread: 0, user: admin };
+    }).filter(thread => thread.email);
+    return [support, ...admins];
+  })();
 
   if (!me) return <LoadingScreen label="Loading messages…" />;
 
@@ -645,6 +713,18 @@ function MessagesInner() {
             </div>
             {/* 🔍 in-chat keyword/date search (WhatsApp-style) */}
             <ChatSearchBar cs={cs} />
+            {freezeInfo?.frozen && (
+              <div className="px-4 py-2.5 bg-sky-50 border-b border-sky-200 text-xs text-sky-900">
+                <b>❄️ Restricted account chat:</b> this conversation stays open because {displayName} administers one of your approved groups. Keep it to resolving existing group or payment matters.
+              </div>
+            )}
+            {peerContext?.peer_is_frozen && peerContext?.admin_note && (
+              <div className="px-4 py-3 bg-sky-50 border-b border-sky-200 text-xs text-sky-900">
+                <p className="font-bold">❄️ This member&apos;s PayRound account is frozen</p>
+                <p className="mt-1"><b>Admin-safe note:</b> {peerContext.admin_note}</p>
+                <p className="mt-1 text-sky-700">This private chat intentionally remains open so you can resolve existing group or payment matters. Their unrelated chats and other PayRound actions are blocked.</p>
+              </div>
+            )}
 
             {/* messages */}
             <div ref={listRef} onScroll={(e) => { const el = e.currentTarget; nearBottom.current = el.scrollHeight - el.scrollTop - el.clientHeight < 120; }}
@@ -664,14 +744,14 @@ function MessagesInner() {
                     {showDate && <p className="text-center text-[10px] text-gray-400 font-semibold my-2">{dateOf(m.created_at)}</p>}
                     <div className={`flex ${mine ? 'justify-end' : 'justify-start'}`}>
                       <div
-                        onClick={mine && !String(m.id).startsWith('local-') ? () => setSel(sel === m.id ? '' : m.id) : undefined}
+                        onClick={mine && !freezeInfo?.frozen && !String(m.id).startsWith('local-') ? () => setSel(sel === m.id ? '' : m.id) : undefined}
                         className={`max-w-[78%] px-3.5 py-2 rounded-2xl text-sm ${mine ? 'bg-primary-600 text-white rounded-br-md' : 'bg-gray-100 text-gray-900 rounded-bl-md'} ${mine ? 'cursor-pointer' : ''} ${sel === m.id ? 'ring-2 ring-red-300' : ''}${String(cs.activeId) === String(m.id) || cs.flash === String(m.id) ? ' ring-2 ring-yellow-400' : ''}`}
                       >
                         <p className="whitespace-pre-line break-words"><Mark text={m.body} q={cs.open ? cs.query : ''} /></p>
                         <p className={`text-[9px] mt-0.5 ${mine ? 'text-primary-200 text-right' : 'text-gray-400'}`}>{timeOf(m.created_at)}{mine && m.read ? ' · read' : ''}</p>
                       </div>
                     </div>
-                    {mine && sel === m.id && (
+                    {mine && !freezeInfo?.frozen && sel === m.id && (
                       <div className="flex justify-end">
                         <button onClick={() => del(m)} disabled={deleting} className="text-[11px] font-semibold text-red-600 bg-red-50 border border-red-100 px-3 py-1 rounded-full hover:bg-red-100 disabled:opacity-50">🗑 Delete this message</button>
                       </div>
@@ -688,11 +768,12 @@ function MessagesInner() {
                 type="text"
                 value={body}
                 onChange={e => setBody(e.target.value)}
-                placeholder={`Message ${displayName}…`}
+                disabled={peerContext?.can_message === false}
+                placeholder={peerContext?.can_message === false ? 'This chat is unavailable while the account is frozen' : `Message ${displayName}…`}
                 maxLength={500}
-                className="flex-1 px-4 py-2.5 border border-gray-200 rounded-full text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+                className="flex-1 px-4 py-2.5 border border-gray-200 rounded-full text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 disabled:bg-gray-100 disabled:text-gray-500"
               />
-              <button type="submit" disabled={sending || !body.trim()} aria-label="Send"
+              <button type="submit" disabled={sending || !body.trim() || peerContext?.can_message === false} aria-label="Send"
                 className="w-10 h-10 bg-primary-600 text-white rounded-full flex items-center justify-center hover:bg-primary-700 disabled:opacity-40 transition-all shrink-0">
                 <HiPaperAirplane className="w-5 h-5 rotate-90" />
               </button>
@@ -709,10 +790,16 @@ function MessagesInner() {
       <Header />
       <div className="max-w-2xl mx-auto px-4 py-6 md:py-8">
         <h1 className="text-2xl font-bold text-gray-900 mb-1 flex items-center gap-2"><HiChatAlt2 className="w-7 h-7 text-primary-600" /> Messages</h1>
-        <p className="text-sm text-gray-500 mb-3">Chat in-app with business owners, group admins — everyone.</p>
+        <p className="text-sm text-gray-500 mb-3">{freezeInfo?.frozen ? 'Only your approved-group admins and PayRound Support are available while your account is frozen.' : 'Chat in-app with business owners, group admins — everyone.'}</p>
+        {freezeInfo?.frozen && (
+          <div className="bg-sky-50 border border-sky-200 rounded-2xl p-4 mb-4 text-xs text-sky-900">
+            <p className="font-bold">❄️ Limited frozen-account messaging</p>
+            <p className="mt-1">Use these chats only to resolve existing group, payment or account matters. All unrelated direct chats and other app actions remain blocked.</p>
+          </div>
+        )}
 
         {/* 🔍 search conversations — names, emails, even words inside the last message */}
-        {threads !== null && threads.length > 0 && (
+        {inboxThreads !== null && inboxThreads.length > 0 && (
           <div className="relative mb-4">
             <input
               value={threadQuery}
@@ -725,9 +812,9 @@ function MessagesInner() {
           </div>
         )}
 
-        {threads === null ? (
+        {inboxThreads === null ? (
           <p className="text-center text-sm text-gray-400 py-10">Loading conversations…</p>
-        ) : threads.length === 0 ? (
+        ) : inboxThreads.length === 0 ? (
           <div className="bg-white rounded-2xl border border-dashed border-gray-200 p-10 text-center">
             <HiChatAlt2 className="w-12 h-12 text-gray-300 mx-auto mb-3" />
             <p className="font-semibold text-gray-700 mb-1">No conversations yet</p>
@@ -736,7 +823,7 @@ function MessagesInner() {
           </div>
         ) : (() => {
           const tq = threadQuery.trim().toLowerCase();
-          const visible = !tq ? threads : threads.filter(t => [t.support ? 'payround support' : '', t.user?.name || '', t.email || '', t.last?.body || '', t.last?.from_email || ''].join(' ').toLowerCase().includes(tq));
+          const visible = !tq ? inboxThreads : inboxThreads.filter(t => [t.support ? 'payround support' : '', t.user?.name || '', t.email || '', t.last?.body || '', t.last?.from_email || ''].join(' ').toLowerCase().includes(tq));
           if (visible.length === 0) {
             return (
               <div className="bg-white rounded-2xl border border-dashed border-gray-200 p-8 text-center text-sm text-gray-400">
@@ -777,7 +864,7 @@ function MessagesInner() {
                     <span className="ml-auto text-[10px] font-normal text-gray-400 shrink-0">{t.last ? dateOf(t.last.created_at) : ''}</span>
                   </span>
                   <span className={`block text-xs truncate mt-0.5 ${t.unread > 0 ? 'font-semibold text-gray-900' : 'text-gray-500'}`}>
-                    {t.last ? `${t.last.from_email === me ? 'You: ' : ''}${t.last.body}` : ''}
+                    {t.last ? `${t.last.from_email === me ? 'You: ' : ''}${t.last.body}` : (t.user?.groups?.length ? `Admin of ${t.user.groups.map(group => group.name).join(', ')}` : 'Approved-group admin contact')}
                   </span>
                 </span>
                 {t.unread > 0 && (

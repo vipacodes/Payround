@@ -15,6 +15,7 @@ import {
 import toast from 'react-hot-toast';
 import FollowersList from '@/components/FollowersList';
 import ShareButton, { siteUrl } from '@/components/ShareSheet';
+import ReportButton from '@/components/ReportButton';
 
 
 
@@ -212,6 +213,9 @@ export default function PublicUserProfilePage() {
               >
                 {isFollowing ? <><HiCheck className="w-4 h-4" /> Following</> : <><HiUserAdd className="w-4 h-4" /> Follow</>}
               </button>
+            )}
+            {meId && meId !== person.id && (
+              <ReportButton targetType="user" targetId={person.id} targetName={person.name} compact />
             )}
           </div>
           <div className="flex items-center justify-center gap-2 text-xs text-gray-400 mt-4">

@@ -54,7 +54,9 @@ export default function AdminMembersPage() {
       const { data: approved } = await supabase.from('members').select('*').eq('group_id', params.groupId).eq('status', 'approved');
       const { data: offers } = await supabase.from('members').select('*').eq('group_id', params.groupId).eq('status', 'spot_offered');
       if (offers) setSpotOffers(offers);
-      if (approved) setApprovedMembers(approved.map(m => ({ ...m, name: m.member_name || '—', email: m.member_email, phone: m.member_phone || '—' })));
+      const { data: frozenRows } = await supabase.rpc('get_group_member_freeze_statuses', { p_group_id: params.groupId });
+      const frozenMap = Object.fromEntries((Array.isArray(frozenRows) ? frozenRows : []).map(row => [(row.member_email || '').toLowerCase(), row]));
+      if (approved) setApprovedMembers(approved.map(m => ({ ...m, name: m.member_name || '—', email: m.member_email, phone: m.member_phone || '—', ...(frozenMap[(m.member_email || '').toLowerCase()] || {}) })));
       const { data: pays } = await supabase.from('payments').select('user_email, spots, weeks, status').eq('group_id', params.groupId);
       if (pays) setGroupPayments(pays);
       const { data: outs } = await supabase.from('payouts').select('*').eq('group_id', params.groupId);
@@ -452,7 +454,7 @@ export default function AdminMembersPage() {
                       <span className="text-primary-700 font-semibold text-sm">{member.name.charAt(0)}</span>
                     </div>
                     <div>
-                      <p className="text-sm font-medium text-gray-900">{member.name}</p>
+                      <p className="text-sm font-medium text-gray-900 flex flex-wrap items-center gap-1.5">{member.name}{member.is_frozen && <span className="text-[9px] font-bold text-sky-800 bg-sky-100 border border-sky-200 px-1.5 py-0.5 rounded-full">❄️ FROZEN</span>}</p>
                       <p className="text-xs text-gray-500">{spotsLabel(member)} • {member.phone}</p>
                     </div>
                   </div>
@@ -478,7 +480,20 @@ export default function AdminMembersPage() {
                   </div>
                   <h3 className="text-lg font-semibold text-gray-900">{selectedMember.name}</h3>
                   <p className="text-sm text-gray-500">{spotsLabel(selectedMember)}</p>
+                  {selectedMember.is_frozen && <span className="inline-flex mt-2 text-[10px] font-bold text-sky-800 bg-sky-100 border border-sky-200 px-2.5 py-1 rounded-full">❄️ PAYROUND ACCOUNT FROZEN</span>}
                 </div>
+
+                {selectedMember.is_frozen && (
+                  <div className="mb-5 bg-sky-50 border border-sky-200 rounded-xl p-3 text-xs text-sky-900">
+                    <p className="font-bold">Admin-safe freeze explanation</p>
+                    <p className="mt-1">{selectedMember.admin_note || 'PayRound is reviewing this account. Keep private chat open only to resolve existing group or payment matters.'}</p>
+                    <p className="mt-2 text-sky-700">Their unrelated chats and other app actions are blocked, but your private chat stays open for resolution.</p>
+                    <button
+                      onClick={() => router.push(`/messages?to=${encodeURIComponent((selectedMember.email || '').toLowerCase())}${selectedMember.user_id ? `&user=${encodeURIComponent(selectedMember.user_id)}` : ''}`)}
+                      className="mt-3 w-full bg-sky-700 text-white font-bold py-2 rounded-lg hover:bg-sky-800"
+                    >Message frozen member privately</button>
+                  </div>
+                )}
 
                 <div className="space-y-3">
                   <DetailRow icon={<HiPhone className="w-4 h-4" />} label="Phone" value={selectedMember.phone} />
