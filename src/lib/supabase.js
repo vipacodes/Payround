@@ -80,7 +80,7 @@ function mapGroups(data, adminBadges = {}) {
 
 export async function getAdsFromSupabase() {
   try {
-    const { data, error } = await supabase.from('ads').select('id,business_name,description,website,media_url,media_urls,media_type,status,expires_at,submitted_at').eq('status', 'approved').order('submitted_at', { ascending: false });
+    const { data, error } = await supabase.from('public_ads').select('id,business_name,description,website,media_url,media_urls,media_type,status,expires_at,submitted_at').eq('status', 'approved').order('submitted_at', { ascending: false });
     if (error) throw error;
     return (data || []).filter((a) => !a.expires_at || new Date(a.expires_at).getTime() > Date.now());
   } catch {

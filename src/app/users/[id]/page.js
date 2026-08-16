@@ -197,7 +197,7 @@ export default function PublicUserProfilePage() {
             </button>
             {meId && meId !== person.id && person.email && (
               <button
-                onClick={() => router.push(`/messages?to=${encodeURIComponent((person.email || '').toLowerCase())}`)}
+                onClick={() => router.push(`/messages?to=${encodeURIComponent((person.email || '').toLowerCase())}&user=${encodeURIComponent(person.id)}`)}
                 title="Send them a message"
                 className="flex items-center gap-1.5 text-sm font-semibold px-5 py-2 rounded-full bg-gray-900 text-white hover:bg-gray-800 transition-all"
               >

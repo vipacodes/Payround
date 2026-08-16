@@ -25,8 +25,7 @@ const waShare = (text) => `https://wa.me/?text=${encodeURIComponent(text)}`;
 const bizUrl = (id) => `${SITE_URL}/business/${id}`;
 const itemUrl = (id, idx) => `${SITE_URL}/business/${id}?item=${idx}`;
 
-// PayRound accounts allowed to manage the HOUSE ads' items only (never real businesses)
-const MANAGER_EMAILS = ['vipadarapper@gmail.com', 'payroundsupport@gmail.com'];
+// A business can hold up to twelve posted items.
 const MAX_ITEMS = 12;
 // A posted item carries an optional name + price (₦) shown to everyone
 const priceOk = (m) => m && m.price !== undefined && m.price !== null && m.price !== '';
@@ -102,6 +101,7 @@ function BusinessContent() {
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
   const [viewerEmail, setViewerEmail] = useState('');
+  const [access, setAccess] = useState({ isPublic: false, isSubmitter: false, isStaffPreview: false, canManage: false });
   const [adding, setAdding] = useState(false);
   const [draft, setDraft] = useState(null); // staged media { src, isVideo } awaiting name/price
   const [itemName, setItemName] = useState('');
@@ -123,17 +123,21 @@ function BusinessContent() {
     (async () => {
       try {
         const { supabase } = await import('@/lib/supabase');
-        const { data, error } = await supabase.from('ads').select('*').eq('id', params.id).single();
+        // One purpose-built RPC applies the same active-business rule as profile
+        // cards/search and returns only safe public owner fields (never their email).
+        const { data, error } = await supabase.rpc('get_business_page', { p_ad_id: String(params.id || '') });
         if (!mounted) return;
-        if (error || !data) { setNotFound(true); setLoading(false); return; }
-        setAd(data);
+        if (error || !data?.ad) { setNotFound(true); setLoading(false); return; }
+        setAd(data.ad);
+        setOwner(data.owner || null);
+        setAccess({
+          isPublic: Boolean(data.is_public),
+          isSubmitter: Boolean(data.is_submitter),
+          isStaffPreview: Boolean(data.is_staff_preview),
+          canManage: Boolean(data.can_manage),
+        });
         // Ad clicks are recorded only by the sponsored placement that led here.
         // Ordinary profile loads, bookmarks and shared business URLs are not ad activity.
-        // The person advertising — their PayRound profile stays linked to the business
-        if (data.submitter_email && data.submitter_email !== 'visitor') {
-          const { data: u } = await supabase.from('users').select('id, name, is_verified, profile_pic').eq('email', data.submitter_email.toLowerCase()).single();
-          if (mounted && u) setOwner(u);
-        }
       } catch { if (mounted) setNotFound(true); }
       if (mounted) setLoading(false);
     })();
@@ -267,15 +271,12 @@ function BusinessContent() {
   const pinned = pinnedItem >= 0 && pinnedItem < media.length ? media[pinnedItem] : null;
   const rest = media.filter((m) => m.idx !== pinnedItem);
   const wa = waLink(ad.whatsapp || ad.contact);
-  const ownerEmail = (ad.submitter_email || '').toLowerCase();
-  // 🛡 Only the ACTUAL advertiser manages items — PayRound accounts manage ONLY the house ads
-  const isHouse = String(ad.id).startsWith('ad-house-');
-  const isSubmitter = !!viewerEmail && viewerEmail === ownerEmail && ownerEmail !== 'visitor' && ownerEmail !== '';
-  const canManage = isSubmitter || (!!viewerEmail && MANAGER_EMAILS.includes(viewerEmail) && isHouse);
-  // 🏪 A business is PUBLIC only after the owner approves it (🏪 Businesses tab); before that,
-  // only the advertiser (or PayRound) sees this page with a review banner
-  const bizLive = ad.biz_status === 'approved';
-  const isStaffPreview = !!viewerEmail && MANAGER_EMAILS.includes(viewerEmail);
+  // The database decides visibility and management from the verified session.
+  // Archived, declined, removed and expired ads are never treated as live businesses.
+  const isSubmitter = access.isSubmitter;
+  const canManage = access.canManage;
+  const bizLive = access.isPublic;
+  const isStaffPreview = access.isStaffPreview;
 
   if (!bizLive && !isSubmitter && !isStaffPreview) {
     return (
@@ -362,8 +363,8 @@ function BusinessContent() {
             <a href={waShare(shareBizText())} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 bg-[#25D366]/10 text-[#128C4A] border border-[#25D366]/40 text-sm font-semibold px-4 py-2.5 rounded-xl hover:bg-[#25D366]/20 transition-all">
               <HiShare className="w-5 h-5" /> Share Business
             </a>
-            {ownerEmail && ownerEmail !== 'visitor' && ownerEmail !== viewerEmail && (
-              <button onClick={() => router.push(`/messages?to=${encodeURIComponent(ownerEmail)}`)}
+            {owner?.id && !isSubmitter && (
+              <button onClick={() => router.push(`/messages?user=${encodeURIComponent(owner.id)}`)}
                 className="flex items-center gap-2 bg-gray-900 text-white text-sm font-semibold px-4 py-2.5 rounded-xl hover:bg-gray-800 transition-all">
                 <HiChatAlt2 className="w-5 h-5" /> Message
               </button>

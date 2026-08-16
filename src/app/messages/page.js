@@ -200,7 +200,8 @@ function MessagesInner() {
   const [me, setMe] = useState('');
   const [meName, setMeName] = useState('');
   const [threads, setThreads] = useState(null); // [{ email, last, unread, user }]
-  const [active, setActive] = useState('');     // other party's email
+  const [active, setActive] = useState('');     // peer email, support id, or user:<UUID> before the first message
+  const [activeUserHint, setActiveUserHint] = useState(''); // safe public UUID supplied by profile/business links
   const [msgs, setMsgs] = useState([]);
   const [otherUser, setOtherUser] = useState(null);
   const [body, setBody] = useState('');
@@ -236,29 +237,40 @@ function MessagesInner() {
     setMeName(parsed.name || '');
     loadThreads(email);
     const to = (searchParams.get('to') || '').toLowerCase();
+    const userHint = (searchParams.get('user') || '').toLowerCase();
+    const validUserHint = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(userHint) ? userHint : '';
+    if (validUserHint) setActiveUserHint(validUserHint);
     if (to && to !== email) setActive(to);
+    else if (validUserHint) setActive(`user:${validUserHint}`);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const loadThreads = async (email) => {
     try {
       const { supabase } = await import('@/lib/supabase');
-      const { data } = await supabase.from('messages').select('*')
-        .or(`from_email.eq.${email},to_email.eq.${email}`)
-        .order('created_at', { ascending: false }).limit(400);
+      // Both APIs bind identity inside PostgreSQL. No private users-table lookup
+      // and no caller text is interpolated into PostgREST filter grammar.
+      const [messageResult, peopleResult] = await Promise.all([
+        supabase.rpc('get_my_direct_messages', { p_other_email: null, p_limit: 400 }),
+        supabase.rpc('get_my_direct_message_people'),
+      ]);
+      if (messageResult.error) throw messageResult.error;
+      if (peopleResult.error) throw peopleResult.error;
+
+      const people = new Map((peopleResult.data || []).map(u => [(u.email || '').toLowerCase(), u]));
       const map = new Map();
-      (data || []).forEach(m => {
-        const other = (m.from_email === email ? m.to_email : m.from_email);
-        if (!map.has(other)) map.set(other, { email: other, last: null, unread: 0, user: null });
+      // The RPC returns the selected window oldest-first, so assigning last on
+      // every pass leaves the newest message as the conversation preview.
+      (messageResult.data || []).forEach(m => {
+        const from = (m.from_email || '').toLowerCase();
+        const to = (m.to_email || '').toLowerCase();
+        const other = from === email ? to : from;
+        if (!other || other === email) return;
+        if (!map.has(other)) map.set(other, { email: other, last: null, unread: 0, user: people.get(other) || null });
         const t = map.get(other);
-        if (!t.last) t.last = m; // rows come newest-first
-        if (m.to_email === email && !m.read) t.unread += 1;
+        t.last = m;
+        if (to === email && !m.read) t.unread += 1;
       });
-      const emails = [...map.keys()];
-      if (emails.length) {
-        const { data: us } = await supabase.from('users').select('id, name, email, profile_pic, is_verified').in('email', emails);
-        (us || []).forEach(u => { const t = map.get((u.email || '').toLowerCase()); if (t) t.user = u; });
-      }
       // 💚 Pinned PayRound Support row (always first)
       let supLast = null, supUnread = 0;
       try {
@@ -271,36 +283,53 @@ function MessagesInner() {
 
   // Open conversation: load messages, mark theirs as read, keep polling for new ones
   useEffect(() => {
-    if (!active || !me) return;
+    if (!active || !me || active === SUPPORT_ID) return;
     nearBottom.current = true;
     firstOpen.current = true;
     let alive = true;
+    const userRef = active.startsWith('user:') ? active.slice(5) : activeUserHint;
+    const peerEmail = active.startsWith('user:') ? '' : active;
+
     const load = async () => {
+      if (!peerEmail) {
+        if (alive) setMsgs([]);
+        return;
+      }
       try {
         const { supabase } = await import('@/lib/supabase');
-        const { data } = await supabase.from('messages').select('*')
-          .or(`and(from_email.eq.${me},to_email.eq.${active}),and(from_email.eq.${active},to_email.eq.${me})`)
-          .order('created_at', { ascending: true }).limit(500);
+        const { data, error } = await supabase.rpc('get_my_direct_messages', {
+          p_other_email: peerEmail,
+          p_limit: 500,
+        });
+        if (error) throw error;
         if (!alive) return;
         // Only auto-scroll on the first open, or while the user is already near the newest
         // message — never yank the view while they're scrolling up to read history
         if (firstOpen.current || nearBottom.current) scrollToEnd();
         firstOpen.current = false;
-        setMsgs(data);
-        await supabase.from('messages').update({ read: true }).eq('from_email', active).eq('to_email', me).eq('read', false);
+        setMsgs(data || []);
+        await supabase.rpc('mark_my_direct_messages_read', { p_other_email: peerEmail });
       } catch {}
     };
     const loadUser = async () => {
       try {
         const { supabase } = await import('@/lib/supabase');
-        const { data: u } = await supabase.from('users').select('id, name, email, profile_pic, is_verified').eq('email', active).single();
-        if (alive) setOtherUser(u || null);
-      } catch {}
+        let u = null;
+        if (userRef) {
+          const result = await supabase.rpc('get_public_profile', { p_user_id: userRef });
+          if (!result.error) u = result.data || null;
+        }
+        if (!u && peerEmail) {
+          const result = await supabase.rpc('get_my_direct_message_people');
+          if (!result.error) u = (result.data || []).find(person => (person.email || '').toLowerCase() === peerEmail) || null;
+        }
+        if (alive) setOtherUser(u);
+      } catch { if (alive) setOtherUser(null); }
     };
     load(); loadUser();
-    const t = setInterval(load, 5000);
-    return () => { alive = false; clearInterval(t); };
-  }, [active, me]);
+    const t = peerEmail ? setInterval(load, 5000) : null;
+    return () => { alive = false; if (t) clearInterval(t); };
+  }, [active, activeUserHint, me]);
 
   // 💚 Support chat: load thread + poll every 4s while open
   useEffect(() => {
@@ -389,19 +418,40 @@ function MessagesInner() {
     if (!text || sending || !active) return;
     setSending(true);
     try {
-      const { supabase } = await import('@/lib/supabase');
-      const row = {
-        id: `msg-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
-        from_email: me, to_email: active, body: text,
-      };
-      const { writeWhenOnline } = await import('@/lib/offlineQueue');
-      const { queued, error } = await writeWhenOnline({ table: 'messages', op: 'insert', row });
-      if (error) throw error;
+      let peerEmail = active.startsWith('user:') ? '' : active;
+      let messageId = `msg-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+      let queued = false;
+
+      if (!peerEmail) {
+        // A business link starts with only the owner's safe public UUID. The
+        // server resolves their private email and validates the recipient.
+        if (!otherUser?.id) throw new Error('This profile is not available to message');
+        const { supabase } = await import('@/lib/supabase');
+        const { data, error } = await supabase.rpc('send_my_direct_message', {
+          p_to_user_id: otherUser.id,
+          p_body: text,
+        });
+        if (error) throw error;
+        peerEmail = (data?.peer_email || '').toLowerCase();
+        messageId = data?.id || messageId;
+        if (!peerEmail) throw new Error('Message recipient could not be resolved');
+        setActiveUserHint(otherUser.id);
+        setActive(peerEmail);
+      } else {
+        // Existing conversations retain offline queue support; database RLS and
+        // mutation guards bind the sender to the authenticated session.
+        const row = { id: messageId, from_email: me, to_email: peerEmail, body: text };
+        const { writeWhenOnline } = await import('@/lib/offlineQueue');
+        const result = await writeWhenOnline({ table: 'messages', op: 'insert', row });
+        queued = result.queued;
+        if (result.error) throw result.error;
+      }
+
       setBody('');
       sounds.send();
       if (queued) toast('📴 Saved on this phone — will send when you are back online.');
       nearBottom.current = true;
-      setMsgs(prev => [...prev, { id: `local-${Date.now()}`, from_email: me, to_email: active, body: text, created_at: new Date().toISOString(), read: false }]);
+      setMsgs(prev => [...prev, { id: `local-${messageId}`, from_email: me, to_email: peerEmail, body: text, created_at: new Date().toISOString(), read: false }]);
       scrollToEnd();
       loadThreads(me);
     } catch (err) { toast.error(`Could not send: ${err.message || 'try again'}`); }
@@ -424,7 +474,7 @@ function MessagesInner() {
     setDeleting(false);
   };
 
-  const nameOf = (t) => t?.user?.name || otherUser?.name || 'PayRound member';
+  const nameOf = (t) => t?.user?.name || 'PayRound member';
   const timeOf = (iso) => iso ? new Date(iso).toLocaleTimeString('en-NG', { hour: 'numeric', minute: '2-digit' }) : '';
   const dateOf = (iso) => iso ? new Date(iso).toLocaleDateString('en-NG', { day: 'numeric', month: 'short' }) : '';
 
@@ -441,7 +491,7 @@ function MessagesInner() {
             <h2 className="text-lg font-bold text-gray-900 mb-2">You can&apos;t message yourself</h2>
             <p className="text-sm text-gray-500 mb-1">This device is logged in as <b>{meName || me}</b> ({me}) — the conversation you opened points back to this same account.</p>
             <p className="text-xs text-gray-400 mb-5">Tip: the installed PayRound app and Chrome on the same phone share ONE login. To chat between two accounts, use two devices — or keep one account in Chrome&apos;s Incognito window.</p>
-            <button onClick={() => setActive('')} className="bg-primary-600 text-white text-sm font-semibold px-6 py-2.5 rounded-xl hover:bg-primary-700">Back to Messages</button>
+            <button onClick={() => { setActive(''); setActiveUserHint(''); }} className="bg-primary-600 text-white text-sm font-semibold px-6 py-2.5 rounded-xl hover:bg-primary-700">Back to Messages</button>
           </div>
         </div>
         <Footer />
@@ -459,7 +509,7 @@ function MessagesInner() {
             {/* 👑 Owner profile head — official account, black badge with golden ring */}
             <div className="px-4 py-3 border-b border-gray-800 bg-gradient-to-r from-gray-900 via-gray-800 to-gray-900">
               <div className="flex items-center gap-3">
-                <button onClick={() => { setActive(''); loadThreads(me); }} aria-label="Back to conversations" className="p-1.5 rounded-full hover:bg-white/10 text-gray-300">
+                <button onClick={() => { setActive(''); setActiveUserHint(''); loadThreads(me); }} aria-label="Back to conversations" className="p-1.5 rounded-full hover:bg-white/10 text-gray-300">
                   <HiArrowLeft className="w-5 h-5" />
                 </button>
                 <span className="relative w-11 h-11 rounded-full bg-primary-600 text-white font-bold flex items-center justify-center text-lg border-2 border-yellow-400 shadow-lg shadow-black/40 shrink-0">P</span>
@@ -570,7 +620,7 @@ function MessagesInner() {
           <div className="flex-1 flex flex-col min-h-0 bg-white rounded-2xl border border-gray-100 overflow-hidden">
             {/* chat head */}
             <div className="flex items-center gap-3 px-4 py-3 border-b border-gray-100">
-              <button onClick={() => { setActive(''); setOtherUser(null); loadThreads(me); }} aria-label="Back to conversations" className="p-1.5 rounded-full hover:bg-gray-100 text-gray-500">
+              <button onClick={() => { setActive(''); setActiveUserHint(''); setOtherUser(null); loadThreads(me); }} aria-label="Back to conversations" className="p-1.5 rounded-full hover:bg-gray-100 text-gray-500">
                 <HiArrowLeft className="w-5 h-5" />
               </button>
               {otherUser?.profile_pic ? (
@@ -697,7 +747,7 @@ function MessagesInner() {
           return (
           <div className="bg-white rounded-2xl border border-gray-100 overflow-hidden divide-y divide-gray-50">
             {visible.map(t => t.support ? (
-              <button key="support" onClick={() => setActive(SUPPORT_ID)} className="w-full flex items-center gap-3 px-4 py-3.5 hover:bg-gray-50 transition-colors text-left bg-gradient-to-r from-yellow-50/70 to-transparent">
+              <button key="support" onClick={() => { setActiveUserHint(''); setActive(SUPPORT_ID); }} className="w-full flex items-center gap-3 px-4 py-3.5 hover:bg-gray-50 transition-colors text-left bg-gradient-to-r from-yellow-50/70 to-transparent">
                 <span className="w-11 h-11 rounded-full bg-gray-900 text-yellow-400 font-bold flex items-center justify-center shrink-0 text-lg border-2 border-yellow-400 shadow">P</span>
                 <span className="flex-1 min-w-0">
                   <span className="flex items-center gap-1 text-sm font-bold text-gray-900">
@@ -714,7 +764,7 @@ function MessagesInner() {
                 )}
               </button>
             ) : (
-              <button key={t.email} onClick={() => setActive(t.email)} className="w-full flex items-center gap-3 px-4 py-3.5 hover:bg-gray-50 transition-colors text-left">
+              <button key={t.email} onClick={() => { setOtherUser(t.user || null); setActiveUserHint(t.user?.id || ''); setActive(t.email); }} className="w-full flex items-center gap-3 px-4 py-3.5 hover:bg-gray-50 transition-colors text-left">
                 {t.user?.profile_pic ? (
                   <img src={t.user.profile_pic} alt="" className="w-11 h-11 rounded-full object-cover border border-gray-100 shrink-0" />
                 ) : (

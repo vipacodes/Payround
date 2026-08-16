@@ -51,12 +51,14 @@ export default function FollowersList({ userId, userName, onClose, highlight }) 
           ) : (
             people.map((person) => {
               const isHighlighted = Boolean(highlightedId && String(person.id || '').toLowerCase() === highlightedId);
+              const profileAvailable = person.profile_available !== false;
               return (
                 <button
                   id={`follower-${person.id}`}
                   key={person.id}
-                  onClick={() => { onClose(); router.push(`/users/${person.id}`); }}
-                  className={`w-full flex items-center gap-3 px-4 py-3 transition-colors text-left ${isHighlighted ? 'bg-primary-50 ring-2 ring-primary-400 rounded-xl my-0.5 hover:bg-primary-100' : 'hover:bg-gray-50'}`}
+                  onClick={profileAvailable ? () => { onClose(); router.push(`/users/${person.id}`); } : undefined}
+                  disabled={!profileAvailable}
+                  className={`w-full flex items-center gap-3 px-4 py-3 transition-colors text-left disabled:cursor-default ${isHighlighted ? 'bg-primary-50 ring-2 ring-primary-400 rounded-xl my-0.5 hover:bg-primary-100' : profileAvailable ? 'hover:bg-gray-50' : ''}`}
                 >
                   {person.profile_pic ? (
                     <img src={person.profile_pic} alt="" className="w-10 h-10 rounded-full object-cover border border-gray-100 shrink-0" />
@@ -70,7 +72,9 @@ export default function FollowersList({ userId, userName, onClose, highlight }) 
                     </span>
                     {isHighlighted && <span className="inline-flex items-center gap-1 mt-0.5 text-[10px] font-bold bg-primary-600 text-white px-2 py-0.5 rounded-full">🎉 just followed you</span>}
                   </span>
-                  <span className="text-xs font-medium text-primary-600 shrink-0">View →</span>
+                  <span className={`text-xs font-medium shrink-0 ${profileAvailable ? 'text-primary-600' : 'text-gray-400'}`}>
+                    {profileAvailable ? 'View →' : 'Follower'}
+                  </span>
                 </button>
               );
             })

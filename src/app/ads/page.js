@@ -345,9 +345,13 @@ export default function AdsPage() {
     }
     try {
       const { supabase } = await import('@/lib/supabase');
-      const { data } = await supabase.from('ads').select('*').eq('submitter_email', email).order('submitted_at', { ascending: false });
-      if (shouldApply()) setMyAds(data || []);
-      return data || [];
+      // The JWT-bound RPC resolves the advertiser server-side; localStorage
+      // email is never used as authorization for private ad history.
+      const { data, error } = await supabase.rpc('get_my_ads');
+      if (error) throw error;
+      const rows = Array.isArray(data) ? data : [];
+      if (shouldApply()) setMyAds(rows);
+      return rows;
     } catch {
       if (shouldApply()) setMyAds([]);
       return [];
