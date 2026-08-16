@@ -196,13 +196,13 @@ export default function PublicUserProfilePage() {
               className="text-sm font-semibold text-gray-900 hover:text-primary-600 transition-colors">
               {followers} <span className="text-xs font-normal text-gray-500">Follower{followers === 1 ? '' : 's'}</span>
             </button>
-            {meId && meId !== person.id && person.email && (
+            {meId && meId !== person.id && (
               <button
-                onClick={() => router.push(`/messages?to=${encodeURIComponent((person.email || '').toLowerCase())}&user=${encodeURIComponent(person.id)}`)}
-                title="Send them a message"
+                onClick={() => router.push(`/messages?user=${encodeURIComponent(person.id)}`)}
+                title="Chat with this PayRound user"
                 className="flex items-center gap-1.5 text-sm font-semibold px-5 py-2 rounded-full bg-gray-900 text-white hover:bg-gray-800 transition-all"
               >
-                <HiChatAlt2 className="w-4 h-4" /> Message
+                <HiChatAlt2 className="w-4 h-4" /> Chat
               </button>
             )}
             {(!meId || meId !== person.id) && (

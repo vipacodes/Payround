@@ -166,7 +166,7 @@ function botReply(text, ctx = {}) {
     return withChips(`📣 Group announcements:\n• Posted by the group admin — shown in a bright box at the very TOP of the group chat.\n• They stay there until the admin clears them — always check there first for deadlines & rule changes.`, ['How do I pay?', HUMAN_CHIP]);
 
   if (has('message', 'inbox', 'dm ', 'chat with a member', 'private chat'))
-    return withChips(`✉️ Messages: open Messages from the menu to chat privately with any member — or tap their profile → Message.\n• Unread chats get a green count.\n• This Support chat stays pinned at the very top of your list 💚.`, [HUMAN_CHIP]);
+    return withChips(`✉️ Messages: open Messages from the menu to chat privately with any member — or tap their profile → Message.\n• Your first message is a request. You can send another after the recipient accepts it.\n• Unread chats get a green count.\n• This Support chat stays pinned at the very top of your list 💚.`, [HUMAN_CHIP]);
 
   if (has('notif', 'sound', 'bell', 'alert', 'mute'))
     return withChips(`🔔 Notifications & sounds:\n• Payment approvals, verification results, new followers, support replies — all land under the bell icon.\n• Too noisy? Settings → App sounds toggle.\n• Video ads have their own 🔊/🔇 button, separate from app sounds.`, [HUMAN_CHIP]);
@@ -224,6 +224,9 @@ function MessagesInner() {
   const [threadQuery, setThreadQuery] = useState('');   // 🔍 search conversations
   const [freezeInfo, setFreezeInfo] = useState(null);  // frozen users see only approved-group admins + support
   const [peerContext, setPeerContext] = useState(null); // group admins see frozen-member status + safe note
+  const [requestByPeer, setRequestByPeer] = useState({}); // database-authoritative one-message request state
+  const [requestsLoaded, setRequestsLoaded] = useState(false);
+  const [requestBusy, setRequestBusy] = useState(false);
   const cs = useChatSearch(active === SUPPORT_ID ? supMsgs : msgs); // 🔍 WhatsApp-style search INSIDE the open chat
   // switching conversations closes any open in-chat search
   useEffect(() => { cs.close(); }, [active]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -284,13 +287,20 @@ function MessagesInner() {
       const { supabase } = await import('@/lib/supabase');
       // Both APIs bind identity inside PostgreSQL. No private users-table lookup
       // and no caller text is interpolated into PostgREST filter grammar.
-      const [messageResult, peopleResult] = await Promise.all([
+      const [messageResult, peopleResult, requestResult] = await Promise.all([
         supabase.rpc('get_my_direct_messages', { p_other_email: null, p_limit: 400 }),
         supabase.rpc('get_my_direct_message_people'),
+        supabase.rpc('get_my_direct_message_requests'),
       ]);
       if (messageResult.error) throw messageResult.error;
       if (peopleResult.error) throw peopleResult.error;
+      if (requestResult.error) throw requestResult.error;
 
+      const requestMap = Object.fromEntries((requestResult.data || []).map(request => [
+        (request.peer_email || '').toLowerCase(), request,
+      ]).filter(([email]) => email));
+      setRequestByPeer(requestMap);
+      setRequestsLoaded(true);
       const people = new Map((peopleResult.data || []).map(u => [(u.email || '').toLowerCase(), u]));
       const map = new Map();
       // The RPC returns the selected window oldest-first, so assigning last on
@@ -305,6 +315,12 @@ function MessagesInner() {
         t.last = m;
         if (to === email && !m.read) t.unread += 1;
       });
+      // Keep request-only chats visible even if their first message was deleted;
+      // recipients still need the database-backed Accept/Decline controls.
+      (requestResult.data || []).forEach(request => {
+        const other = (request.peer_email || '').toLowerCase();
+        if (other && !map.has(other)) map.set(other, { email: other, last: null, unread: 0, user: people.get(other) || null });
+      });
       // 💚 Pinned PayRound Support row (always first)
       let supLast = null, supUnread = 0;
       try {
@@ -312,7 +328,7 @@ function MessagesInner() {
         if (th) { supLast = { body: th.last_message, created_at: th.last_at, from_email: th.user_read ? email : 'owner' }; supUnread = th.user_read ? 0 : 1; }
       } catch {}
       setThreads([{ email: SUPPORT_ID, last: supLast, unread: supUnread, user: null, support: true }, ...map.values()]);
-    } catch { setThreads([]); }
+    } catch { setThreads([]); setRequestsLoaded(true); }
   };
 
   // Open conversation: load messages, mark theirs as read, keep polling for new ones
@@ -344,6 +360,21 @@ function MessagesInner() {
         firstOpen.current = false;
         setMsgs(data || []);
         await supabase.rpc('mark_my_direct_messages_read', { p_other_email: peerEmail });
+        const requestResult = await supabase.rpc('get_direct_message_request_context', { p_peer_email: peerEmail });
+        if (!requestResult.error && alive) {
+          const request = requestResult.data || null;
+          setRequestByPeer(prev => {
+            if (!request || request.status === 'none' || request.status === 'unavailable') {
+              const next = { ...prev }; delete next[peerEmail]; return next;
+            }
+            return { ...prev, [peerEmail]: {
+              ...request,
+              peer_email: peerEmail,
+              request_role: request.role || request.request_role,
+            } };
+          });
+          setRequestsLoaded(true);
+        }
       } catch {}
     };
     const loadUser = async () => {
@@ -454,6 +485,20 @@ function MessagesInner() {
     e?.preventDefault();
     const text = body.trim();
     if (!text || sending || !active) return;
+    const currentPeerEmail = active.startsWith('user:') ? '' : active.toLowerCase();
+    const currentRequest = currentPeerEmail ? requestByPeer[currentPeerEmail] : null;
+    if (!requestsLoaded) {
+      toast.error('Still checking this chat. Please try again in a moment.');
+      return;
+    }
+    if (currentRequest && currentRequest.can_send === false) {
+      toast.error(currentRequest.status === 'declined'
+        ? 'This message request was declined.'
+        : currentRequest.request_role === 'recipient'
+          ? 'Accept this message request before replying.'
+          : 'Wait for the recipient to accept before sending another message.');
+      return;
+    }
     if (peerContext?.can_message === false) {
       toast.error('This direct chat is unavailable while the account is frozen.');
       return;
@@ -469,44 +514,65 @@ function MessagesInner() {
     }
     setSending(true);
     try {
-      let peerEmail = active.startsWith('user:') ? '' : active;
-      let messageId = `msg-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
-      let queued = false;
+      // Every direct message uses the secured RPC. PostgreSQL also enforces the
+      // request state on the table, so stale/offline clients cannot bypass it.
+      const peerId = otherUser?.id || (active.startsWith('user:') ? active.slice(5) : activeUserHint);
+      if (!peerId) throw new Error('This profile is not available to message');
+      const { supabase } = await import('@/lib/supabase');
+      const { data, error } = await supabase.rpc('send_my_direct_message', {
+        p_to_user_id: peerId,
+        p_body: text,
+      });
+      if (error) throw error;
 
-      if (!peerEmail) {
-        // A business link starts with only the owner's safe public UUID. The
-        // server resolves their private email and validates the recipient.
-        if (!otherUser?.id) throw new Error('This profile is not available to message');
-        const { supabase } = await import('@/lib/supabase');
-        const { data, error } = await supabase.rpc('send_my_direct_message', {
-          p_to_user_id: otherUser.id,
-          p_body: text,
-        });
-        if (error) throw error;
-        peerEmail = (data?.peer_email || '').toLowerCase();
-        messageId = data?.id || messageId;
-        if (!peerEmail) throw new Error('Message recipient could not be resolved');
-        setActiveUserHint(otherUser.id);
+      const peerEmail = (data?.peer_email || currentPeerEmail || '').toLowerCase();
+      const messageId = data?.id || `msg-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+      if (!peerEmail) throw new Error('Message recipient could not be resolved');
+      if (data?.request) {
+        setRequestByPeer(prev => ({ ...prev, [peerEmail]: {
+          ...data.request,
+          peer_email: peerEmail,
+          request_role: data.request.role || data.request.request_role,
+        } }));
+      }
+      if (active.startsWith('user:')) {
+        setActiveUserHint(peerId);
         setActive(peerEmail);
-      } else {
-        // Existing conversations retain offline queue support; database RLS and
-        // mutation guards bind the sender to the authenticated session.
-        const row = { id: messageId, from_email: me, to_email: peerEmail, body: text };
-        const { writeWhenOnline } = await import('@/lib/offlineQueue');
-        const result = await writeWhenOnline({ table: 'messages', op: 'insert', row });
-        queued = result.queued;
-        if (result.error) throw result.error;
       }
 
       setBody('');
       sounds.send();
-      if (queued) toast('📴 Saved on this phone — will send when you are back online.');
       nearBottom.current = true;
       setMsgs(prev => [...prev, { id: `local-${messageId}`, from_email: me, to_email: peerEmail, body: text, created_at: new Date().toISOString(), read: false }]);
       scrollToEnd();
       loadThreads(me);
     } catch (err) { toast.error(`Could not send: ${err.message || 'try again'}`); }
     setSending(false);
+  };
+
+  const respondToRequest = async (request, accept) => {
+    if (!request?.id || requestBusy) return;
+    setRequestBusy(true);
+    try {
+      const { supabase } = await import('@/lib/supabase');
+      const { data, error } = await supabase.rpc('respond_to_direct_message_request', {
+        p_request_id: request.id,
+        p_accept: accept,
+      });
+      if (error) throw error;
+      const peerEmail = (active.startsWith('user:') ? request.peer_email : active).toLowerCase();
+      setRequestByPeer(prev => ({ ...prev, [peerEmail]: {
+        ...request,
+        ...data,
+        peer_email: peerEmail,
+        request_role: data?.role || request.request_role || 'recipient',
+      } }));
+      toast.success(accept ? 'Message request accepted. You can both chat now.' : 'Message request declined.');
+      loadThreads(me);
+    } catch (err) {
+      toast.error(`Could not update request: ${err.message || 'try again'}`);
+    }
+    setRequestBusy(false);
   };
 
   // Delete a message you sent — it is removed for BOTH sides
@@ -681,6 +747,10 @@ function MessagesInner() {
   /* ============ CHAT VIEW ============ */
   if (active) {
     const displayName = otherUser?.name || 'PayRound member';
+    const activePeerEmail = active.startsWith('user:') ? '' : active.toLowerCase();
+    const activeRequest = activePeerEmail ? requestByPeer[activePeerEmail] : null;
+    const requestRole = activeRequest?.request_role || activeRequest?.role;
+    const requestCanSend = requestsLoaded && (!activeRequest || activeRequest.can_send !== false);
     return (
       <div className="h-[100dvh] flex flex-col bg-gray-50 overflow-hidden">
         <Header />
@@ -713,6 +783,35 @@ function MessagesInner() {
             </div>
             {/* 🔍 in-chat keyword/date search (WhatsApp-style) */}
             <ChatSearchBar cs={cs} />
+            {activeRequest?.status === 'pending' && requestRole === 'recipient' && (
+              <div className="px-4 py-3 bg-amber-50 border-b border-amber-200 text-xs text-amber-950">
+                <p className="font-bold">✉️ Message request from {displayName}</p>
+                <p className="mt-1 text-amber-800">Accept before replying, or decline to keep this chat closed.</p>
+                <div className="flex gap-2 mt-2">
+                  <button type="button" onClick={() => respondToRequest(activeRequest, true)} disabled={requestBusy}
+                    className="px-3 py-1.5 rounded-lg bg-primary-600 text-white font-bold disabled:opacity-50">Accept</button>
+                  <button type="button" onClick={() => respondToRequest(activeRequest, false)} disabled={requestBusy}
+                    className="px-3 py-1.5 rounded-lg border border-red-200 bg-white text-red-700 font-bold disabled:opacity-50">Decline</button>
+                </div>
+              </div>
+            )}
+            {activeRequest?.status === 'pending' && requestRole === 'requester' && (
+              <div className="px-4 py-2.5 bg-amber-50 border-b border-amber-200 text-xs text-amber-900">
+                <b>⏳ Message request sent.</b> You can send another message after {displayName} accepts.
+              </div>
+            )}
+            {activeRequest?.status === 'declined' && requestRole === 'requester' && (
+              <div className="px-4 py-2.5 bg-red-50 border-b border-red-200 text-xs text-red-800">
+                <b>Message request declined.</b> This conversation remains closed unless {displayName} accepts it later.
+              </div>
+            )}
+            {activeRequest?.status === 'declined' && requestRole === 'recipient' && (
+              <div className="px-4 py-3 bg-gray-50 border-b border-gray-200 text-xs text-gray-800">
+                <p><b>You declined this message request.</b> You can accept it later to reopen the conversation.</p>
+                <button type="button" onClick={() => respondToRequest(activeRequest, true)} disabled={requestBusy}
+                  className="mt-2 px-3 py-1.5 rounded-lg bg-primary-600 text-white font-bold disabled:opacity-50">Accept request</button>
+              </div>
+            )}
             {freezeInfo?.frozen && (
               <div className="px-4 py-2.5 bg-sky-50 border-b border-sky-200 text-xs text-sky-900">
                 <b>❄️ Restricted account chat:</b> this conversation stays open because {displayName} administers one of your approved groups. Keep it to resolving existing group or payment matters.
@@ -768,12 +867,22 @@ function MessagesInner() {
                 type="text"
                 value={body}
                 onChange={e => setBody(e.target.value)}
-                disabled={peerContext?.can_message === false}
-                placeholder={peerContext?.can_message === false ? 'This chat is unavailable while the account is frozen' : `Message ${displayName}…`}
+                disabled={peerContext?.can_message === false || !requestCanSend}
+                placeholder={peerContext?.can_message === false
+                  ? 'This chat is unavailable while the account is frozen'
+                  : !requestsLoaded
+                    ? 'Checking message request…'
+                    : activeRequest?.status === 'declined'
+                      ? 'This message request was declined'
+                      : activeRequest?.status === 'pending' && requestRole === 'recipient'
+                        ? 'Accept the request before replying'
+                        : activeRequest?.status === 'pending'
+                          ? 'Waiting for the recipient to accept'
+                          : `Message ${displayName}…`}
                 maxLength={500}
                 className="flex-1 px-4 py-2.5 border border-gray-200 rounded-full text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 disabled:bg-gray-100 disabled:text-gray-500"
               />
-              <button type="submit" disabled={sending || !body.trim() || peerContext?.can_message === false} aria-label="Send"
+              <button type="submit" disabled={sending || !body.trim() || peerContext?.can_message === false || !requestCanSend} aria-label="Send"
                 className="w-10 h-10 bg-primary-600 text-white rounded-full flex items-center justify-center hover:bg-primary-700 disabled:opacity-40 transition-all shrink-0">
                 <HiPaperAirplane className="w-5 h-5 rotate-90" />
               </button>
@@ -861,10 +970,24 @@ function MessagesInner() {
                   <span className="flex items-center gap-1 text-sm font-bold text-gray-900">
                     <span className="truncate">{nameOf(t)}</span>
                     {t.user?.is_verified && <HiBadgeCheck className="w-4 h-4 text-blue-500 shrink-0 badge-emboss" />}
+                    {requestByPeer[(t.email || '').toLowerCase()]?.status === 'pending' && (
+                      <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full shrink-0 ${requestByPeer[(t.email || '').toLowerCase()]?.request_role === 'recipient' ? 'bg-amber-100 text-amber-800' : 'bg-gray-100 text-gray-600'}`}>
+                        {requestByPeer[(t.email || '').toLowerCase()]?.request_role === 'recipient' ? 'REQUEST' : 'PENDING'}
+                      </span>
+                    )}
+                    {requestByPeer[(t.email || '').toLowerCase()]?.status === 'declined' && (
+                      <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-red-50 text-red-700 shrink-0">DECLINED</span>
+                    )}
                     <span className="ml-auto text-[10px] font-normal text-gray-400 shrink-0">{t.last ? dateOf(t.last.created_at) : ''}</span>
                   </span>
                   <span className={`block text-xs truncate mt-0.5 ${t.unread > 0 ? 'font-semibold text-gray-900' : 'text-gray-500'}`}>
-                    {t.last ? `${t.last.from_email === me ? 'You: ' : ''}${t.last.body}` : (t.user?.groups?.length ? `Admin of ${t.user.groups.map(group => group.name).join(', ')}` : 'Approved-group admin contact')}
+                    {t.last
+                      ? `${t.last.from_email === me ? 'You: ' : ''}${t.last.body}`
+                      : requestByPeer[(t.email || '').toLowerCase()]?.status === 'pending'
+                        ? (requestByPeer[(t.email || '').toLowerCase()]?.request_role === 'recipient' ? 'Message request — open to accept or decline' : 'Waiting for this person to accept')
+                        : requestByPeer[(t.email || '').toLowerCase()]?.status === 'declined'
+                          ? 'Message request declined'
+                          : (t.user?.groups?.length ? `Admin of ${t.user.groups.map(group => group.name).join(', ')}` : 'Approved-group admin contact')}
                   </span>
                 </span>
                 {t.unread > 0 && (

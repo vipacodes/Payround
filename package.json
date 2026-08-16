@@ -7,7 +7,8 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "test:message-requests": "node tests_message_requests_owner_chat_reports.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.109.0",
@@ -19,6 +20,7 @@
     "react-icons": "^5.2.0"
   },
   "devDependencies": {
+    "@electric-sql/pglite": "^0.3.14",
     "autoprefixer": "^10.4.19",
     "eslint": "^8.57.0",
     "eslint-config-next": "^14.2.0",
