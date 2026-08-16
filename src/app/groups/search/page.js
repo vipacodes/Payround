@@ -51,8 +51,11 @@ function RealGroupCard({ group, memberCount }) {
       </div>
 
       <div className="flex items-center justify-between pt-4 border-t border-gray-50">
-        <span className="text-xs text-gray-400">Admin: {group.admin_name || '—'}</span>
-        <span className="text-sm font-medium text-primary-600">View & Join →</span>
+        <span className="text-xs text-gray-400 flex items-center gap-1 min-w-0">
+          <span className="truncate">Admin: {group.admin_name || '—'}</span>
+          {group.admin_is_verified && <HiBadgeCheck className="w-4 h-4 text-blue-500 shrink-0" title="Verified account" />}
+        </span>
+        <span className="text-sm font-medium text-primary-600 shrink-0">View & Join →</span>
       </div>
     </a>
   );
@@ -99,9 +102,12 @@ function SearchContent() {
     let mounted = true;
     (async () => {
       try {
-        const { supabase } = await import('@/lib/supabase');
+        const { supabase, getGroupAdminBadgeMap } = await import('@/lib/supabase');
         let gs = [];
-        const pub = await supabase.from('public_groups').select('*');
+        const [pub, adminBadges] = await Promise.all([
+          supabase.from('public_groups').select('*'),
+          getGroupAdminBadgeMap(),
+        ]);
         if (!pub.error) gs = pub.data || [];
         else {
           const full = await supabase
@@ -112,7 +118,9 @@ function SearchContent() {
           gs = full.data || [];
         }
         if (!mounted) return;
-        const list = (gs || []).filter(g => !g.is_frozen); // ❄️ frozen groups are hidden from search
+        const list = (gs || [])
+          .filter(g => !g.is_frozen) // ❄️ frozen groups are hidden from search
+          .map(g => ({ ...g, admin_is_verified: !!adminBadges[String(g.id)]?.admin_is_verified }));
         setGroupsList(list);
         setResults(applySearch(list, initialQuery));
         const counts = {};

@@ -8,7 +8,7 @@ import LoadingScreen from '@/components/LoadingScreen';
 import {
   HiUserGroup, HiCalendar, HiCurrencyDollar,
   HiUser, HiCheckCircle, HiClock, HiArrowLeft,
-  HiPhotograph, HiUpload, HiExclamation, HiDocumentText
+  HiPhotograph, HiUpload, HiExclamation, HiDocumentText, HiBadgeCheck
 } from 'react-icons/hi';
 import ImageLightbox from '@/components/ImageLightbox';
 import GroupBadge from '@/components/GroupBadge';
@@ -99,10 +99,14 @@ export default function GroupDetailsPage() {
         const { data: outs } = await supabase.from('payouts').select('*').eq('group_id', params.id);
         if (mounted) setPayouts(outs || []);
 
-        // Group admin's public profile — so members can open it and tap Follow
-        if (g.admin_email) {
-          const { data: adm } = await supabase.from('users').select('id, name, phone, profile_pic, bank_name, account_number, account_name, payment_remark').eq('email', g.admin_email.toLowerCase()).single();
-          if (mounted && adm) setAdminProfile(adm);
+        // Public identity is safe for everyone. Payment/contact details are added only
+        // when the signed-in user is an authorized participant in this group.
+        const [{ data: publicAdmin }, { data: paymentAdmin }] = await Promise.all([
+          supabase.rpc('get_public_group_admin_profile', { p_group_id: params.id }),
+          user ? supabase.rpc('get_group_payment_profile', { p_group_id: params.id }) : Promise.resolve({ data: null }),
+        ]);
+        if (mounted && (publicAdmin || paymentAdmin)) {
+          setAdminProfile({ ...(publicAdmin || {}), ...(paymentAdmin || {}) });
         }
 
         // 🔔 Renewal reminder — the group admin gets a bell notification 7 days before the group plan renews
@@ -664,7 +668,10 @@ export default function GroupDetailsPage() {
             className={`bg-white rounded-2xl border border-gray-100 p-4 text-left ${adminProfile ? 'card-hover cursor-pointer' : 'cursor-default'}`}
           >
             <div className="flex items-center gap-2 text-gray-500 text-xs mb-1"><HiUser className="w-4 h-4 text-primary-500" /> Group Admin {adminProfile && <span className="text-[10px] text-primary-600 font-semibold">• Tap to view profile →</span>}</div>
-            <p className="text-lg font-bold text-gray-900 truncate">{group.admin_name || '—'}</p>
+            <p className="text-lg font-bold text-gray-900 flex items-center gap-1.5 min-w-0">
+              <span className="truncate">{adminProfile?.name || group.admin_name || '—'}</span>
+              {adminProfile?.is_verified && <HiBadgeCheck className="w-5 h-5 text-blue-500 shrink-0" title="Verified account" />}
+            </p>
             {adminProfile?.phone && (
               <a href={`tel:${adminProfile.phone}`} onClick={e => e.stopPropagation()} className="text-xs text-primary-600 font-semibold mt-0.5 inline-flex items-center gap-1 hover:text-primary-700">
                 📞 {adminProfile.phone}

@@ -26,25 +26,37 @@ export const supabase = createClient(
   }
 );
 
+export async function getGroupAdminBadgeMap() {
+  try {
+    const { data, error } = await supabase.rpc('get_public_group_admin_badges');
+    if (error) throw error;
+    return Object.fromEntries((data || []).map((row) => [String(row.group_id), row]));
+  } catch (e) {
+    console.log('Group admin badges fallback', e.message);
+    return {};
+  }
+}
+
 export async function getGroupsFromSupabase() {
   try {
-    const { data, error } = await supabase
-      .from('public_groups')
-      .select('*')
-      .order('id', { ascending: false });
+    const [groupResult, adminBadges] = await Promise.all([
+      supabase.from('public_groups').select('*').order('id', { ascending: false }),
+      getGroupAdminBadgeMap(),
+    ]);
+    const { data, error } = groupResult;
     if (error) {
-      const fallback = await supabase.from('groups').select('id,name,description,amount,frequency,max_members,color,status,admin_name,is_verified,health,created_at').eq('is_verified', true).order('created_at', { ascending: false });
+      const fallback = await supabase.from('groups').select('id,name,description,amount,frequency,max_members,color,status,admin_name,is_verified,badge_tier,health,created_at').eq('is_verified', true).order('created_at', { ascending: false });
       if (fallback.error) throw fallback.error;
-      return mapGroups(fallback.data);
+      return mapGroups(fallback.data, adminBadges);
     }
-    return mapGroups(data);
+    return mapGroups(data, adminBadges);
   } catch (e) {
     console.log('Groups fetch fallback', e.message);
     return [];
   }
 }
 
-function mapGroups(data) {
+function mapGroups(data, adminBadges = {}) {
   if (!data || !data.length) return [];
   return data.map((g) => ({
     id: g.id,
@@ -56,7 +68,10 @@ function mapGroups(data) {
     currentMembers: Number(g.member_count ?? 0),
     color: g.color || '#0A7E3C',
     adminName: g.admin_name,
-    adminVerified: g.is_verified,
+    adminVerified: !!adminBadges[String(g.id)]?.admin_is_verified,
+    adminUserId: adminBadges[String(g.id)]?.admin_user_id || null,
+    groupVerified: !!g.is_verified,
+    badgeTier: g.badge_tier || null,
     healthScore: g.health || 85,
     rating: g.rating || 0,
     createdAt: g.created_at,

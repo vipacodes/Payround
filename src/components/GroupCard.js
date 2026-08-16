@@ -1,7 +1,8 @@
 'use client';
 
-import { HiUserGroup, HiShieldCheck, HiCalendar, HiCurrencyDollar } from 'react-icons/hi';
+import { HiUserGroup, HiBadgeCheck, HiCalendar, HiCurrencyDollar } from 'react-icons/hi';
 import { HiOutlineArrowRight } from 'react-icons/hi2';
+import GroupBadge from '@/components/GroupBadge';
 
 export default function GroupCard({ group, compact = false }) {
 
@@ -21,17 +22,19 @@ export default function GroupCard({ group, compact = false }) {
             <div className="w-12 h-12 bg-gradient-to-br from-primary-100 to-primary-50 rounded-xl flex items-center justify-center">
               <span className="text-primary-700 font-bold text-lg">{group.name.charAt(0)}</span>
             </div>
-            <div>
-              <h3 className="font-semibold text-gray-900">{group.name}</h3>
+            <div className="min-w-0">
+              <h3 className="font-semibold text-gray-900 flex items-center gap-1.5">
+                <span className="truncate">{group.name}</span>
+                <GroupBadge verified={group.groupVerified} className="w-5 h-5 shrink-0" />
+              </h3>
               <p className="text-xs text-gray-500 font-mono">ID: {group.id}</p>
+              <p className="text-xs text-gray-500 flex items-center gap-1 mt-0.5">
+                <span>by {group.adminName || '—'}</span>
+                {group.adminVerified && <HiBadgeCheck className="w-4 h-4 text-blue-500 shrink-0" title="Verified account" />}
+              </p>
             </div>
           </div>
-          {group.adminVerified && (
-            <div className="flex items-center gap-1.5 bg-primary-100 text-primary-800 text-sm font-bold px-3 py-1.5 rounded-full border border-primary-200 shadow-sm">
-              <HiShieldCheck className="w-5 h-5" />
-              Verified by Payround
-            </div>
-          )}
+          {group.badgeTier && <GroupBadge tier={group.badgeTier} className="w-8 h-8 shrink-0" />}
         </div>
 
         <p className="text-sm text-gray-600 mb-4 line-clamp-2">{group.description}</p>
