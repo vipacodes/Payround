@@ -200,13 +200,194 @@ body {
 }
 .msg-dot { animation: msgDotPulse 1.6s ease-in-out infinite; }
 
-/* Raised / embossed 3D look for every verification check mark (blue + tier checks) */
+/* Raised / embossed 3D look for the blue verification check mark */
 .badge-emboss {
   filter:
     drop-shadow(0 1px 0 rgba(255, 255, 255, 0.6))
     drop-shadow(0 -1px 1px rgba(0, 0, 0, 0.35))
     drop-shadow(0 2px 3px rgba(0, 0, 0, 0.22));
 }
+
+/* Premium metallic group tiers — deliberately separate from blue verification. */
+.group-badge-set {
+  display: inline-flex;
+  align-items: center;
+  flex: 0 0 auto;
+  gap: 4px;
+  vertical-align: middle;
+}
+
+.group-tier-badge {
+  --tier-ink: #351608;
+  --tier-edge: #914b24;
+  --tier-deep: #743615;
+  --tier-crest-top: #b56a3d;
+  --tier-glow: rgba(180, 83, 9, 0.28);
+  --tier-sheen: #fff7ed;
+  position: relative;
+  isolation: isolate;
+  display: inline-flex;
+  align-items: center;
+  flex: 0 0 auto;
+  gap: 4px;
+  min-height: 21px;
+  padding: 2px 8px 2px 3px;
+  overflow: hidden;
+  vertical-align: middle;
+  white-space: nowrap;
+  border: 1px solid var(--tier-edge);
+  border-radius: 9999px;
+  color: var(--tier-ink) !important;
+  background: linear-gradient(135deg, var(--tier-sheen) 0%, #f2b679 48%, #c96f3b 100%);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.9),
+    inset 0 -1px 0 rgba(73, 28, 7, 0.24),
+    0 2px 5px rgba(15, 23, 42, 0.2),
+    0 0 0 1px var(--tier-glow);
+  font-size: 9px;
+  font-weight: 900;
+  line-height: 1;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.48);
+}
+
+.group-tier-badge::before {
+  content: '';
+  position: absolute;
+  z-index: 0;
+  top: -60%;
+  bottom: -60%;
+  left: -45%;
+  width: 28%;
+  transform: skewX(-22deg);
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.8), transparent);
+  animation: tierBadgeGleam 4.8s ease-in-out infinite;
+  pointer-events: none;
+}
+
+.group-tier-badge::after {
+  content: '';
+  position: absolute;
+  z-index: 0;
+  inset: 1px;
+  border-top: 1px solid rgba(255, 255, 255, 0.68);
+  border-radius: inherit;
+  pointer-events: none;
+}
+
+.group-tier-badge__crest {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 15px;
+  height: 15px;
+  flex: 0 0 15px;
+  border: 1px solid rgba(255, 255, 255, 0.58);
+  border-radius: 9999px;
+  position: relative;
+  z-index: 1;
+  color: #fff8e7 !important;
+  background: linear-gradient(145deg, var(--tier-crest-top), var(--tier-deep));
+  box-shadow:
+    inset 0 1px 1px rgba(255, 255, 255, 0.42),
+    0 1px 2px rgba(15, 23, 42, 0.35);
+}
+
+.group-tier-badge__crest svg {
+  width: 9px;
+  height: 9px;
+  filter: drop-shadow(0 1px 0 rgba(0, 0, 0, 0.3));
+}
+
+.group-tier-badge__name {
+  position: relative;
+  z-index: 1;
+  top: 0.5px;
+}
+
+/* Existing icon-size props now scale the complete tier mark, not just its star. */
+.group-tier-badge--sm {
+  min-height: 20px;
+  gap: 3px;
+  padding: 2px 7px 2px 2px;
+  font-size: 9px;
+}
+.group-tier-badge--sm .group-tier-badge__crest {
+  width: 15px;
+  height: 15px;
+  flex-basis: 15px;
+}
+.group-tier-badge--sm .group-tier-badge__crest svg { width: 9px; height: 9px; }
+
+.group-tier-badge--md {
+  min-height: 23px;
+  gap: 5px;
+  padding-right: 9px;
+  font-size: 10px;
+}
+.group-tier-badge--md .group-tier-badge__crest {
+  width: 17px;
+  height: 17px;
+  flex-basis: 17px;
+}
+.group-tier-badge--md .group-tier-badge__crest svg { width: 10px; height: 10px; }
+
+.group-tier-badge--lg {
+  min-height: 27px;
+  gap: 5px;
+  padding: 3px 10px 3px 3px;
+  font-size: 11px;
+}
+.group-tier-badge--lg .group-tier-badge__crest {
+  width: 20px;
+  height: 20px;
+  flex-basis: 20px;
+}
+.group-tier-badge--lg .group-tier-badge__crest svg { width: 12px; height: 12px; }
+
+.group-tier-badge--bronze {
+  background: linear-gradient(135deg, #fff7ed 0%, #f2b679 48%, #c96f3b 100%);
+}
+
+.group-tier-badge--silver {
+  --tier-ink: #1f2937;
+  --tier-edge: #758397;
+  --tier-deep: #526173;
+  --tier-crest-top: #8b98a9;
+  --tier-glow: rgba(100, 116, 139, 0.32);
+  --tier-sheen: #ffffff;
+  background: linear-gradient(135deg, #ffffff 0%, #dce3eb 47%, #94a3b8 100%);
+}
+
+.group-tier-badge--gold {
+  --tier-ink: #4a2900;
+  --tier-edge: #c07900;
+  --tier-deep: #a85d00;
+  --tier-crest-top: #e3a321;
+  --tier-glow: rgba(245, 158, 11, 0.42);
+  --tier-sheen: #fffdf0;
+  background: linear-gradient(135deg, #fffdf0 0%, #fde68a 43%, #f59e0b 100%);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.95),
+    inset 0 -1px 0 rgba(120, 53, 15, 0.22),
+    0 2px 6px rgba(120, 53, 15, 0.25),
+    0 0 0 1px var(--tier-glow),
+    0 0 10px rgba(251, 191, 36, 0.22);
+}
+
+@keyframes tierBadgeGleam {
+  0%, 64% { left: -45%; opacity: 0; }
+  72% { opacity: 0.9; }
+  86%, 100% { left: 125%; opacity: 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .group-tier-badge::before { animation: none; }
+}
+
+/* Tier colors are self-contained and remain bright in the dark theme. */
+.dark .group-tier-badge { color: var(--tier-ink) !important; }
 
 /* 📢 Announcement box & 🏦 Admin bank card — FORCED bright in both light and dark mode
    (same trick as the broadcast popup, so dark mode can never dim or hide them) */

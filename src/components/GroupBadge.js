@@ -1,32 +1,57 @@
 'use client';
 
-import { HiBadgeCheck } from 'react-icons/hi';
+import { HiBadgeCheck, HiStar } from 'react-icons/hi';
 
-// Check marks shown next to a GROUP's name — every one of them is granted by PayRound,
-// never awarded automatically by the app:
-//   • Blue check  -> the group was personally checked and given the blue mark (groups.is_verified)
-//   • Tier check  -> Bronze / Silver / Gold tier, shown as a colored check (groups.badge_tier)
-export const tierCheckClass = {
-  bronze: 'text-amber-700 dark:text-amber-500',
-  silver: 'text-slate-400 dark:text-slate-300',
-  gold: 'text-yellow-500 dark:text-yellow-400',
+const tierDetails = {
+  bronze: { label: 'Bronze', level: 'Tier 1' },
+  silver: { label: 'Silver', level: 'Tier 2' },
+  gold: { label: 'Gold', level: 'Tier 3' },
 };
 
+/**
+ * Shared group trust marks.
+ * - verified: keeps the familiar blue PayRound verification check.
+ * - tier: uses a separate metallic award so Bronze, Silver and Gold are
+ *   immediately distinguishable from verification and from one another.
+ */
 export default function GroupBadge({ verified = false, tier = '', className = 'w-4 h-4 shrink-0' }) {
-  const t = (tier || '').toLowerCase();
-  const showTier = t === 'bronze' || t === 'silver' || t === 'gold';
-  if (!verified && !showTier) return null;
+  const normalizedTier = String(tier || '').toLowerCase();
+  const hasTier = Boolean(tierDetails[normalizedTier]);
+  const activeTier = hasTier ? normalizedTier : 'bronze';
+  const details = tierDetails[activeTier];
+  const tierSize = /(?:^|\s)(?:w|h)-8(?:\s|$)/.test(className)
+    ? 'lg'
+    : /(?:^|\s)(?:w|h)-6(?:\s|$)/.test(className)
+      ? 'md'
+      : /(?:^|\s)(?:w|h)-4(?:\s|$)/.test(className)
+        ? 'sm'
+        : 'base';
+
+  if (!verified && !hasTier) return null;
+
   return (
-    <>
+    <span className="group-badge-set">
       {verified && (
-        <HiBadgeCheck className={`${className} text-blue-500 badge-emboss`} title="Blue check — given by PayRound" />
-      )}
-      {showTier && (
         <HiBadgeCheck
-          className={`${className} ${tierCheckClass[t]} badge-emboss`}
-          title={`${t.charAt(0).toUpperCase() + t.slice(1)} check — given by PayRound`}
+          className={`${className} text-blue-500 badge-emboss shrink-0`}
+          role="img"
+          aria-label="Verified PayRound group"
+          title="Verified PayRound group"
         />
       )}
-    </>
+      {hasTier && (
+        <span
+          className={`group-tier-badge group-tier-badge--${activeTier} group-tier-badge--${tierSize}`}
+          role="img"
+          aria-label={`${details.label} group badge, ${details.level}`}
+          title={`${details.label} group badge • ${details.level}`}
+        >
+          <span className="group-tier-badge__crest" aria-hidden="true">
+            <HiStar />
+          </span>
+          <span className="group-tier-badge__name" aria-hidden="true">{details.label}</span>
+        </span>
+      )}
+    </span>
   );
 }
