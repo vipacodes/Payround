@@ -132,13 +132,12 @@ function SearchContent() {
     return () => { mounted = false; };
   }, []);
 
-  // Search users by name, unique user ID, or email prefix
+  // Search users by public name or unique user ID.
   const applyUserSearch = (us, q) => {
     const needle = q.trim().toLowerCase();
     const base = !needle ? us : us.filter(u =>
       (u.name || '').toLowerCase().includes(needle) ||
-      (u.id || '').toLowerCase().startsWith(needle) ||
-      (u.email || '').toLowerCase().startsWith(needle)
+      (u.id || '').toLowerCase().startsWith(needle)
     );
     return verifiedFirst(base);
   };
@@ -151,12 +150,8 @@ function SearchContent() {
       setUsersLoading(true);
       try {
         const { supabase } = await import('@/lib/supabase');
-        const { data } = await supabase
-          .from('users')
-          .select('id, name, email, profile_pic, is_verified, role, created_at')
-          .or('is_approved.eq.true,approval_status.eq.approved')
-          .order('created_at', { ascending: false })
-          .limit(200);
+        const { data, error } = await supabase.rpc('get_public_user_directory');
+        if (error) throw error;
         if (!mounted) return;
         const list = data || [];
         setUsersList(list);
@@ -210,7 +205,7 @@ function SearchContent() {
                 type="text"
                 value={query}
                 onChange={(e) => { setQuery(e.target.value); if (!e.target.value.trim()) { if (tab === 'users') setUserResults(usersList); else setResults(groupsList); setSearched(false); } }}
-                placeholder={tab === 'users' ? 'Search users by name, ID, or email' : 'Search by group name, ID, or admin name'}
+                placeholder={tab === 'users' ? 'Search users by name or ID' : 'Search by group name, ID, or admin name'}
                 className="w-full pl-12 pr-4 py-3.5 bg-white border border-gray-200 rounded-2xl text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
               />
               <HiSearch className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />

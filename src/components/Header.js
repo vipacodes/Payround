@@ -432,7 +432,7 @@ export default function Header() {
 
       {/* Mobile Menu */}
       {isMenuOpen && (
-        <div className="bg-white border-t border-gray-100 animate-fade-in">
+        <div className="bg-white border-t border-gray-100 animate-fade-in max-h-[calc(100dvh-4rem)] overflow-y-auto overscroll-contain">
           <div className="px-4 py-4 space-y-4">
             {/* Mobile Search */}
             <form onSubmit={handleSearch}>
@@ -474,7 +474,7 @@ export default function Header() {
                   </div>
                   <button
                     onClick={handleLogout}
-                    className="flex items-center gap-3 w-full px-4 py-3 text-red-600 bg-red-50 rounded-xl text-sm font-medium"
+                    className="sticky bottom-0 z-10 flex items-center gap-3 w-full px-4 py-3 text-red-600 bg-red-50 border border-red-100 rounded-xl text-sm font-medium shadow-sm"
                   >
                     <HiLogout className="w-5 h-5" />
                     Logout

@@ -27,7 +27,7 @@ export default function PublicUserProfilePage() {
   const [notFound, setNotFound] = useState(false);
   const [loading, setLoading] = useState(true);
   const [zoom, setZoom] = useState(false);
-  const [meEmail, setMeEmail] = useState('');
+  const [meId, setMeId] = useState('');
   const [isFollowing, setIsFollowing] = useState(false);
   const [followers, setFollowers] = useState(0);
   const [busyFollow, setBusyFollow] = useState(false);
@@ -40,95 +40,66 @@ export default function PublicUserProfilePage() {
     (async () => {
       try {
         const { supabase } = await import('@/lib/supabase');
-        let u = null;
-        const sel = 'id, name, email, phone, profile_pic, is_verified, role, created_at, bank_name, account_number, account_name';
-        const byId = await supabase.from('users').select(sel).eq('id', params.id).maybeSingle();
-        u = byId.data;
-        if (!u && String(params.id || '').length >= 6) {
-          const { data: list } = await supabase.from('users').select(sel).ilike('id', `${params.id}%`).limit(2);
-          if (list && list.length === 1) u = list[0];
+        const { data: publicProfile, error: profileError } = await supabase.rpc('get_public_profile_by_ref', {
+          p_ref: String(params.id || ''),
+        });
+        if (profileError) throw profileError;
+        if (!publicProfile?.id) {
+          if (mounted) setNotFound(true);
+          return;
         }
-        if (!mounted) return;
-        if (!u) { setNotFound(true); setLoading(false); return; }
-        setPerson(u);
-        try {
-          const { data: extras } = await supabase.rpc('get_public_profile_extras', { p_user_id: u.id });
-          if (mounted) setProfileExtras(extras || null);
-        } catch { if (mounted) setProfileExtras(null); }
-        const email = (u.email || '').toLowerCase(); // used only to fetch their groups — never displayed
-        // Groups they admin
-        const { data: ag } = await supabase.from('groups').select('id, name, avatar_url, is_verified, badge_tier, amount, frequency').eq('admin_email', email).in('status', ['active', 'approved']);
-        // Public memberships (approved only)
-        const { data: mems } = await supabase.from('members').select('group_id').eq('member_email', email).in('status', ['active', 'approved']);
-        if (!mounted) return;
-        setGroupsAdmin(ag || []);
 
-        // Their PUBLIC business profile(s) on PayRound — only after the owner approved the business
-        try {
-          const { data: biz } = await supabase.from('ads').select('id, business_name').eq('submitter_email', email).eq('biz_status', 'approved');
-          if (mounted) setBizAds(biz || []);
-        } catch {}
+        const [groupResult, businessResult, followResult, extrasResult, contactResult, authResult] = await Promise.all([
+          supabase.rpc('get_public_profile_group_cards', { p_user_id: publicProfile.id }),
+          supabase.rpc('get_public_businesses', { p_user_id: publicProfile.id }),
+          supabase.rpc('get_public_follow_summary', { p_target_id: publicProfile.id }),
+          supabase.rpc('get_public_profile_extras', { p_user_id: publicProfile.id }),
+          supabase.rpc('get_authorized_profile_contact', { p_user_id: publicProfile.id }),
+          supabase.auth.getUser(),
+        ]);
+        if (!mounted) return;
 
-        // Follow stats — visible to the public
-        const { data: fols } = await supabase.from('follows').select('follower_email').eq('following_id', String(u.id));
-        if (mounted) setFollowers((fols || []).length);
-        try {
-          const stored = localStorage.getItem('payround_user');
-          if (stored) {
-            const e = (JSON.parse(stored).email || '').toLowerCase();
-            if (mounted) {
-              setMeEmail(e);
-              setIsFollowing((fols || []).some(f => (f.follower_email || '').toLowerCase() === e));
-            }
-          }
-        } catch {}
-        if (mems && mems.length > 0) {
-          const ids = mems.map(m => m.group_id);
-          const { data: gs } = await supabase.from('groups').select('id, name, avatar_url, is_verified, badge_tier, amount, frequency').in('id', ids).in('status', ['active', 'approved']);
-          if (mounted) setGroupsMember(gs || []);
+        const groupCards = Array.isArray(groupResult.data) ? groupResult.data : [];
+        setPerson({ ...publicProfile, ...(contactResult.data || {}) });
+        setGroupsAdmin(groupCards.filter(group => group.is_admin));
+        setGroupsMember(groupCards.filter(group => !group.is_admin));
+        setBizAds(Array.isArray(businessResult.data) ? businessResult.data : []);
+        setFollowers(Number(followResult.data?.count || 0));
+        setIsFollowing(Boolean(followResult.data?.is_following));
+        setProfileExtras(extrasResult.data || null);
+
+        if (authResult.data?.user) {
+          const { data: mine } = await supabase.rpc('get_my_profile');
+          if (mounted && mine?.id) setMeId(mine.id);
         }
-      } catch (e) {
+      } catch (error) {
+        console.error('Public profile load:', error);
         if (mounted) setNotFound(true);
+      } finally {
+        if (mounted) setLoading(false);
       }
-      if (mounted) setLoading(false);
     })();
     return () => { mounted = false; };
   }, [params.id]);
 
-  const isSupport = (person?.email || '').toLowerCase() === 'payroundsupport@gmail.com';
+  const isSupport = person?.role === 'owner' || (person?.email || '').toLowerCase() === 'payroundsupport@gmail.com';
   const phonePublic = !!person?.phone && (groupsAdmin.length > 0 || isSupport);
 
   const toggleFollow = async () => {
-    if (!meEmail) { toast.error('Log in to follow people.'); router.push('/login'); return; }
+    if (!meId) { toast.error('Log in to follow people.'); router.push('/login'); return; }
     setBusyFollow(true);
     try {
       const { supabase } = await import('@/lib/supabase');
-      if (isFollowing) {
-        const { error } = await supabase.from('follows').delete().eq('follower_email', meEmail).eq('following_id', String(person.id));
-        if (error) throw error;
-        setIsFollowing(false); setFollowers(c => Math.max(0, c - 1));
-      } else {
-        const { error } = await supabase.from('follows').insert({
-          id: `fol-${Date.now()}`, follower_email: meEmail,
-          following_id: String(person.id), following_email: (person.email || '').toLowerCase(),
-        });
-        if (error) throw error;
-        setIsFollowing(true); setFollowers(c => c + 1);
-        // name the follower in their notification + carry the email so tapping opens
-        // THEIR followers list with this person scrolled into view & highlighted 🎉
-        let followerName = '';
-        try {
-          const { data: meRow } = await supabase.from('users').select('name').eq('email', meEmail).maybeSingle();
-          followerName = (meRow?.name || '').trim();
-        } catch {}
-        await supabase.from('notifications').insert({
-          id: `foll-${Date.now()}`, type: 'new_follower', is_read: false,
-          user_email: (person.email || '').toLowerCase(),
-          message: `➕ ${followerName || 'Someone'} started following you on PayRound — tap to see them in your followers list.[[FOL:${meEmail}]]`,
-        });
-      }
-    } catch (e) { toast.error(`Could not update follow: ${e.message || 'try again'}`); }
-    setBusyFollow(false);
+      const rpcName = isFollowing ? 'unfollow_public_user' : 'follow_public_user';
+      const { data, error } = await supabase.rpc(rpcName, { p_target_id: person.id });
+      if (error) throw error;
+      setIsFollowing(Boolean(data?.is_following));
+      setFollowers(Number(data?.count || 0));
+    } catch (error) {
+      toast.error(`Could not update follow: ${error.message || 'try again'}`);
+    } finally {
+      setBusyFollow(false);
+    }
   };
 
   if (loading) {
@@ -224,7 +195,7 @@ export default function PublicUserProfilePage() {
               className="text-sm font-semibold text-gray-900 hover:text-primary-600 transition-colors">
               {followers} <span className="text-xs font-normal text-gray-500">Follower{followers === 1 ? '' : 's'}</span>
             </button>
-            {meEmail && meEmail !== (person.email || '').toLowerCase() && (
+            {meId && meId !== person.id && person.email && (
               <button
                 onClick={() => router.push(`/messages?to=${encodeURIComponent((person.email || '').toLowerCase())}`)}
                 title="Send them a message"
@@ -233,7 +204,7 @@ export default function PublicUserProfilePage() {
                 <HiChatAlt2 className="w-4 h-4" /> Message
               </button>
             )}
-            {(!meEmail || meEmail !== (person.email || '').toLowerCase()) && (
+            {(!meId || meId !== person.id) && (
               <button
                 onClick={toggleFollow}
                 disabled={busyFollow}
@@ -354,7 +325,7 @@ export default function PublicUserProfilePage() {
 
       <Footer />
       {zoom && person.profile_pic && <ImageLightbox src={person.profile_pic} alt={person.name} onClose={() => setZoom(false)} />}
-      {showFollowers && <FollowersList userEmail={person.email} userName={person.name} onClose={() => setShowFollowers(false)} />}
+      {showFollowers && <FollowersList userId={person.id} userName={person.name} onClose={() => setShowFollowers(false)} />}
     </div>
   );
 }

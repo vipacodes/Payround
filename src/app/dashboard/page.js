@@ -41,22 +41,28 @@ export default function DashboardPage() {
   const [peopleSearched, setPeopleSearched] = useState(false);
 
   useEffect(() => {
-    const stored = localStorage.getItem('payround_user');
-    if (!stored) { router.push('/login'); return; }
-    let parsed;
-    try { parsed = JSON.parse(stored); } catch { router.push('/login'); return; }
-    setUser(parsed);
     (async () => {
       try {
         const { supabase, getAdsFromSupabase } = await import('@/lib/supabase');
-        const email = (parsed.email || '').toLowerCase();
+        const authResult = await supabase.auth.getUser();
+        if (authResult.error || !authResult.data?.user) {
+          setLoading(false);
+          router.replace('/login');
+          return;
+        }
+        const { data: profile, error: profileError } = await supabase.rpc('get_my_profile');
+        if (profileError) throw profileError;
+        if (!profile?.id || !profile?.email) {
+          setLoading(false);
+          router.replace('/login');
+          return;
+        }
+        setUser(profile);
+        setAccount(profile);
+        try { localStorage.setItem('payround_user', JSON.stringify(profile)); } catch {}
+        const email = profile.email.toLowerCase();
 
         getAdsFromSupabase().then(setAds).catch(() => {});
-
-        const { data: acc } = await supabase.from('users')
-          .select('name, is_verified, is_approved, approval_status, profile_pic, id')
-          .eq('email', email).single();
-        if (acc) setAccount(acc);
 
         const { data: mine } = await supabase.from('members').select('*')
           .eq('member_email', email).eq('status', 'approved');
@@ -180,9 +186,8 @@ export default function DashboardPage() {
   const searchPeople = async () => {
     try {
       const { supabase } = await import('@/lib/supabase');
-      const { data } = await supabase.from('users')
-        .select('id, name, profile_pic, is_verified, role')
-        .eq('approval_status', 'approved').limit(200);
+      const { data, error } = await supabase.rpc('get_public_user_directory');
+      if (error) throw error;
       const q = peopleQ.trim().toLowerCase();
       setPeople((data || []).filter(u => !q || (u.name || '').toLowerCase().includes(q) || String(u.id).toLowerCase().startsWith(q)));
       setPeopleSearched(true);

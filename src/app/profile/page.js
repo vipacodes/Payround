@@ -55,68 +55,67 @@ export default function ProfilePage() {
   const [showStartBiz, setShowStartBiz] = useState(false); // business-profile popup when they have none
 
   useEffect(() => {
-    const stored = localStorage.getItem('payround_user');
-    if (!stored) { router.push('/login'); return; }
-    let parsed;
-    try { parsed = JSON.parse(stored); } catch { router.push('/login'); return; }
-    setUser(parsed);
-    setFormData(prev => ({ ...prev, name: parsed.name || '', phone: parsed.phone || '' }));
+    let active = true;
     (async () => {
       try {
         const { supabase } = await import('@/lib/supabase');
-        const { data } = await supabase
-          .from('users')
-          .select('id, name, email, phone, role, profile_pic, pending_profile_pic, is_verified, is_approved, approval_status, created_at, gender, address, occupation, bio, bank_name, account_number, account_name')
-          .eq('email', (parsed.email || '').toLowerCase())
-          .single();
-        let privateFields = {};
-        try {
-          const { data: mine } = await supabase.rpc('get_my_referral_dashboard');
-          privateFields = {
-            dob: mine?.dob || '',
-            referral_available: Number(mine?.total_earnings || 0),
-            referral_lifetime_earned: Number(mine?.awarded_total || 0),
-            referral_lifetime_paid: Number(mine?.paid_total || 0),
-            referrals_public: !!mine?.referrals_public,
-            dob_public: !!mine?.dob_public,
-          };
-        } catch {}
-        if (data) {
-          const fullAccount = { ...data, ...privateFields };
-          setAccount(fullAccount);
-          setFormData({
-            name: fullAccount.name || '', phone: fullAccount.phone || '',
-            gender: fullAccount.gender || '', dob: fullAccount.dob || '',
-            address: fullAccount.address || '', occupation: fullAccount.occupation || '', bio: fullAccount.bio || '',
-          });
+        const authResult = await supabase.auth.getUser();
+        if (authResult.error || !authResult.data?.user) {
+          router.replace('/login');
+          return;
         }
-        try {
-          const { data: biz } = await supabase.from('ads')
-            .select('id, business_name')
-            .eq('submitter_email', (parsed.email || '').toLowerCase())
-            .eq('status', 'approved');
-          setMyBiz(biz || []);
-        } catch {}
-        try {
-          const { data: fols } = await supabase.from('follows').select('follower_email').eq('following_email', (parsed.email || '').toLowerCase());
-          setFollowersCount((fols || []).length);
-        } catch {}
-        try {
-          const { data: reqs } = await supabase.from('verification_requests')
+
+        // Private account data is resolved from the verified JWT. This also
+        // reconnects legacy profiles whose stored UUID predates Supabase Auth.
+        const { data: profile, error: profileError } = await supabase.rpc('get_my_profile');
+        if (profileError) throw profileError;
+        if (!profile?.id || !profile?.email) {
+          router.replace('/login');
+          return;
+        }
+
+        const [referralResult, businessResult, followResult, requestResult] = await Promise.all([
+          supabase.rpc('get_my_referral_dashboard'),
+          supabase.rpc('get_public_businesses', { p_user_id: profile.id }),
+          supabase.rpc('get_public_follow_summary', { p_target_id: profile.id }),
+          supabase.from('verification_requests')
             .select('id, status, reason, created_at, reviewed_at, decline_reason')
             .eq('subject_type', 'user')
-            .eq('user_email', (parsed.email || '').toLowerCase())
+            .eq('user_email', profile.email.toLowerCase())
             .order('created_at', { ascending: false })
-            .limit(1);
-          setBadgeReq(reqs && reqs[0] ? reqs[0] : null);
-        } catch { setBadgeReq(null); }
-      } catch (e) {
-        console.log('Profile load:', e.message);
+            .limit(1),
+        ]);
+        if (!active) return;
+
+        const referral = referralResult.data || {};
+        const fullAccount = {
+          ...profile,
+          dob: referral.dob || profile.dob || '',
+          referral_available: Number(referral.total_earnings || 0),
+          referral_lifetime_earned: Number(referral.awarded_total || 0),
+          referral_lifetime_paid: Number(referral.paid_total || 0),
+          referrals_public: Boolean(referral.referrals_public),
+          dob_public: Boolean(referral.dob_public),
+        };
+        setUser(profile);
+        setAccount(fullAccount);
+        setFormData({
+          name: fullAccount.name || '', phone: fullAccount.phone || '',
+          gender: fullAccount.gender || '', dob: fullAccount.dob || '',
+          address: fullAccount.address || '', occupation: fullAccount.occupation || '', bio: fullAccount.bio || '',
+        });
+        setMyBiz(Array.isArray(businessResult.data) ? businessResult.data : []);
+        setFollowersCount(Number(followResult.data?.count || 0));
+        setBadgeReq(requestResult.error ? null : (requestResult.data?.[0] || null));
+      } catch (error) {
+        console.error('Profile load:', error);
+        if (active) router.replace('/login');
       }
     })();
+    return () => { active = false; };
   }, [router]);
 
-  // 🎯 Deep-link from a follower notification (/profile?followers=1&hl=<email>):
+  // Deep-link from a follower notification (/profile?followers=1&hl=<public user UUID>):
   // pop the followers list open with that person scrolled into view & highlighted
   useEffect(() => {
     try {
@@ -145,7 +144,7 @@ export default function ProfilePage() {
       const { compressImage } = await import('@/lib/image');
       const dataUrl = await compressImage(file, 512, 0.85);
       const { supabase } = await import('@/lib/supabase');
-      const { error } = await supabase.from('users').update({ pending_profile_pic: dataUrl }).eq('email', user.email.toLowerCase());
+      const { error } = await supabase.from('users').update({ pending_profile_pic: dataUrl }).eq('id', user.id);
       if (error) throw error;
       setAccount(prev => ({ ...(prev || {}), pending_profile_pic: dataUrl }));
       toast.success('📷 Photo sent to PayRound for approval — it will appear here after approval.');
@@ -196,6 +195,32 @@ export default function ProfilePage() {
     setApplying(false);
   };
 
+  const cancelPendingPhoto = async () => {
+    if (!user?.id) return;
+    try {
+      const { supabase } = await import('@/lib/supabase');
+      const { error } = await supabase.from('users').update({ pending_profile_pic: null }).eq('id', user.id);
+      if (error) throw error;
+      setAccount(prev => prev ? { ...prev, pending_profile_pic: null } : prev);
+      toast.success('Photo request cancelled.');
+    } catch (error) {
+      toast.error(`Could not cancel photo request: ${error.message || 'try again'}`);
+    }
+  };
+
+  const cancelBadgeRequest = async () => {
+    if (!badgeReq?.id || badgeReq.status === 'approved') return;
+    try {
+      const { supabase } = await import('@/lib/supabase');
+      const { error } = await supabase.from('verification_requests').delete().eq('id', badgeReq.id);
+      if (error) throw error;
+      setBadgeReq(null);
+      toast.success('Verification application cancelled.');
+    } catch (error) {
+      toast.error(`Could not cancel application: ${error.message || 'try again'}`);
+    }
+  };
+
   const handleSave = async () => {
     if (!formData.name.trim()) { toast.error('Name is required.'); return; }
     setSaving(true);
@@ -214,7 +239,7 @@ export default function ProfilePage() {
             bio: formData.bio.trim() || null,
           } : {}),
         })
-        .eq('email', user.email.toLowerCase());
+        .eq('id', user.id);
       if (error) throw error;
       const updated = { ...user, name: formData.name.trim(), phone: formData.phone.trim() };
       localStorage.setItem('payround_user', JSON.stringify(updated));
@@ -292,7 +317,7 @@ export default function ProfilePage() {
                   >Copy</button>
                 </p>
               )}
-              {account?.approval_status === 'approved' && <p className="text-[11px] text-green-700 bg-green-50 border border-green-200 rounded-full px-2 py-0.5 mt-1 inline-block">✅ Account approved</p>}
+              {extrasUnlocked && <p className="text-[11px] text-green-700 bg-green-50 border border-green-200 rounded-full px-2 py-0.5 mt-1 inline-block">✅ Account approved</p>}
               <div className="flex flex-wrap items-center gap-2 mt-2">
                 <button onClick={() => setShowFollowers(true)} title="See your followers"
                   className="inline-flex items-center gap-1.5 bg-gray-100 hover:bg-gray-200 border border-gray-200 rounded-full px-3 py-1 text-[11px] font-semibold text-gray-700 transition-colors">
@@ -381,7 +406,7 @@ export default function ProfilePage() {
                   <p className="text-xs text-gray-500 mt-0.5">Upload a valid means of ID. PayRound compares the photo on your ID with your profile selfie — the faces must match before the badge is granted.</p>
                 </div>
               </div>
-              {account?.approval_status === 'approved' && photo ? (
+              {extrasUnlocked && photo ? (
                 <div className="space-y-3">
                   <div>
                     <label className="block text-xs font-medium text-gray-700 mb-1">ID type *</label>
@@ -556,7 +581,7 @@ export default function ProfilePage() {
       </div>
       <Footer />
       {zoomPhoto && <ImageLightbox src={zoomPhoto} alt="profile photo" onClose={() => setZoomPhoto(null)} />}
-      {showFollowers && <FollowersList userEmail={user.email} userName={account?.name || user.name} onClose={() => { setShowFollowers(false); setFollowerHighlight(''); }} highlight={followerHighlight} />}
+      {showFollowers && <FollowersList userId={account?.id || user.id} userName={account?.name || user.name} onClose={() => { setShowFollowers(false); setFollowerHighlight(''); }} highlight={followerHighlight} />}
       {showStartBiz && (
         <div className="fixed inset-0 z-50 bg-black/60 flex items-end sm:items-center justify-center" onClick={() => setShowStartBiz(false)}>
           <div className="bg-white w-full sm:max-w-sm sm:mx-4 rounded-t-2xl sm:rounded-2xl p-6 text-center" onClick={e => e.stopPropagation()}>
