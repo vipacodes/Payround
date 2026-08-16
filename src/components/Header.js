@@ -28,6 +28,8 @@ export default function Header() {
   const [showCalc, setShowCalc] = useState(false);   // 👥 icon appears ONLY for group admins & members
   const [gchatUnread, setGchatUnread] = useState(0);
   const [frozen, setFrozen] = useState(false);       // ❄️ owner froze this account — app is covered with a notice
+  const [deletionQueue, setDeletionQueue] = useState(null); // 🗓 voluntary deletion remains recoverable for 7 days
+  const [restoringAccount, setRestoringAccount] = useState(false);
 
   useEffect(() => {
     const stored = localStorage.getItem('payround_user');
@@ -97,7 +99,7 @@ export default function Header() {
     return () => { mounted = false; clearInterval(t); };
   }, [pathname]);
 
-  // ❄️ Frozen-account watch — if PayRound freezes this account, the whole app is covered
+  // ❄️ Frozen / 🗓 deletion-queue watch — owner enforcement and voluntary recovery stay global
   useEffect(() => {
     let mounted = true;
     const kickOff = async (reason) => {
@@ -106,6 +108,7 @@ export default function Header() {
       if (!mounted) return;
       setIsLoggedIn(false);
       setFrozen(false);
+      setDeletionQueue(null);
       const q = new URLSearchParams();
       q.set('takedown', '1');
       if (reason) q.set('reason', reason);
@@ -117,10 +120,22 @@ export default function Header() {
         const { supabase } = await import('@/lib/supabase');
         const authResult = await supabase.auth.getUser();
         if (authResult.error) return;
-        if (!authResult.data?.user) { if (mounted) setFrozen(false); return; }
+        if (!authResult.data?.user) {
+          if (mounted) { setFrozen(false); setDeletionQueue(null); }
+          return;
+        }
         const takedownResult = await supabase.rpc('get_my_takedown');
         if (takedownResult.error) return;
         if (takedownResult.data?.taken_down) { await kickOff(takedownResult.data.reason); return; }
+
+        // A voluntary deletion request keeps the real profile intact for exactly
+        // seven days. This global check also runs immediately after a fresh login,
+        // so the user always sees the deadline and a working Restore button.
+        const deletionResult = await supabase.rpc('get_my_account_deletion_status');
+        if (!deletionResult.error && mounted) {
+          setDeletionQueue(deletionResult.data?.queued ? deletionResult.data : null);
+        }
+
         const profileResult = await supabase.rpc('get_my_profile');
         if (profileResult.error) return;
         if (!profileResult.data) { await kickOff('PayRound removed this account.'); return; }
@@ -178,15 +193,66 @@ export default function Header() {
     setIsLoggedIn(false);
     setUserName('');
     setUserRole('');
+    setDeletionQueue(null);
     toast.success('Logged out successfully');
     router.push('/');
   };
+
+  const restoreQueuedAccount = async () => {
+    if (restoringAccount || !deletionQueue?.can_restore) return;
+    setRestoringAccount(true);
+    try {
+      const { supabase } = await import('@/lib/supabase');
+      const { data, error } = await supabase.rpc('restore_my_account_deletion');
+      if (error) throw error;
+      if (!data?.restored && !data?.already_active) throw new Error('The account could not be restored.');
+      setDeletionQueue(null);
+      toast.success('Account restored. Your scheduled deletion was cancelled and your data remains active.');
+      router.push('/dashboard');
+    } catch (e) {
+      toast.error(`Could not restore account: ${e.message || 'try again'}`);
+    }
+    setRestoringAccount(false);
+  };
+
+  const deletionDeadline = deletionQueue?.delete_after ? new Date(deletionQueue.delete_after) : null;
+  const deletionRemainingMs = deletionDeadline ? Math.max(0, deletionDeadline.getTime() - Date.now()) : 0;
+  const deletionDays = Math.floor(deletionRemainingMs / 86400000);
+  const deletionHours = Math.floor((deletionRemainingMs % 86400000) / 3600000);
+  const deletionMinutes = Math.floor((deletionRemainingMs % 3600000) / 60000);
+  const deletionCountdown = deletionRemainingMs > 0
+    ? `${deletionDays}d ${deletionHours}h ${deletionMinutes}m remaining`
+    : 'Recovery period ended';
 
   const isActive = (path) => pathname === path;
 
   return (
     <header className="bg-white border-b border-gray-100 sticky top-0 z-50">
-      {frozen && (
+      {deletionQueue && (
+        <div className="fixed inset-0 z-[210] bg-white flex flex-col items-center justify-center px-6 text-center overflow-y-auto">
+          <div className="w-20 h-20 bg-amber-50 border border-amber-200 rounded-full flex items-center justify-center text-4xl mb-5">🗓️</div>
+          <h1 className="text-2xl font-bold text-gray-900 mb-2">Account deletion is scheduled</h1>
+          <p className="text-sm text-gray-600 max-w-lg mb-3">Your account was not deleted immediately. Your profile, groups, memberships, and other account data are being kept during a seven-day recovery period.</p>
+          <div className="w-full max-w-lg rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 mb-4">
+            <p className="text-sm font-bold text-amber-950">{deletionCountdown}</p>
+            <p className="text-xs text-amber-800 mt-1">Scheduled permanent deletion: {deletionDeadline ? deletionDeadline.toLocaleString() : 'deadline unavailable'}</p>
+          </div>
+          {deletionQueue.can_restore ? (
+            <>
+              <p className="text-xs text-gray-500 max-w-lg mb-5">You can restore the account now, or the PayRound owner can restore it for you before the deadline. After the deadline, deletion is permanent.</p>
+              <button
+                onClick={restoreQueuedAccount}
+                disabled={restoringAccount}
+                className="bg-primary-600 text-white text-sm font-bold px-7 py-3 rounded-xl hover:bg-primary-700 disabled:opacity-50"
+              >{restoringAccount ? 'Restoring…' : 'Restore My Account'}</button>
+            </>
+          ) : (
+            <p className="text-sm text-red-700 max-w-lg mb-5">The seven-day recovery period has ended, so this account can no longer be restored. Permanent deletion is being processed.</p>
+          )}
+          <button onClick={handleLogout} className="mt-3 text-xs font-semibold text-gray-500 px-4 py-2 hover:text-gray-800">Log out</button>
+        </div>
+      )}
+      {frozen && !deletionQueue && (
         <div className="fixed inset-0 z-[200] bg-white flex flex-col items-center justify-center px-6 text-center">
           <div className="w-20 h-20 bg-sky-50 border border-sky-200 rounded-full flex items-center justify-center text-4xl mb-5">❄️</div>
           <h1 className="text-2xl font-bold text-gray-900 mb-2">Account frozen by PayRound</h1>

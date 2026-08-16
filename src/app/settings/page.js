@@ -169,25 +169,30 @@ export default function SettingsPage() {
     if (!user) { toast.error('You are not logged in.'); return; }
     if (!password) { toast.error('Enter your password.'); return; }
     if (confirmText.trim() !== 'DELETE') { toast.error('Type DELETE to confirm.'); return; }
+    if (!window.confirm('Schedule account deletion?\n\nYour account and data will be kept for 7 days. You or the PayRound owner can restore it during that time. After the recovery period, deletion is permanent.')) return;
     setDeleting(true);
     try {
       const { supabase } = await import('@/lib/supabase');
       const { error: reauthErr } = await supabase.auth.signInWithPassword({ email: user.email.toLowerCase(), password });
       if (reauthErr) {
-        toast.error('Incorrect password — account not deleted.');
+        toast.error('Incorrect password — deletion was not scheduled.');
         setDeleting(false);
         return;
       }
-      const { data: gone, error } = await supabase.rpc('delete_my_account');
+      // The legacy RPC name now safely creates the seven-day recovery queue;
+      // it no longer purges the profile immediately.
+      const { data: queued, error } = await supabase.rpc('delete_my_account');
       if (error) throw error;
-      if (!gone?.ok) throw new Error('Account was not removed. Try again.');
-      const { signOutEverywhere } = await import('@/lib/session');
-      await signOutEverywhere();
-      logoutUser();
-      toast.success('Account deleted. You can no longer log in with this email.');
-      router.push('/');
+      if (!queued?.ok || !queued?.queued) throw new Error('Account deletion was not scheduled. Try again.');
+      const deadline = queued.delete_after ? new Date(queued.delete_after).toLocaleString() : 'seven days from now';
+      setPassword('');
+      setConfirmText('');
+      setShowDelete(false);
+      toast.success(`Deletion scheduled for ${deadline}. You can restore the account before then.`);
+      // Header immediately shows the global recovery screen and its Restore button.
+      router.push('/dashboard');
     } catch (e) {
-      toast.error(`Delete failed: ${e.message}`);
+      toast.error(`Could not schedule deletion: ${e.message}`);
     }
     setDeleting(false);
   };
@@ -453,16 +458,20 @@ export default function SettingsPage() {
           <SettingRow
             danger
             icon={<HiShieldExclamation className="w-5 h-5" />}
-            title="Delete Account"
-            desc="Permanently removes your profile and memberships. Cannot be undone."
+            title="Schedule Account Deletion"
+            desc="Queues deletion for 7 days. You or the PayRound owner can restore the account during the recovery period."
             right={
               <button onClick={() => setShowDelete(!showDelete)} className="text-xs font-semibold text-red-600 border border-red-200 bg-red-50 px-3 py-1.5 rounded-lg hover:bg-red-100">
-                {showDelete ? 'Cancel' : 'Delete…'}
+                {showDelete ? 'Cancel' : 'Schedule…'}
               </button>
             }
           />
           {showDelete && (
             <div className="border-t border-red-100 p-4 bg-red-50/50">
+              <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 mb-4 text-xs text-amber-950 leading-relaxed">
+                <p className="font-bold mb-1">7-day recovery period</p>
+                <p>Deletion is scheduled, not immediate. Your account and data stay recoverable for seven days. During that time, either you or the PayRound owner can restore the account. When the recovery period ends, the account and its data are permanently deleted.</p>
+              </div>
               <label className="block text-xs font-medium text-gray-700 mb-1.5">Your password</label>
               <div className="relative mb-3">
                 <HiLockClosed className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
@@ -490,9 +499,9 @@ export default function SettingsPage() {
                 disabled={deleting || confirmText !== 'DELETE' || !password}
                 className="w-full py-3 rounded-xl bg-red-600 text-white text-sm font-bold hover:bg-red-700 disabled:opacity-40 disabled:cursor-not-allowed"
               >
-                {deleting ? 'Deleting…' : 'Permanently Delete My Account'}
+                {deleting ? 'Scheduling…' : 'Schedule Deletion — 7 Days'}
               </button>
-              <p className="text-[11px] text-gray-400 mt-2 text-center">Both your password and the DELETE confirmation are required.</p>
+              <p className="text-[11px] text-gray-500 mt-2 text-center">Your password and DELETE confirmation are required. Nothing is permanently removed today.</p>
             </div>
           )}
         </div>

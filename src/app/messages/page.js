@@ -172,7 +172,7 @@ function botReply(text, ctx = {}) {
     return withChips(`❄️ A frozen account means a payment dispute or rule check is under review.\n• Your savings are NOT lost — it's a safety hold.\n• Tell me what happened here (or type "human") and the team will personally review your case in this chat.`, [HUMAN_CHIP]);
 
   if (has('delete my account', 'close my account', 'deactivate', 'delete account', 'remove my account'))
-    return withChips(`🗑 Account closure is handled by the team so your active spots & savings stay protected.\nType "human" or tap the WhatsApp button and ask to close your account — they'll guide you safely.`, [HUMAN_CHIP]);
+    return withChips(`🗓 You can schedule account deletion from Settings → Danger Zone. Deletion is not immediate: PayRound keeps your account and data recoverable for 7 days. During that time, either you or the PayRound owner can restore it. After the deadline, deletion is permanent.`, [HUMAN_CHIP]);
 
   if (has('delete ad', 'remove ad', 'take down my ad'))
     return withChips(`🗑 Removing an ad: Advertise → My Ads → delete. The ad & its media are removed; time already paid for isn't refunded.`, ['Ad prices?', HUMAN_CHIP]);
