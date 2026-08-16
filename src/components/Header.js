@@ -189,8 +189,8 @@ export default function Header() {
       {frozen && (
         <div className="fixed inset-0 z-[200] bg-white flex flex-col items-center justify-center px-6 text-center">
           <div className="w-20 h-20 bg-sky-50 border border-sky-200 rounded-full flex items-center justify-center text-4xl mb-5">❄️</div>
-          <h1 className="text-2xl font-bold text-gray-900 mb-2">Account frozen</h1>
-          <p className="text-sm text-gray-600 max-w-md mb-1">Your PayRound account has been frozen — you can&apos;t use the app right now.</p>
+          <h1 className="text-2xl font-bold text-gray-900 mb-2">Account frozen by PayRound</h1>
+          <p className="text-sm text-gray-600 max-w-md mb-1">The PayRound owner froze your account. Your app access is paused, and a private account notification has been recorded for you.</p>
           <p className="text-xs text-gray-400 max-w-md mb-6">Think this is a mistake? Contact PayRound support on WhatsApp: <b className="text-gray-600">+234 915 1723 199</b></p>
           <button
             onClick={() => { try { localStorage.removeItem('payround_user'); } catch {} router.push('/login'); }}

@@ -6,11 +6,13 @@ import Header from '@/components/Header';
 import Footer from '@/components/Footer';
 import {
   HiBell, HiCheckCircle, HiUser, HiUserGroup,
-  HiChevronRight, HiBadgeCheck, HiRefresh, HiTrash
+  HiChevronRight, HiBadgeCheck, HiRefresh, HiTrash, HiLockClosed
 } from 'react-icons/hi';
 import { HiMegaphone } from 'react-icons/hi2';
 
 const typeStyle = (type = '') => {
+  if (type.includes('unfrozen')) return 'bg-emerald-50 border-emerald-100 text-emerald-700';
+  if (type.includes('frozen')) return 'bg-sky-50 border-sky-100 text-sky-700';
   if (type.includes('declin') || type.includes('reject')) return 'bg-red-50 border-red-100 text-red-700';
   if (type.includes('approve') || type.includes('verif') || type.includes('join_approved') || type.includes('group_full')) return 'bg-emerald-50 border-emerald-100 text-emerald-700';
   if (type.includes('referral') || type.includes('payment') || type.includes('payout')) return 'bg-yellow-50 border-yellow-100 text-yellow-700';
@@ -19,6 +21,7 @@ const typeStyle = (type = '') => {
 };
 
 const typeIcon = (type = '') => {
+  if (type.includes('account_frozen') || type.includes('account_unfrozen')) return <HiLockClosed className="w-5 h-5" />;
   if (type.includes('join') || type.includes('group_full')) return <HiUserGroup className="w-5 h-5" />;
   if (type.includes('verif')) return <HiBadgeCheck className="w-5 h-5" />;
   if (type.includes('user')) return <HiUser className="w-5 h-5" />;
@@ -109,6 +112,9 @@ export default function NotificationsPage() {
       case 'user_approved':
       case 'user_declined':
         return '/dashboard';
+      case 'account_frozen':
+      case 'account_unfrozen':
+        return '/settings';
       default:
         return g || null; // group-related → the group; otherwise just mark it read
     }
