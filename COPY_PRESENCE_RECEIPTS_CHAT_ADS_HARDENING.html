@@ -1,0 +1,796 @@
+<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>PayRound hardening SQL</title><style>
+*{box-sizing:border-box}body{margin:0;background:#f3f6fb;color:#162033;font-family:system-ui,-apple-system,sans-serif}main{max-width:900px;margin:auto;padding:18px}.hero{background:linear-gradient(135deg,#102a43,#0b7285);color:#fff;border-radius:20px;padding:22px;margin-bottom:16px}h1{font-size:23px;margin:0 0 8px}.hero p{margin:5px 0;font-size:13px;line-height:1.5}.notice{background:#fff8db;color:#704d00;border:1px solid #f6d365;border-radius:12px;padding:11px;margin-top:14px;font-size:12px;font-weight:650}.card{background:#fff;border:1px solid #dce4ef;border-radius:18px;margin:14px 0;overflow:hidden;box-shadow:0 5px 20px #1f3b5b10}.head{padding:15px;display:flex;gap:12px;justify-content:space-between;align-items:flex-start}.head span{font-size:10px;font-weight:850;color:#0b7285;letter-spacing:.08em}h2{font-size:17px;margin:3px 0}.head p{font-size:12px;color:#536477;margin:0;line-height:1.4}button{border:0;background:#0b7285;color:white;border-radius:11px;padding:11px 13px;font-size:12px;font-weight:800;white-space:nowrap;cursor:pointer}button.done{background:#2b8a3e}pre{margin:0;padding:15px;background:#0d1726;color:#d9e7f5;overflow:auto;max-height:440px;font-size:11px;line-height:1.48;white-space:pre;tab-size:2}@media(max-width:560px){main{padding:10px}.hero{border-radius:15px;padding:16px}.head{display:block}button{width:100%;margin-top:12px}pre{font-size:10px;max-height:360px}}
+</style></head><body><main><div class="hero"><h1>PayRound security hardening SQL</h1><p>Six smaller, ordered parts for the Supabase mobile SQL Editor.</p><p><b>Run Part 1, then 2, 3, 4, 5 and 6.</b> Wait for “Success” after each part before continuing.</p><div class="notice">Do not skip or reorder parts. Each part is transactional and safe to rerun. This package has not been applied to production automatically.</div></div><section class="card"><div class="head"><div><span>PART 1 OF 6</span><h2>Identity helpers</h2><p>JWT-derived owner, group, member and payment authorization helpers.</p></div><button data-label="Copy part 1" onclick="copyPart('sql1',this)">Copy part 1</button></div><pre id="sql1">-- PayRound hardening — phone part 1 of 6: Identity helpers
+-- Run parts 1 through 6 in order. This part is rerunnable.
+
+begin;
+
+-- ---------------------------------------------------------------------------
+-- 1. JWT-derived identity helpers (never trust an email supplied by a client)
+-- ---------------------------------------------------------------------------
+create or replace function public.payround_actor_email()
+returns text
+language sql
+stable
+security invoker
+set search_path = pg_catalog
+as $$
+  select lower(nullif(coalesce(
+    current_setting(&#x27;request.jwt.claim.email&#x27;, true),
+    (nullif(current_setting(&#x27;request.jwt.claims&#x27;, true), &#x27;&#x27;)::jsonb -&gt;&gt; &#x27;email&#x27;)
+  ), &#x27;&#x27;))
+$$;
+
+create or replace function public.payround_is_owner()
+returns boolean
+language sql
+stable
+security definer
+set search_path = pg_catalog
+as $$
+  select coalesce(public.payround_actor_email() = any (array[
+    &#x27;vipadarapper@gmail.com&#x27;::text,
+    &#x27;payroundsupport@gmail.com&#x27;::text
+  ]), false)
+$$;
+
+create or replace function public.payround_is_group_admin(p_group_id text)
+returns boolean
+language sql
+stable
+security definer
+set search_path = pg_catalog, public
+as $$
+  select coalesce(exists (
+    select 1 from public.groups g
+    where g.id = p_group_id
+      and lower(g.admin_email) = public.payround_actor_email()
+  ), false)
+$$;
+
+create or replace function public.payround_is_group_member(p_group_id text)
+returns boolean
+language sql
+stable
+security definer
+set search_path = pg_catalog, public
+as $$
+  select coalesce(exists (
+    select 1 from public.members m
+    where m.group_id = p_group_id
+      and lower(m.member_email) = public.payround_actor_email()
+      and m.status = &#x27;approved&#x27;
+  ), false)
+$$;
+
+create or replace function public.payround_is_group_participant(p_group_id text)
+returns boolean
+language sql
+stable
+security definer
+set search_path = pg_catalog, public
+as $$
+  select public.payround_is_group_admin(p_group_id)
+      or public.payround_is_group_member(p_group_id)
+$$;
+
+create or replace function public.payround_group_chat_open(p_group_id text)
+returns boolean
+language sql
+stable
+security definer
+set search_path = pg_catalog, public
+as $$
+  select coalesce((select g.chat_open from public.groups g where g.id = p_group_id), false)
+$$;
+
+create or replace function public.payround_owns_payment(p_payment_id text, p_group_id text)
+returns boolean
+language sql
+stable
+security definer
+set search_path = pg_catalog, public
+as $$
+  select coalesce(exists (
+    select 1 from public.payments p
+    where p.id = p_payment_id
+      and p.group_id = p_group_id
+      and lower(p.user_email) = public.payround_actor_email()
+  ), false)
+$$;
+
+revoke all on function public.payround_actor_email() from public, anon;
+revoke all on function public.payround_is_owner() from public, anon;
+revoke all on function public.payround_is_group_admin(text) from public, anon;
+revoke all on function public.payround_is_group_member(text) from public, anon;
+revoke all on function public.payround_is_group_participant(text) from public, anon;
+revoke all on function public.payround_group_chat_open(text) from public, anon;
+revoke all on function public.payround_owns_payment(text, text) from public, anon;
+grant execute on function public.payround_actor_email() to authenticated, service_role;
+grant execute on function public.payround_is_owner() to authenticated, service_role;
+grant execute on function public.payround_is_group_admin(text) to authenticated, service_role;
+grant execute on function public.payround_is_group_member(text) to authenticated, service_role;
+grant execute on function public.payround_is_group_participant(text) to authenticated, service_role;
+grant execute on function public.payround_group_chat_open(text) to authenticated, service_role;
+grant execute on function public.payround_owns_payment(text, text) to authenticated, service_role;
+
+commit;
+</pre></section><section class="card"><div class="head"><div><span>PART 2 OF 6</span><h2>Secure receipt deletion</h2><p>Receipt RLS, immutable review guard, transactional deletion and approved-credit warning notification.</p></div><button data-label="Copy part 2" onclick="copyPart('sql2',this)">Copy part 2</button></div><pre id="sql2">-- PayRound hardening — phone part 2 of 6: Secure receipt deletion
+-- Run parts 1 through 6 in order. This part is rerunnable.
+
+begin;
+
+-- Replace every older policy for this table inside this same transaction.
+do $drop_payments_policies$
+declare
+  v_policy record;
+begin
+  for v_policy in
+    select policyname from pg_policies
+    where schemaname = &#x27;public&#x27; and tablename = &#x27;payments&#x27;
+  loop
+    execute format(&#x27;drop policy if exists %I on public.payments&#x27;, v_policy.policyname);
+  end loop;
+end
+$drop_payments_policies$;
+
+-- ---------------------------------------------------------------------------
+-- 2. Payments / receipts
+-- ---------------------------------------------------------------------------
+alter table public.payments enable row level security;
+alter table public.payments force row level security;
+revoke all on table public.payments from public, anon;
+grant select, insert, update, delete on table public.payments to authenticated;
+
+-- Approved participants retain group-wide SELECT so the shared paid-week tracker works.
+create policy payments_select_participants
+on public.payments for select to authenticated
+using (
+  public.payround_is_owner()
+  or lower(user_email) = public.payround_actor_email()
+  or public.payround_is_group_participant(group_id)
+);
+
+create policy payments_insert_own
+on public.payments for insert to authenticated
+with check (
+  lower(user_email) = public.payround_actor_email()
+  and status = &#x27;pending&#x27;
+  and public.payround_is_group_participant(group_id)
+);
+
+create policy payments_update_admin
+on public.payments for update to authenticated
+using (public.payround_is_owner() or public.payround_is_group_admin(group_id))
+with check (public.payround_is_owner() or public.payround_is_group_admin(group_id));
+
+-- Compatibility for an older client: a member may only cancel their own pending row.
+create policy payments_update_own_pending_cancel
+on public.payments for update to authenticated
+using (lower(user_email) = public.payround_actor_email() and status = &#x27;pending&#x27;)
+with check (lower(user_email) = public.payround_actor_email() and status = &#x27;cancelled&#x27;);
+
+create policy payments_delete_authorized
+on public.payments for delete to authenticated
+using (
+  public.payround_is_owner()
+  or public.payround_is_group_admin(group_id)
+  or (lower(user_email) = public.payround_actor_email() and status &lt;&gt; &#x27;approved&#x27;)
+);
+
+create or replace function public.guard_payment_client_update()
+returns trigger
+language plpgsql
+security definer
+set search_path = pg_catalog, public
+as $$
+begin
+  -- Database-owner maintenance and migrations are not client writes.
+  if public.payround_actor_email() is null then
+    return new;
+  end if;
+
+  if public.payround_is_owner() then
+    return new;
+  end if;
+
+  if public.payround_is_group_admin(old.group_id) then
+    if old.status &lt;&gt; &#x27;pending&#x27;
+       or new.status is null
+       or new.status not in (&#x27;approved&#x27;, &#x27;declined&#x27;) then
+      raise exception &#x27;Group administrators may only review pending receipts&#x27;;
+    end if;
+    if new.id is distinct from old.id
+       or new.group_id is distinct from old.group_id
+       or new.member_id is distinct from old.member_id
+       or new.user_email is distinct from old.user_email
+       or new.member_name is distinct from old.member_name
+       or new.spots is distinct from old.spots
+       or new.amount is distinct from old.amount
+       or new.receipt_url is distinct from old.receipt_url
+       or new.created_at is distinct from old.created_at
+       or new.weeks is null
+       or new.weeks &lt; 1
+       or new.weeks &gt; old.weeks then
+      raise exception &#x27;Receipt identity, evidence and claimed value are immutable during review&#x27;;
+    end if;
+    return new;
+  end if;
+
+  if lower(old.user_email) = public.payround_actor_email()
+     and old.status = &#x27;pending&#x27;
+     and new.status = &#x27;cancelled&#x27;
+     and new.id is not distinct from old.id
+     and new.group_id is not distinct from old.group_id
+     and new.member_id is not distinct from old.member_id
+     and new.user_email is not distinct from old.user_email
+     and new.member_name is not distinct from old.member_name
+     and new.spots is not distinct from old.spots
+     and new.weeks is not distinct from old.weeks
+     and new.amount is not distinct from old.amount
+     and new.receipt_url is not distinct from old.receipt_url
+     and new.decline_reason is not distinct from old.decline_reason
+     and new.created_at is not distinct from old.created_at
+     and new.reviewed_at is not distinct from old.reviewed_at
+     and new.review_note is not distinct from old.review_note then
+    return new;
+  end if;
+
+  raise exception &#x27;This payment update is not allowed&#x27;;
+end;
+$$;
+
+revoke all on function public.guard_payment_client_update() from public, anon, authenticated;
+drop trigger if exists guard_payment_client_update_trigger on public.payments;
+create trigger guard_payment_client_update_trigger
+before update on public.payments
+for each row execute function public.guard_payment_client_update();
+
+-- Any authorized payment deletion atomically removes its receipt chat row. If the
+-- receipt was approved, the member is also told that their paid credit was removed.
+create or replace function public.after_payment_receipt_delete()
+returns trigger
+language plpgsql
+security definer
+set search_path = pg_catalog, public
+as $$
+declare
+  v_group_name text;
+begin
+  delete from public.group_messages where payment_id = old.id;
+
+  if old.status = &#x27;approved&#x27; then
+    select g.name into v_group_name from public.groups g where g.id = old.group_id;
+    insert into public.notifications (
+      id, type, group_id, message, is_read, created_at, user_email
+    ) values (
+      &#x27;payment-credit-removed-&#x27; || old.id || &#x27;-&#x27; || floor(extract(epoch from clock_timestamp()) * 1000)::bigint,
+      &#x27;payment_credit_removed&#x27;,
+      old.group_id,
+      &#x27;⚠️ An approved receipt for ₦&#x27; || coalesce(old.amount, 0)::text || &#x27; in &quot;&#x27; || coalesce(v_group_name, &#x27;your group&#x27;) || &#x27;&quot; was deleted by the group administrator. Its paid credit has been removed, so the contribution is no longer marked as paid.&#x27;,
+      false,
+      now(),
+      lower(old.user_email)
+    );
+  end if;
+
+  return old;
+end;
+$$;
+
+revoke all on function public.after_payment_receipt_delete() from public, anon, authenticated;
+drop trigger if exists after_payment_receipt_delete_trigger on public.payments;
+create trigger after_payment_receipt_delete_trigger
+after delete on public.payments
+for each row execute function public.after_payment_receipt_delete();
+
+create or replace function public.delete_group_payment_receipt(p_payment_id text)
+returns jsonb
+language plpgsql
+security definer
+set search_path = pg_catalog, public
+as $$
+declare
+  v_payment public.payments%rowtype;
+  v_actor text := public.payround_actor_email();
+  v_admin boolean;
+begin
+  if v_actor is null then
+    raise exception &#x27;Authentication required&#x27;;
+  end if;
+  if nullif(btrim(p_payment_id), &#x27;&#x27;) is null then
+    raise exception &#x27;A receipt ID is required&#x27;;
+  end if;
+
+  select * into v_payment
+  from public.payments
+  where id = p_payment_id
+  for update;
+
+  if not found then
+    raise exception &#x27;Receipt not found&#x27;;
+  end if;
+
+  v_admin := public.payround_is_owner() or public.payround_is_group_admin(v_payment.group_id);
+  if not v_admin and lower(v_payment.user_email) &lt;&gt; v_actor then
+    raise exception &#x27;You may only delete your own receipt&#x27;;
+  end if;
+  if not v_admin and v_payment.status = &#x27;approved&#x27; then
+    raise exception &#x27;Approved receipts cannot be deleted or cancelled by members&#x27;;
+  end if;
+
+  delete from public.payments where id = v_payment.id;
+  return jsonb_build_object(
+    &#x27;deleted&#x27;, true,
+    &#x27;payment_id&#x27;, v_payment.id,
+    &#x27;status&#x27;, v_payment.status,
+    &#x27;approved_credit_removed&#x27;, v_payment.status = &#x27;approved&#x27;,
+    &#x27;deleted_by_admin&#x27;, v_admin
+  );
+end;
+$$;
+
+revoke all on function public.delete_group_payment_receipt(text) from public, anon;
+grant execute on function public.delete_group_payment_receipt(text) to authenticated, service_role;
+
+commit;
+</pre></section><section class="card"><div class="head"><div><span>PART 3 OF 6</span><h2>Direct-message protection</h2><p>Participant reads, recipient read-receipts and sender-only deletion.</p></div><button data-label="Copy part 3" onclick="copyPart('sql3',this)">Copy part 3</button></div><pre id="sql3">-- PayRound hardening — phone part 3 of 6: Direct-message protection
+-- Run parts 1 through 6 in order. This part is rerunnable.
+
+begin;
+
+-- Replace every older policy for this table inside this same transaction.
+do $drop_messages_policies$
+declare
+  v_policy record;
+begin
+  for v_policy in
+    select policyname from pg_policies
+    where schemaname = &#x27;public&#x27; and tablename = &#x27;messages&#x27;
+  loop
+    execute format(&#x27;drop policy if exists %I on public.messages&#x27;, v_policy.policyname);
+  end loop;
+end
+$drop_messages_policies$;
+
+-- ---------------------------------------------------------------------------
+-- 3. Direct messages: participants may read, recipients may mark read, only the
+-- sender may delete. Owner access preserves support/retention operations.
+-- ---------------------------------------------------------------------------
+alter table public.messages enable row level security;
+alter table public.messages force row level security;
+revoke all on table public.messages from public, anon;
+grant select, insert, update, delete on table public.messages to authenticated;
+
+create policy messages_select_participants
+on public.messages for select to authenticated
+using (
+  public.payround_is_owner()
+  or lower(from_email) = public.payround_actor_email()
+  or lower(to_email) = public.payround_actor_email()
+);
+
+create policy messages_insert_sender
+on public.messages for insert to authenticated
+with check (lower(from_email) = public.payround_actor_email());
+
+create policy messages_update_recipient_read
+on public.messages for update to authenticated
+using (public.payround_is_owner() or lower(to_email) = public.payround_actor_email())
+with check (public.payround_is_owner() or lower(to_email) = public.payround_actor_email());
+
+create policy messages_delete_sender
+on public.messages for delete to authenticated
+using (public.payround_is_owner() or lower(from_email) = public.payround_actor_email());
+
+create or replace function public.guard_direct_message_update()
+returns trigger
+language plpgsql
+security definer
+set search_path = pg_catalog, public
+as $$
+begin
+  if public.payround_actor_email() is null or public.payround_is_owner() then
+    return new;
+  end if;
+  if lower(old.to_email) = public.payround_actor_email()
+     and new.read = true
+     and new.id is not distinct from old.id
+     and new.from_email is not distinct from old.from_email
+     and new.to_email is not distinct from old.to_email
+     and new.body is not distinct from old.body
+     and new.created_at is not distinct from old.created_at then
+    return new;
+  end if;
+  raise exception &#x27;Recipients may only mark a direct message as read&#x27;;
+end;
+$$;
+
+revoke all on function public.guard_direct_message_update() from public, anon, authenticated;
+drop trigger if exists guard_direct_message_update_trigger on public.messages;
+create trigger guard_direct_message_update_trigger
+before update on public.messages
+for each row execute function public.guard_direct_message_update();
+
+commit;
+</pre></section><section class="card"><div class="head"><div><span>PART 4 OF 6</span><h2>Group-chat moderation</h2><p>Participant access, admin moderation, open-chat member deletion and receipt-message protection.</p></div><button data-label="Copy part 4" onclick="copyPart('sql4',this)">Copy part 4</button></div><pre id="sql4">-- PayRound hardening — phone part 4 of 6: Group-chat moderation
+-- Run parts 1 through 6 in order. This part is rerunnable.
+
+begin;
+
+-- Replace every older policy for this table inside this same transaction.
+do $drop_group_messages_policies$
+declare
+  v_policy record;
+begin
+  for v_policy in
+    select policyname from pg_policies
+    where schemaname = &#x27;public&#x27; and tablename = &#x27;group_messages&#x27;
+  loop
+    execute format(&#x27;drop policy if exists %I on public.group_messages&#x27;, v_policy.policyname);
+  end loop;
+end
+$drop_group_messages_policies$;
+
+-- ---------------------------------------------------------------------------
+-- 4. Group chat moderation and receipt protection
+-- ---------------------------------------------------------------------------
+alter table public.group_messages enable row level security;
+alter table public.group_messages force row level security;
+revoke all on table public.group_messages from public, anon;
+grant select, insert, update, delete on table public.group_messages to authenticated;
+
+create policy group_messages_select_participants
+on public.group_messages for select to authenticated
+using (public.payround_is_owner() or public.payround_is_group_participant(group_id));
+
+create policy group_messages_insert_participants
+on public.group_messages for insert to authenticated
+with check (
+  lower(from_email) = public.payround_actor_email()
+  and (
+    public.payround_is_owner()
+    or public.payround_is_group_admin(group_id)
+    or (
+      public.payround_is_group_member(group_id)
+      and (
+        (payment_id is null and public.payround_group_chat_open(group_id))
+        or (payment_id is not null and public.payround_owns_payment(payment_id, group_id))
+      )
+    )
+  )
+);
+
+create policy group_messages_update_admin_receipt_stamp
+on public.group_messages for update to authenticated
+using (public.payround_is_owner() or public.payround_is_group_admin(group_id))
+with check (public.payround_is_owner() or public.payround_is_group_admin(group_id));
+
+create policy group_messages_delete_authorized
+on public.group_messages for delete to authenticated
+using (
+  payment_id is null
+  and (
+    public.payround_is_owner()
+    or public.payround_is_group_admin(group_id)
+    or (
+      lower(from_email) = public.payround_actor_email()
+      and public.payround_is_group_member(group_id)
+      and public.payround_group_chat_open(group_id)
+    )
+  )
+);
+
+create or replace function public.guard_group_message_update()
+returns trigger
+language plpgsql
+security definer
+set search_path = pg_catalog, public
+as $$
+begin
+  if public.payround_actor_email() is null then
+    return new;
+  end if;
+  if (public.payround_is_owner() or public.payround_is_group_admin(old.group_id))
+     and old.payment_id is not null
+     and new.receipt_status in (&#x27;pending&#x27;, &#x27;approved&#x27;, &#x27;declined&#x27;, &#x27;cancelled&#x27;)
+     and new.id is not distinct from old.id
+     and new.group_id is not distinct from old.group_id
+     and new.from_email is not distinct from old.from_email
+     and new.body is not distinct from old.body
+     and new.created_at is not distinct from old.created_at
+     and new.image_url is not distinct from old.image_url
+     and new.payment_id is not distinct from old.payment_id then
+    return new;
+  end if;
+  raise exception &#x27;Only a receipt status stamp may be updated in group chat&#x27;;
+end;
+$$;
+
+revoke all on function public.guard_group_message_update() from public, anon, authenticated;
+drop trigger if exists guard_group_message_update_trigger on public.group_messages;
+create trigger guard_group_message_update_trigger
+before update on public.group_messages
+for each row execute function public.guard_group_message_update();
+
+commit;
+</pre></section><section class="card"><div class="head"><div><span>PART 5 OF 6</span><h2>Private online presence</h2><p>JWT-bound heartbeat, owner-only online list and Realtime invalidation.</p></div><button data-label="Copy part 5" onclick="copyPart('sql5',this)">Copy part 5</button></div><pre id="sql5">-- PayRound hardening — phone part 5 of 6: Private online presence
+-- Run parts 1 through 6 in order. This part is rerunnable.
+
+begin;
+
+-- ---------------------------------------------------------------------------
+-- 5. Private user presence and owner-only online list
+-- ---------------------------------------------------------------------------
+create table if not exists public.user_presence (
+  user_id uuid primary key references public.users(id) on delete cascade,
+  last_seen_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+create index if not exists user_presence_last_seen_idx
+  on public.user_presence(last_seen_at desc);
+
+alter table public.user_presence enable row level security;
+alter table public.user_presence force row level security;
+revoke all on table public.user_presence from public, anon, authenticated;
+grant select on table public.user_presence to authenticated;
+
+drop policy if exists user_presence_owner_select on public.user_presence;
+create policy user_presence_owner_select
+on public.user_presence for select to authenticated
+using (public.payround_is_owner());
+
+create or replace function public.touch_user_presence()
+returns boolean
+language plpgsql
+security definer
+set search_path = pg_catalog, public
+as $$
+declare
+  v_user_id uuid;
+begin
+  if public.payround_actor_email() is null then
+    raise exception &#x27;Authentication required&#x27;;
+  end if;
+  select u.id into v_user_id
+  from public.users u
+  where lower(u.email) = public.payround_actor_email()
+  limit 1;
+  if v_user_id is null then
+    return false;
+  end if;
+  insert into public.user_presence(user_id, last_seen_at, updated_at)
+  values (v_user_id, now(), now())
+  on conflict (user_id) do update
+    set last_seen_at = excluded.last_seen_at,
+        updated_at = excluded.updated_at;
+  return true;
+end;
+$$;
+
+create or replace function public.get_owner_online_users()
+returns table (
+  user_id uuid,
+  email text,
+  name text,
+  profile_pic text,
+  is_verified boolean,
+  last_seen_at timestamptz
+)
+language plpgsql
+stable
+security definer
+set search_path = pg_catalog, public
+as $$
+begin
+  if not public.payround_is_owner() then
+    raise exception &#x27;Owner authorization required&#x27;;
+  end if;
+  return query
+  select u.id, lower(u.email), u.name, u.profile_pic, coalesce(u.is_verified, false), p.last_seen_at
+  from public.user_presence p
+  join public.users u on u.id = p.user_id
+  where p.last_seen_at &gt;= now() - interval &#x27;75 seconds&#x27;
+  order by p.last_seen_at desc, u.name nulls last;
+end;
+$$;
+
+revoke all on function public.touch_user_presence() from public, anon;
+revoke all on function public.get_owner_online_users() from public, anon;
+grant execute on function public.touch_user_presence() to authenticated, service_role;
+grant execute on function public.get_owner_online_users() to authenticated, service_role;
+
+-- Enable Realtime invalidation when the standard Supabase publication exists.
+do $presence_realtime$
+begin
+  if exists (select 1 from pg_publication where pubname = &#x27;supabase_realtime&#x27;)
+     and not exists (
+       select 1
+       from pg_publication p
+       join pg_publication_rel pr on pr.prpubid = p.oid
+       join pg_class c on c.oid = pr.prrelid
+       join pg_namespace n on n.oid = c.relnamespace
+       where p.pubname = &#x27;supabase_realtime&#x27;
+         and n.nspname = &#x27;public&#x27;
+         and c.relname = &#x27;user_presence&#x27;
+     ) then
+    alter publication supabase_realtime add table public.user_presence;
+  end if;
+end
+$presence_realtime$;
+
+commit;
+</pre></section><section class="card"><div class="head"><div><span>PART 6 OF 6</span><h2>Protected ad-placement analytics</h2><p>RPC-only pseudonymous ad events and advertiser/owner analytics access.</p></div><button data-label="Copy part 6" onclick="copyPart('sql6',this)">Copy part 6</button></div><pre id="sql6">-- PayRound hardening — phone part 6 of 6: Protected ad-placement analytics
+-- Run parts 1 through 6 in order. This part is rerunnable.
+
+begin;
+
+-- Replace every older policy for this table inside this same transaction.
+do $drop_ad_events_policies$
+declare
+  v_policy record;
+begin
+  for v_policy in
+    select policyname from pg_policies
+    where schemaname = &#x27;public&#x27; and tablename = &#x27;ad_events&#x27;
+  loop
+    execute format(&#x27;drop policy if exists %I on public.ad_events&#x27;, v_policy.policyname);
+  end loop;
+end
+$drop_ad_events_policies$;
+
+-- ---------------------------------------------------------------------------
+-- 6. Server-authorized ad-placement analytics
+-- ---------------------------------------------------------------------------
+alter table public.ad_events enable row level security;
+alter table public.ad_events force row level security;
+revoke all on table public.ad_events from public, anon, authenticated;
+do $protect_ad_event_sequence$
+declare
+  v_sequence text := pg_get_serial_sequence(&#x27;public.ad_events&#x27;, &#x27;id&#x27;);
+begin
+  if v_sequence is not null then
+    execute format(&#x27;revoke all on sequence %s from public, anon, authenticated&#x27;, v_sequence);
+  end if;
+end
+$protect_ad_event_sequence$;
+create index if not exists ad_events_ad_created_idx
+  on public.ad_events(ad_id, created_at desc);
+
+create or replace function public.get_ad_analytics(p_ad_id text)
+returns table (
+  kind text,
+  media_index integer,
+  viewer text,
+  created_at timestamptz
+)
+language plpgsql
+stable
+security definer
+set search_path = pg_catalog, public
+as $$
+declare
+  v_ad public.ads%rowtype;
+  v_actor text := public.payround_actor_email();
+begin
+  if v_actor is null then
+    raise exception &#x27;Authentication required&#x27;;
+  end if;
+  select * into v_ad from public.ads where id = p_ad_id;
+  if not found then
+    raise exception &#x27;Ad not found&#x27;;
+  end if;
+  if not public.payround_is_owner() and lower(v_ad.submitter_email) &lt;&gt; v_actor then
+    raise exception &#x27;You may only view analytics for your own ad&#x27;;
+  end if;
+  if not public.payround_is_owner()
+     and (v_ad.expires_at is null or v_ad.expires_at &gt; now())
+     and v_ad.status &lt;&gt; &#x27;archived&#x27; then
+    raise exception &#x27;Advertiser analytics become available after the ad run ends&#x27;;
+  end if;
+
+  return query
+  select e.kind,
+         e.media_index,
+         case
+           when e.viewer like &#x27;a:%&#x27; then e.viewer
+           when e.viewer like &#x27;g:%&#x27; then e.viewer
+           else null
+         end,
+         e.created_at
+  from public.ad_events e
+  where e.ad_id = v_ad.id
+  order by e.created_at asc;
+end;
+$$;
+
+revoke all on function public.get_ad_analytics(text) from public, anon;
+grant execute on function public.get_ad_analytics(text) to authenticated, service_role;
+
+-- pgcrypto may live in public or extensions. Discover it once and generate a
+-- wrapper whose digest reference is schema-qualified (safe in SECURITY DEFINER).
+do $create_sha256_wrapper$
+declare
+  v_digest_oid oid := coalesce(
+    to_regprocedure(&#x27;public.digest(text,text)&#x27;),
+    to_regprocedure(&#x27;extensions.digest(text,text)&#x27;)
+  );
+  v_digest_schema text;
+begin
+  if v_digest_oid is null then
+    raise exception &#x27;pgcrypto digest(text,text) is required&#x27;;
+  end if;
+  select n.nspname into v_digest_schema
+  from pg_proc p
+  join pg_namespace n on n.oid = p.pronamespace
+  where p.oid = v_digest_oid;
+
+  execute format($wrapper$
+    create or replace function public.payround_sha256(p_value text)
+    returns text
+    language plpgsql
+    immutable
+    security definer
+    set search_path = pg_catalog
+    as $body$
+    begin
+      return encode(%I.digest(p_value, &#x27;sha256&#x27;), &#x27;hex&#x27;);
+    end;
+    $body$
+  $wrapper$, v_digest_schema);
+end
+$create_sha256_wrapper$;
+revoke all on function public.payround_sha256(text) from public, anon, authenticated;
+
+-- Rebind the event RPC to the schema-independent hash wrapper.
+create or replace function public.record_ad_event(
+  p_ad_id text,
+  p_kind text,
+  p_media_index integer default null,
+  p_viewer_token text default null
+)
+returns boolean
+language plpgsql
+security definer
+set search_path = pg_catalog, public
+as $$
+declare
+  v_ad public.ads%rowtype;
+  v_actor text := public.payround_actor_email();
+  v_viewer text;
+begin
+  if p_kind not in (&#x27;view&#x27;, &#x27;click&#x27;) then
+    raise exception &#x27;Invalid ad event kind&#x27;;
+  end if;
+  if p_media_index is not null and (p_media_index &lt; 0 or p_media_index &gt; 1000) then
+    raise exception &#x27;Invalid media index&#x27;;
+  end if;
+  select * into v_ad from public.ads where id = p_ad_id;
+  if not found
+     or v_ad.status &lt;&gt; &#x27;approved&#x27;
+     or (v_ad.approved_at is not null and v_ad.approved_at &gt; now())
+     or (v_ad.expires_at is not null and v_ad.expires_at &lt; now()) then
+    return false;
+  end if;
+  if v_actor is not null then
+    v_viewer := &#x27;a:&#x27; || public.payround_sha256(v_actor);
+    if lower(v_ad.submitter_email) = v_actor then return false; end if;
+  else
+    if p_viewer_token is null or p_viewer_token !~ &#x27;^g:[a-zA-Z0-9_-]{8,96}$&#x27; then
+      return false;
+    end if;
+    v_viewer := &#x27;g:&#x27; || public.payround_sha256(p_viewer_token);
+  end if;
+  insert into public.ad_events(ad_id, kind, media_index, viewer, created_at)
+  values (v_ad.id, p_kind, p_media_index, v_viewer, now());
+  return true;
+end;
+$$;
+revoke all on function public.record_ad_event(text, text, integer, text) from public;
+grant execute on function public.record_ad_event(text, text, integer, text) to anon, authenticated, service_role;
+
+commit;
+</pre></section></main><script>
+function copyPart(id,button){const text=document.getElementById(id).textContent;const done=()=>{button.textContent='Copied ✓';button.classList.add('done');setTimeout(()=>{button.textContent=button.dataset.label||'Copy';button.classList.remove('done')},1800)};if(navigator.clipboard&&window.isSecureContext){navigator.clipboard.writeText(text).then(done).catch(()=>fallback(text,done))}else fallback(text,done)}
+function fallback(text,done){const t=document.createElement('textarea');t.value=text;t.style.position='fixed';t.style.opacity='0';document.body.appendChild(t);t.select();document.execCommand('copy');t.remove();done()}
+</script></body></html>

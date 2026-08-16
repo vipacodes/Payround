@@ -1,97 +1,66 @@
 'use client';
 
-// 📊 Ad analytics — honest, privacy-safe counters.
-// • A "view" is recorded when a media item actually appears on screen (slideshow slot / ad card).
-// • A "click" is recorded when someone opens the business page from an ad.
-// • Each viewer counts ONCE per ad media per DAY (a daily-unique reach model — matches "how many
-//   ACCOUNTS viewed this ad"), and the advertiser's own views of their own ad are never counted.
-// • Everything is fire-and-forget: a failed write never touches the UI.
+// Privacy-safe ad-placement analytics.
+// • A view is sent only after the placement is confirmed in the viewport.
+// • A click is sent only from a sponsored placement link.
+// • The server validates the ad, derives signed-in identity from the JWT, excludes
+//   advertiser self-activity, and stores only pseudonymous account/guest tokens.
+// • Views are appearances, not daily-deduplicated reach. Reach is calculated from
+//   distinct pseudonymous viewers and legacy identity-less rows never become people.
 
-const LS_PREFIX = 'pr_ae_';
-
-function todayKey() {
-  try { return new Date().toISOString().slice(0, 10); } catch { return ''; }
-}
-
-function viewerEmail() {
+function guestViewerToken() {
   try {
-    return (JSON.parse(localStorage.getItem('payround_user') || '{}').email || '').toLowerCase() || null;
-  } catch { return null; }
-}
-
-// Logged-out visitors still count as PEOPLE — give each device/browser a stable, anonymous
-// guest id so "6 views by 1 guest" no longer reads as "0 accounts reached".
-function viewerId() {
-  const email = viewerEmail();
-  if (email) return email;
-  try {
-    let g = localStorage.getItem('pr_guest');
-    if (!g) {
-      g = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
-      localStorage.setItem('pr_guest', g);
+    let value = localStorage.getItem('pr_guest');
+    if (!value) {
+      const random = typeof crypto !== 'undefined' && crypto.getRandomValues
+        ? Array.from(crypto.getRandomValues(new Uint32Array(3))).map(n => n.toString(36)).join('')
+        : `${Date.now().toString(36)}${Math.random().toString(36).slice(2)}`;
+      value = random.replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 80);
+      localStorage.setItem('pr_guest', value);
     }
-    return `g:${g}`;
-  } catch { return null; }
+    return `g:${value}`;
+  } catch {
+    return null;
+  }
 }
 
-// Light housekeeping: drop stale dedupe keys from previous days so storage stays clean
-let pruned = false;
-function pruneOldKeys() {
-  if (pruned) return;
-  pruned = true;
-  try {
-    const today = todayKey();
-    const dead = [];
-    for (let i = 0; i < localStorage.length; i++) {
-      const k = localStorage.key(i) || '';
-      if (k.startsWith(LS_PREFIX) && !k.endsWith(`_${today}`)) dead.push(k);
-    }
-    dead.forEach(k => localStorage.removeItem(k));
-  } catch {}
-}
-
-/** Record one analytics event. kind: 'view' | 'click'. mediaIndex: index inside the ad's media list (null = whole-ad). */
+/** Record one server-validated placement event. kind: view | click. */
 export async function trackAdEvent(kind, ad, mediaIndex = null) {
   try {
-    if (typeof window === 'undefined' || !ad || !ad.id) return;
-    pruneOldKeys();
-    const viewer = viewerId();
-    // Never count the advertiser looking at their own ad
-    const owner = (ad.submitter_email || '').toLowerCase();
-    if (viewer && owner && viewer === owner) return;
-    const day = todayKey();
-    const key = `${LS_PREFIX}${kind}_${ad.id}_${mediaIndex === null || mediaIndex === undefined ? 'a' : mediaIndex}_${day}`;
-    if (localStorage.getItem(key)) return; // already counted for this viewer today
-    localStorage.setItem(key, '1');
+    if (typeof window === 'undefined' || !ad?.id || !['view', 'click'].includes(kind)) return false;
     const { supabase } = await import('@/lib/supabase');
-    if (!supabase) return;
-    await supabase.from('ad_events').insert({ ad_id: String(ad.id), kind, media_index: mediaIndex, viewer });
-  } catch {}
+    if (!supabase) return false;
+    const { data, error } = await supabase.rpc('record_ad_event', {
+      p_ad_id: String(ad.id),
+      p_kind: kind,
+      p_media_index: mediaIndex === null || mediaIndex === undefined ? null : Number(mediaIndex),
+      p_viewer_token: guestViewerToken(),
+    });
+    return !error && data === true;
+  } catch {
+    return false;
+  }
 }
 
-/** Fetch raw events for one ad. Returns null on failure, [] when none yet. */
+/** Fetch protected analytics for an ad owned by the caller (owner can fetch any ad). */
 export async function fetchAdEvents(adId) {
   try {
     if (!adId) return [];
     const { supabase } = await import('@/lib/supabase');
     if (!supabase) return null;
-    const { data, error } = await supabase
-      .from('ad_events')
-      .select('kind, media_index, viewer, created_at')
-      .eq('ad_id', String(adId))
-      .limit(50000);
+    const { data, error } = await supabase.rpc('get_ad_analytics', { p_ad_id: String(adId) });
     if (error) return null;
     return data || [];
-  } catch { return null; }
+  } catch {
+    return null;
+  }
 }
 
-/** Turn raw rows into rich stats: totals, PEOPLE (accounts + guest devices), per-media, per-day, tap-through. */
+/** Turn raw rows into appearances, distinct known reach, per-media and per-day totals. */
 export function aggregateAdEvents(rows) {
   const views = (rows || []).filter(r => r.kind === 'view');
   const clicks = (rows || []).filter(r => r.kind === 'click');
 
-  // Legacy rows have viewer=null (counted as guest views, one row each — can't be de-duplicated).
-  // New rows always carry an id: account email, or 'g:<device>' for logged-out visitors.
   const people = (rs) => new Set(rs.map(r => r.viewer).filter(Boolean));
   const accounts = (rs) => new Set(rs.map(r => r.viewer).filter(v => v && !v.startsWith('g:')));
   const guestDevices = (rs) => new Set(rs.map(r => r.viewer).filter(v => v && v.startsWith('g:')));
@@ -113,17 +82,21 @@ export function aggregateAdEvents(rows) {
     byDay.set(d, (byDay.get(d) || 0) + 1);
   }
 
-  const peopleReached = people(views).size;
+  // A sponsored click is itself proof that the placement reached that viewer. Use
+  // the union so an immediate tap cannot produce an impossible >100% tap rate if
+  // the browser navigates before its IntersectionObserver callback is delivered.
+  const reached = [...views, ...clicks];
+  const peopleReached = people(reached).size;
   const uniqueClickers = people(clicks).size;
 
   return {
     totalViews: views.length,
-    peopleReached,                       // accounts + guest devices (legacy guest rows excluded)
-    accountsReached: accounts(views).size,
-    guestDevices: guestDevices(views).size,
-    legacyGuests: legacyGuests(views),   // older anonymous rows (shown as "guest views")
+    peopleReached,
+    accountsReached: accounts(reached).size,
+    guestDevices: guestDevices(reached).size,
+    legacyGuests: legacyGuests(views),
     totalClicks: clicks.length,
-    uniqueClickers,                      // distinct people (accounts + guest devices)
+    uniqueClickers,
     legacyClickGuests: legacyGuests(clicks),
     tapRate: peopleReached > 0 ? Math.round((uniqueClickers / peopleReached) * 100) : 0,
     perMedia: [...byMedia.entries()].sort((a, b) => a[0] - b[0])

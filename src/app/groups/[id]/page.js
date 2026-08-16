@@ -497,6 +497,23 @@ export default function GroupDetailsPage() {
     } catch { toast.error('Could not read that image — try another.'); }
   };
 
+  const deleteOwnReceipt = async (pay) => {
+    if (pay.status === 'approved') {
+      toast.error('Approved receipts cannot be deleted or cancelled by members.');
+      return;
+    }
+    if (!window.confirm('Delete this receipt? Its payment record and linked group-chat receipt will be removed.')) return;
+    try {
+      const { supabase } = await import('@/lib/supabase');
+      const { error } = await supabase.rpc('delete_group_payment_receipt', { p_payment_id: String(pay.id) });
+      if (error) throw error;
+      setPayments(prev => prev.filter(x => x.id !== pay.id));
+      toast.success('Receipt deleted.');
+    } catch (e) {
+      toast.error(`Could not delete receipt: ${e.message || 'try again'}`);
+    }
+  };
+
   const submitReceipt = async () => {
     if (paySpots.length === 0) { toast.error('Select at least one spot you are paying for.'); return; }
     if (!receiptData) { toast.error('Please upload your payment receipt image.'); return; }
@@ -1212,24 +1229,19 @@ export default function GroupDetailsPage() {
                         )}
                       </div>
                     </div>
-                    {pay.status === 'approved'
-                      ? <span className="shrink-0 text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full text-xs font-semibold">Paid ✅</span>
-                      : pay.status === 'declined'
-                        ? <span className="shrink-0 text-red-600 bg-red-50 border border-red-200 px-2 py-0.5 rounded-full text-xs font-semibold">Declined ⚠️</span>
-                        : <span className="shrink-0 flex flex-col items-end gap-1">
-                        <span className="text-amber-700 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-full text-xs font-semibold">Under review ⏳</span>
-                        <button type="button" onClick={async () => {
-                          if (!window.confirm('Cancel this receipt? The admin will no longer see it.')) return;
-                          try {
-                            const { supabase } = await import('@/lib/supabase');
-                            const { error } = await supabase.from('payments').update({ status: 'cancelled' }).eq('id', pay.id).eq('status', 'pending');
-                            if (error) throw error;
-                            try { await supabase.from('group_messages').delete().eq('payment_id', pay.id); } catch {}
-                            setPayments(prev => prev.map(x => x.id === pay.id ? { ...x, status: 'cancelled' } : x));
-                            toast.success('Receipt cancelled.');
-                          } catch (e) { toast.error(`Could not cancel: ${e.message || 'try again'}`); }
-                        }} className="text-[10px] font-semibold text-red-600">Cancel</button>
-                      </span>}
+                    {pay.status === 'approved' ? (
+                      <span className="shrink-0 flex flex-col items-end gap-1">
+                        <span className="text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full text-xs font-semibold">Paid ✅</span>
+                        <span className="text-[9px] text-gray-400">Locked</span>
+                      </span>
+                    ) : (
+                      <span className="shrink-0 flex flex-col items-end gap-1">
+                        {pay.status === 'declined'
+                          ? <span className="text-red-600 bg-red-50 border border-red-200 px-2 py-0.5 rounded-full text-xs font-semibold">Declined ⚠️</span>
+                          : <span className="text-amber-700 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-full text-xs font-semibold">Under review ⏳</span>}
+                        <button type="button" onClick={() => deleteOwnReceipt(pay)} className="text-[10px] font-semibold text-red-600">🗑 Delete receipt</button>
+                      </span>
+                    )}
                   </div>
                 ))}
               </div>

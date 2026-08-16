@@ -92,6 +92,25 @@ function AdSlot({ items, slotKey, startOffset = 0, ratio }) {
   const itemsRef = useRef(items);
   itemsRef.current = items;
   const touchX = useRef(null);
+  const slotRef = useRef(null);
+  const [isVisible, setIsVisible] = useState(false);
+
+  useEffect(() => {
+    const node = slotRef.current;
+    if (!node || typeof IntersectionObserver === 'undefined') return undefined;
+    let onScreen = false;
+    const update = () => setIsVisible(onScreen && document.visibilityState === 'visible');
+    const observer = new IntersectionObserver(([entry]) => {
+      onScreen = entry.isIntersecting && entry.intersectionRatio >= 0.5;
+      update();
+    }, { threshold: [0, 0.5, 1] });
+    observer.observe(node);
+    document.addEventListener('visibilitychange', update);
+    return () => {
+      observer.disconnect();
+      document.removeEventListener('visibilitychange', update);
+    };
+  }, []);
 
   // Resume AFTER the last shown item (per slot) so return visits show fresh ads; offset staggers the two portrait slots
   useEffect(() => {
@@ -107,30 +126,30 @@ function AdSlot({ items, slotKey, startOffset = 0, ratio }) {
   useEffect(() => {
     if (pos === null) return;
     try { localStorage.setItem(KEY + slotKey, String(pos)); } catch {}
-    // 📊 count this impression — the media is genuinely on screen right now
+    if (!isVisible) return;
     const it = itemsRef.current[((pos % len) + len) % len];
     if (it?.ad) trackAdEvent('view', it.ad, it.idx);
-  }, [pos, slotKey]);
+  }, [pos, slotKey, isVisible, len]);
 
   // Auto slide — IMAGES 5s. VIDEOS play COMPLETELY: they advance only on 'ended' (never chopped at 10s)
   const advance = () => setPos((p) => (((p % len) + len) % len + 1) % len);
   const [vidPaused, setVidPaused] = useState(false);
   useEffect(() => {
-    if (!len || pos === null || stopped) return;
+    if (!isVisible || !len || pos === null || stopped) return;
     const it = itemsRef.current[((pos % len) + len) % len];
     if (it?.video) return; // video items advance via onEnded below
     const t = setTimeout(advance, IMAGE_MS);
     return () => clearTimeout(t);
-  }, [len, pos, stopped]);
+  }, [len, pos, stopped, isVisible]);
 
   // 🛟 Safety net: if a video never fires 'ended', still move on after 60s — but NEVER while the viewer paused it
   useEffect(() => {
-    if (!len || pos === null || stopped || vidPaused) return;
+    if (!isVisible || !len || pos === null || stopped || vidPaused) return;
     const it = itemsRef.current[((pos % len) + len) % len];
     if (!it?.video) return;
     const t = setTimeout(advance, 60000);
     return () => clearTimeout(t);
-  }, [len, pos, stopped, vidPaused]);
+  }, [len, pos, stopped, vidPaused, isVisible]);
 
   const step = (d) => {
     setStopped(true);
@@ -152,10 +171,10 @@ function AdSlot({ items, slotKey, startOffset = 0, ratio }) {
   const href = `/business/${cur.ad.id}?item=${cur.idx}`;
 
   return (
-    <div className={`relative ${ratio} rounded-2xl overflow-hidden bg-gray-900 shadow-lg shadow-gray-200 select-none`}
+    <div ref={slotRef} className={`relative ${ratio} rounded-2xl overflow-hidden bg-gray-900 shadow-lg shadow-gray-200 select-none`}
       onTouchStart={onTouchStart} onTouchEnd={onTouchEnd}>
       {/* ===== media — always shown in FULL (never cropped) ===== */}
-      <Link href={href} className="absolute inset-0 block" title={`Open ${name}`}>
+      <Link href={href} onClick={() => trackAdEvent('click', cur.ad, cur.idx)} className="absolute inset-0 block" title={`Open ${name}`}>
         {cur.video ? (
           <div key={`${cur.ad.id}-${cur.idx}`} className="ad-slide-media absolute inset-0 flex items-center justify-center bg-black">
             <AdVideo
@@ -196,7 +215,7 @@ function AdSlot({ items, slotKey, startOffset = 0, ratio }) {
       <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/85 via-black/40 to-transparent pt-10 pb-2 px-3 pointer-events-none">
         <p className="text-white font-bold text-xs sm:text-sm leading-tight truncate">{name}</p>
         <div className="mt-0.5 flex items-center gap-2 pointer-events-auto">
-          <Link href={href} className="text-[11px] font-semibold text-gold-300 hover:text-gold-200">View Business →</Link>
+          <Link href={href} onClick={() => trackAdEvent('click', cur.ad, cur.idx)} className="text-[11px] font-semibold text-gold-300 hover:text-gold-200">View Business →</Link>
           {stopped && (
             <button type="button" onClick={() => setStopped(false)}
               className="text-[10px] font-semibold text-white/80 hover:text-white bg-white/15 hover:bg-white/25 px-2 py-0.5 rounded-full transition-all">▶ Resume</button>

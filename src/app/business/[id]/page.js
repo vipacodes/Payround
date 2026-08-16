@@ -127,9 +127,8 @@ function BusinessContent() {
         if (!mounted) return;
         if (error || !data) { setNotFound(true); setLoading(false); return; }
         setAd(data);
-        // 📊 someone actually OPENED this business from an ad — count the tap (self-opens excluded)
-        const { trackAdEvent } = await import('@/lib/adAnalytics');
-        trackAdEvent('click', data, null);
+        // Ad clicks are recorded only by the sponsored placement that led here.
+        // Ordinary profile loads, bookmarks and shared business URLs are not ad activity.
         // The person advertising — their PayRound profile stays linked to the business
         if (data.submitter_email && data.submitter_email !== 'visitor') {
           const { data: u } = await supabase.from('users').select('id, name, is_verified, profile_pic').eq('email', data.submitter_email.toLowerCase()).single();

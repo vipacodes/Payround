@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import AdVideo from './AdVideo';
 import Link from 'next/link';
 import { HiExternalLink, HiPhone, HiChevronLeft, HiChevronRight } from 'react-icons/hi';
@@ -41,30 +41,50 @@ export default function AdBanner({ ad: raw, variant = 'card', big = false, track
   const media = parseAdMedia(raw?.media_urls);
   const [idx, setIdx] = useState(0);
   const [vidPaused, setVidPaused] = useState(false);
+  const [isVisible, setIsVisible] = useState(false);
+  const placementRef = useRef(null);
   const curIsVideo = isVideoSrc(media[idx]);
   const nextItem = () => setIdx(i => (i + 1) % media.length);
 
-  // 📊 count an impression for the media currently on screen (skipped in advertiser previews via track={false})
+  // An impression exists only after at least half of this sponsored placement is
+  // inside the viewport. Re-entering or rotating to another item is a new appearance.
   useEffect(() => {
-    if (!track || !media.length || !raw?.id) return;
-    trackAdEvent('view', raw, idx);
+    const node = placementRef.current;
+    if (!node || typeof IntersectionObserver === 'undefined') return undefined;
+    let onScreen = false;
+    const update = () => setIsVisible(onScreen && document.visibilityState === 'visible');
+    const observer = new IntersectionObserver(([entry]) => {
+      onScreen = entry.isIntersecting && entry.intersectionRatio >= 0.5;
+      update();
+    }, { threshold: [0, 0.5, 1] });
+    observer.observe(node);
+    document.addEventListener('visibilitychange', update);
+    return () => {
+      observer.disconnect();
+      document.removeEventListener('visibilitychange', update);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!track || !isVisible || !raw?.id) return;
+    trackAdEvent('view', raw, variant === 'banner' || !media.length ? null : idx);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [idx, track]);
+  }, [idx, track, isVisible, variant]);
 
   // Slideshow — images advance every 5s… VIDEOS play COMPLETELY and advance on 'ended' (never mid-clip!)
   useEffect(() => {
-    if (media.length < 2) return;
+    if (!isVisible || media.length < 2) return;
     if (curIsVideo) return; // video items advance via AdVideo's onEnded below
     const t = setTimeout(nextItem, 5000);
     return () => clearTimeout(t);
-  }, [idx, media.length, curIsVideo]);
+  }, [idx, media.length, curIsVideo, isVisible]);
 
   // 🛟 Safety net: if a video stalls/fails to fire 'ended', still move on after 60s (but never while the viewer paused it)
   useEffect(() => {
-    if (media.length < 2 || !curIsVideo || vidPaused) return;
+    if (!isVisible || media.length < 2 || !curIsVideo || vidPaused) return;
     const t = setTimeout(nextItem, 60000);
     return () => clearTimeout(t);
-  }, [idx, media.length, curIsVideo, vidPaused]);
+  }, [idx, media.length, curIsVideo, vidPaused, isVisible]);
 
   if (!raw) return null;
   // Normalize: works with bundled demo ads AND real ads from the database
@@ -83,7 +103,7 @@ export default function AdBanner({ ad: raw, variant = 'card', big = false, track
   const itemParam = current ? `?item=${idx}` : '';
 
   const mediaBox = current ? (
-    <Link href={`/business/${raw.id}${itemParam}`} className="block relative group mb-3" title="Open business profile">
+    <Link href={`/business/${raw.id}${itemParam}`} onClick={() => track && trackAdEvent('click', raw, idx)} className="block relative group mb-3" title="Open business profile">
       {isVideoSrc(current) ? (
         <AdVideo
           src={current}
@@ -119,7 +139,7 @@ export default function AdBanner({ ad: raw, variant = 'card', big = false, track
 
   if (variant === 'banner') {
     return (
-      <div className="bg-gradient-to-r from-primary-600 to-primary-700 rounded-2xl p-6 text-white">
+      <div ref={placementRef} className="bg-gradient-to-r from-primary-600 to-primary-700 rounded-2xl p-6 text-white">
         <div className="flex flex-col md:flex-row items-center justify-between gap-4">
           <div>
             <h3 className="font-bold text-lg mb-1">{ad.businessName}</h3>
@@ -127,12 +147,12 @@ export default function AdBanner({ ad: raw, variant = 'card', big = false, track
           </div>
           <div className="flex items-center gap-3">
             {ad.website && (
-              <a href={ad.website} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1.5 bg-white/20 px-4 py-2 rounded-xl text-sm font-medium hover:bg-white/30 transition-all">
+              <a href={ad.website} onClick={() => track && trackAdEvent('click', raw, null)} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1.5 bg-white/20 px-4 py-2 rounded-xl text-sm font-medium hover:bg-white/30 transition-all">
                 <HiExternalLink className="w-4 h-4" />
                 Visit
               </a>
             )}
-            <a href={`tel:${ad.contact}`} className="flex items-center gap-1.5 bg-white/20 px-4 py-2 rounded-xl text-sm font-medium hover:bg-white/30 transition-all">
+            <a href={`tel:${ad.contact}`} onClick={() => track && trackAdEvent('click', raw, null)} className="flex items-center gap-1.5 bg-white/20 px-4 py-2 rounded-xl text-sm font-medium hover:bg-white/30 transition-all">
               <HiPhone className="w-4 h-4" />
               Call
             </a>
@@ -143,7 +163,7 @@ export default function AdBanner({ ad: raw, variant = 'card', big = false, track
   }
 
   return (
-    <div className={`bg-white rounded-2xl border border-gray-100 ${big ? 'p-5' : 'p-4'} card-hover h-full`}>
+    <div ref={placementRef} className={`bg-white rounded-2xl border border-gray-100 ${big ? 'p-5' : 'p-4'} card-hover h-full`}>
       {mediaBox}
       <div className="flex items-start gap-4">
         {!current && (
@@ -152,22 +172,22 @@ export default function AdBanner({ ad: raw, variant = 'card', big = false, track
           </div>
         )}
         <div className="flex-1 min-w-0">
-          <Link href={`/business/${raw.id}${itemParam}`}>
+          <Link href={`/business/${raw.id}${itemParam}`} onClick={() => track && trackAdEvent('click', raw, idx)}>
             <h3 className={`font-semibold text-gray-900 ${big ? 'text-base' : 'text-sm'} mb-1 hover:text-primary-600 transition-colors`}>{ad.businessName}</h3>
           </Link>
           <p className={`${big ? 'text-sm' : 'text-xs'} text-gray-600 mb-3 line-clamp-2`}>{ad.description}</p>
           <div className="flex items-center flex-wrap gap-3">
-            <Link href={`/business/${raw.id}${itemParam}`} className="flex items-center gap-1 text-xs text-primary-600 font-semibold hover:text-primary-700">
+            <Link href={`/business/${raw.id}${itemParam}`} onClick={() => track && trackAdEvent('click', raw, idx)} className="flex items-center gap-1 text-xs text-primary-600 font-semibold hover:text-primary-700">
               View Business →
             </Link>
             {ad.website && (
-              <a href={ad.website} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 text-xs text-gray-500 font-medium hover:text-gray-700">
+              <a href={ad.website} onClick={() => track && trackAdEvent('click', raw, idx)} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 text-xs text-gray-500 font-medium hover:text-gray-700">
                 <HiExternalLink className="w-3.5 h-3.5" />
                 Website
               </a>
             )}
             {ad.contact && (
-              <a href={`tel:${ad.contact}`} className="flex items-center gap-1 text-xs text-gray-500 font-medium hover:text-gray-700">
+              <a href={`tel:${ad.contact}`} onClick={() => track && trackAdEvent('click', raw, idx)} className="flex items-center gap-1 text-xs text-gray-500 font-medium hover:text-gray-700">
                 <HiPhone className="w-3.5 h-3.5" />
                 {ad.contact}
               </a>

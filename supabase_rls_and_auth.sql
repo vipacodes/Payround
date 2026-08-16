@@ -188,36 +188,11 @@ create policy members_delete on public.members
     )
   );
 
--- DMs
-do $$
-begin
-  if exists (select 1 from information_schema.tables where table_schema='public' and table_name='messages') then
-    execute $p$
-      create policy messages_rw on public.messages
-      for all to authenticated
-      using (lower(from_email) = public.jwt_email() or lower(to_email) = public.jwt_email())
-      with check (lower(from_email) = public.jwt_email())
-    $p$;
-  end if;
-end $$;
-
--- Group chat: members of that group
-do $$
-begin
-  if exists (select 1 from information_schema.tables where table_schema='public' and table_name='group_messages') then
-    execute $p$
-      create policy gm_select on public.group_messages for select to authenticated
-      using (
-        exists (select 1 from public.groups g where g.id = group_messages.group_id and lower(g.admin_email) = public.jwt_email())
-        or exists (select 1 from public.members m where m.group_id = group_messages.group_id and lower(m.member_email) = public.jwt_email() and m.status = 'approved')
-      )
-    $p$;
-    execute $p$
-      create policy gm_insert on public.group_messages for insert to authenticated
-      with check (lower(from_email) = public.jwt_email())
-    $p$;
-  end if;
-end $$;
+-- DMs and group chat intentionally remain fail-closed in this baseline. The
+-- ordered hardening migration installs separate SELECT/INSERT/UPDATE/DELETE
+-- policies, sender-only DM deletion, admin moderation, open-chat member deletion,
+-- and receipt-message protection. Never recreate a single FOR ALL participant
+-- policy here: it would let a DM recipient delete the sender's message.
 
 -- Notifications: own email
 do $$
@@ -239,11 +214,16 @@ begin
   end if;
 end $$;
 
--- Receipts / payments / ads: authenticated (app already scopes in UI)
+-- Remaining legacy operational tables. Do NOT add payments or ad_events here:
+-- their identity-bound policies/RPCs are installed by
+-- supabase_presence_receipts_chat_ads_hardening.sql. Messages and group_messages
+-- are likewise handled above and then tightened by that migration. Keeping the
+-- hardened tables out of this broad compatibility loop prevents a baseline run
+-- from silently restoring unrestricted authenticated access.
 do $$
 declare t text;
 begin
-  foreach t in array array['member_receipts','payments','payouts','ads','ad_events','group_reviews','business_reviews','member_reviews','group_edit_requests','support_threads','support_messages']
+  foreach t in array array['member_receipts','payouts','ads','group_reviews','business_reviews','member_reviews','group_edit_requests','support_threads','support_messages']
   loop
     if exists (select 1 from information_schema.tables where table_schema='public' and table_name=t) then
       execute format('create policy %I_all on public.%I for all to authenticated using (true) with check (true)', t, t);

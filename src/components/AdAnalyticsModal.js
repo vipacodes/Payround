@@ -80,7 +80,7 @@ export default function AdAnalyticsModal({ ad, onClose }) {
               <div className="text-3xl mb-2">📭</div>
               <p className="font-bold text-sm" style={{ color: '#111827' }}>No views were counted for this run</p>
               <p className="text-xs mt-1 max-w-xs mx-auto" style={{ color: '#475569' }}>
-                Analytics started counting recently, so runs that ended earlier have no numbers yet. Your next ad shows every account that views it — even without taps. 🚀
+                Analytics started counting recently, so runs that ended earlier may have no numbers. New ads count confirmed on-screen appearances and privacy-safe reach — even without taps. 🚀
               </p>
             </div>
           )}
@@ -91,10 +91,10 @@ export default function AdAnalyticsModal({ ad, onClose }) {
               <div className="grid grid-cols-2 gap-2">
                 <div className="rounded-2xl p-3.5" style={{ background: '#ecfdf5', border: '1px solid #a7f3d0' }}>
                   <p className="text-xl mb-0.5">👥</p>
-                  <p className="text-2xl font-black leading-none" style={{ color: '#047857' }}>{(stats.peopleReached + stats.legacyGuests).toLocaleString()}</p>
+                  <p className="text-2xl font-black leading-none" style={{ color: '#047857' }}>{stats.peopleReached.toLocaleString()}</p>
                   <p className="text-[10px] font-bold mt-1" style={{ color: '#065f46' }}>PEOPLE REACHED</p>
                   <p className="text-[10px]" style={{ color: '#047857' }}>
-                    {stats.accountsReached > 0 ? `${stats.accountsReached} account${stats.accountsReached === 1 ? '' : 's'}` : 'no logged-in accounts yet'}{(stats.guestDevices + stats.legacyGuests) > 0 ? ` · ${stats.guestDevices + stats.legacyGuests} guest${(stats.guestDevices + stats.legacyGuests) === 1 ? '' : 's'}` : ''} saw this ad
+                    {stats.accountsReached > 0 ? `${stats.accountsReached} account${stats.accountsReached === 1 ? '' : 's'}` : 'no logged-in accounts yet'}{stats.guestDevices > 0 ? ` · ${stats.guestDevices} guest device${stats.guestDevices === 1 ? '' : 's'}` : ''} saw this ad
                   </p>
                 </div>
                 <div className="rounded-2xl p-3.5" style={{ background: '#eff6ff', border: '1px solid #bfdbfe' }}>
@@ -105,15 +105,15 @@ export default function AdAnalyticsModal({ ad, onClose }) {
                 </div>
                 <div className="rounded-2xl p-3.5" style={{ background: '#fffbeb', border: '1px solid #fde68a' }}>
                   <p className="text-xl mb-0.5">👆</p>
-                  <p className="text-2xl font-black leading-none" style={{ color: '#b45309' }}>{(stats.uniqueClickers + stats.legacyClickGuests).toLocaleString()}</p>
-                  <p className="text-[10px] font-bold mt-1" style={{ color: '#92400e' }}>OPENED YOUR PAGE</p>
-                  <p className="text-[10px]" style={{ color: '#b45309' }}>people who tapped through to your business page</p>
+                  <p className="text-2xl font-black leading-none" style={{ color: '#b45309' }}>{stats.uniqueClickers.toLocaleString()}</p>
+                  <p className="text-[10px] font-bold mt-1" style={{ color: '#92400e' }}>SPONSORED CLICKS</p>
+                  <p className="text-[10px]" style={{ color: '#b45309' }}>distinct people who tapped an ad action</p>
                 </div>
                 <div className="rounded-2xl p-3.5" style={{ background: '#f5f3ff', border: '1px solid #ddd6fe' }}>
                   <p className="text-xl mb-0.5">⚡</p>
                   <p className="text-2xl font-black leading-none" style={{ color: '#6d28d9' }}>{stats.tapRate}%</p>
                   <p className="text-[10px] font-bold mt-1" style={{ color: '#5b21b6' }}>TAP RATE</p>
-                  <p className="text-[10px]" style={{ color: '#6d28d9' }}>of viewers who opened your business page</p>
+                  <p className="text-[10px]" style={{ color: '#6d28d9' }}>known viewers who tapped a sponsored action</p>
                 </div>
               </div>
 
@@ -175,7 +175,7 @@ export default function AdAnalyticsModal({ ad, onClose }) {
               )}
 
               <p className="text-[10px] leading-relaxed rounded-xl p-2.5" style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', color: '#166534' }}>
-                💡 Views count each person once per day per photo/video — honest reach, never inflated. Guests are counted per device (they have no account yet). Opened-your-page taps are counted when someone lands on your business page.
+                💡 A view is one confirmed on-screen appearance of a sponsored photo or video. People reached is distinct privacy-safe account and guest-device reach; old identity-less rows stay in total views but are never guessed to be people. Clicks come only from sponsored placement actions, not ordinary business-profile visits.
               </p>
 
               <button onClick={onClose} className="w-full text-sm font-extrabold py-3 rounded-xl text-white" style={{ background: '#059669' }}>Done 🎉</button>

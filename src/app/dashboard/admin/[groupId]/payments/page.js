@@ -122,6 +122,26 @@ export default function AdminPaymentsPage() {
     setBusy(false);
   };
 
+  // Secure server-side deletion checks this admin owns the receipt's group. For an
+  // approved receipt, deleting also removes its paid credit and notifies the member.
+  const handleDeleteReceipt = async (p) => {
+    const warning = p.status === 'approved'
+      ? 'Delete this APPROVED receipt? This removes the payment record, and the member will no longer be marked as paid for this contribution.'
+      : `Delete this ${p.status || 'payment'} receipt and its linked group-chat post?`;
+    if (!window.confirm(warning)) return;
+    setBusy(true);
+    try {
+      const { supabase } = await import('@/lib/supabase');
+      const { error } = await supabase.rpc('delete_group_payment_receipt', { p_payment_id: String(p.id) });
+      if (error) throw error;
+      setPayments(prev => prev.filter(x => x.id !== p.id));
+      toast.success(p.status === 'approved' ? 'Approved receipt deleted — its paid credit was removed.' : 'Receipt deleted.');
+    } catch (e) {
+      toast.error(`Could not delete receipt: ${e.message || 'try again'}`);
+    }
+    setBusy(false);
+  };
+
   // Mark a spot's payout as COLLECTED — visible to everyone in the group
   const handleMarkCollected = async (spot, holder) => {
     setBusy(true);
@@ -290,6 +310,9 @@ export default function AdminPaymentsPage() {
                       <button disabled={busy || group.is_frozen} onClick={() => { setDeclineId(p.id); setDeclineReason(''); setApproveId(null); }} className="bg-red-50 text-red-600 border border-red-200 hover:bg-red-100 px-4 py-1.5 rounded-lg text-xs font-semibold disabled:opacity-50">
                         Decline
                       </button>
+                      <button disabled={busy} onClick={() => handleDeleteReceipt(p)} className="text-red-700 border border-red-200 hover:bg-red-50 px-3 py-1.5 rounded-lg text-xs font-semibold disabled:opacity-50">
+                        🗑 Delete receipt
+                      </button>
                     </div>
                   )}
                 </div>
@@ -373,9 +396,12 @@ export default function AdminPaymentsPage() {
                   {p.status === 'approved' && p.review_note ? ` • 📝 ${p.review_note}` : ''}
                 </div>
               </div>
-              {p.status === 'approved'
-                ? <span className="shrink-0 text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full text-xs font-semibold flex items-center gap-1"><HiCheckCircle className="w-3.5 h-3.5" /> Approved</span>
-                : <span className="shrink-0 text-red-600 bg-red-50 border border-red-200 px-2 py-0.5 rounded-full text-xs font-semibold flex items-center gap-1"><HiExclamation className="w-3.5 h-3.5" /> Declined</span>}
+              <div className="shrink-0 flex flex-col items-end gap-1.5">
+                {p.status === 'approved'
+                  ? <span className="text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full text-xs font-semibold flex items-center gap-1"><HiCheckCircle className="w-3.5 h-3.5" /> Approved</span>
+                  : <span className="text-red-600 bg-red-50 border border-red-200 px-2 py-0.5 rounded-full text-xs font-semibold flex items-center gap-1"><HiExclamation className="w-3.5 h-3.5" /> Declined</span>}
+                <button disabled={busy} onClick={() => handleDeleteReceipt(p)} className="text-[10px] font-semibold text-red-700 hover:underline disabled:opacity-50">🗑 Delete receipt</button>
+              </div>
             </div>
           ))}
         </div>

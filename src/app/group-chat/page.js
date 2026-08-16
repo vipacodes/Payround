@@ -287,17 +287,39 @@ function GroupChatInner() {
     setSending(false);
   };
 
-  // Delete a message I sent — removed for everyone in the group
+  // Admins may moderate any message in their group. Members may remove only
+  // their own ordinary messages while the admin has the room open. Receipt
+  // posts are deleted only through the transactional payment-receipt RPC.
   const del = async (m) => {
     if (String(m.id).startsWith('local-')) { toast('Just sent — try again in a second'); return; }
-    if (!window.confirm('Delete this message? It disappears for everyone in the group.')) return;
+    const mine = (m.from_email || '').toLowerCase() === me;
+    if (!isRoomAdmin && !mine) { toast.error('You may delete only your own messages.'); return; }
+    if (!isRoomAdmin && g?.chat_open !== true) {
+      toast.error('Your group-message deletion is available only while the admin has opened this chat.');
+      return;
+    }
+    if (!isRoomAdmin && m.payment_id && m.receipt_status === 'approved') {
+      toast.error('Approved receipts cannot be deleted or cancelled by members.');
+      return;
+    }
+
+    const warning = m.payment_id
+      ? (m.receipt_status === 'approved'
+          ? 'Delete this APPROVED receipt? This removes the payment record, and the member will no longer be marked as paid for this contribution.'
+          : 'Delete this receipt? Its payment record and linked group-chat post will be removed.')
+      : 'Delete this message? It disappears for everyone in the group.';
+    if (!window.confirm(warning)) return;
+
     setDeleting(true);
     try {
       const { supabase } = await import('@/lib/supabase');
-      const { error } = await supabase.from('group_messages').delete().eq('id', m.id);
-      if (error) throw error;
-      setMsgs(prev => prev.filter(x => x.id !== m.id));
+      const result = m.payment_id
+        ? await supabase.rpc('delete_group_payment_receipt', { p_payment_id: String(m.payment_id) })
+        : await supabase.from('group_messages').delete().eq('id', m.id);
+      if (result.error) throw result.error;
+      setMsgs(prev => m.payment_id ? prev.filter(x => x.payment_id !== m.payment_id) : prev.filter(x => x.id !== m.id));
       setSel('');
+      toast.success(m.payment_id ? (m.receipt_status === 'approved' ? 'Approved receipt deleted — its paid credit was removed.' : 'Receipt deleted.') : 'Message deleted.');
     } catch (err) { toast.error(`Could not delete: ${err.message || 'try again'}`); }
     setDeleting(false);
   };
@@ -437,10 +459,14 @@ function GroupChatInner() {
                     <p className="text-center text-xs text-gray-400 py-10">No messages yet — start the conversation! 🎉<br />Everyone in this group can read and reply here.</p>
                   )}
                   {msgs.length > 0 && (
-                    <p className="text-center text-[10px] text-gray-300 mb-1">Tip: tap your own bubble to delete it 🗑</p>
+                    <p className="text-center text-[10px] text-gray-300 mb-1">
+                      {isRoomAdmin ? 'Admin: tap any bubble to moderate it 🗑' : (g?.chat_open ? 'Tap your own bubble to delete it 🗑' : 'Message deletion is paused while the admin has this chat locked 🔒')}
+                    </p>
                   )}
                   {msgs.map((m, i) => {
                     const mine = (m.from_email || '').toLowerCase() === me;
+                    const memberCanDelete = mine && g?.chat_open === true && (!m.payment_id || m.receipt_status !== 'approved');
+                    const canDelete = isRoomAdmin || memberCanDelete;
                     const u = mine ? null : person(m.from_email);
                     const prev = msgs[i - 1];
                     const showDate = !prev || new Date(prev.created_at).toDateString() !== new Date(m.created_at).toDateString();
@@ -454,8 +480,8 @@ function GroupChatInner() {
                               : <span className="w-6 h-6 rounded-full bg-emerald-100 text-emerald-700 text-[10px] font-bold flex items-center justify-center shrink-0">{(u?.name || 'P').charAt(0).toUpperCase()}</span>
                           )}
                           <div
-                            onClick={mine && !String(m.id).startsWith('local-') ? () => setSel(sel === m.id ? '' : m.id) : undefined}
-                            className={`max-w-[78%] px-3.5 py-2 rounded-2xl text-sm ${mine ? 'bg-primary-600 text-white rounded-br-md' : 'bg-gray-100 text-gray-900 rounded-bl-md'} ${mine ? 'cursor-pointer' : ''} ${sel === m.id ? 'ring-2 ring-red-300' : ''}${String(cs.activeId) === String(m.id) || cs.flash === String(m.id) ? ' ring-2 ring-yellow-400' : ''}`}
+                            onClick={canDelete && !String(m.id).startsWith('local-') ? () => setSel(sel === m.id ? '' : m.id) : undefined}
+                            className={`max-w-[78%] px-3.5 py-2 rounded-2xl text-sm ${mine ? 'bg-primary-600 text-white rounded-br-md' : 'bg-gray-100 text-gray-900 rounded-bl-md'} ${canDelete ? 'cursor-pointer' : ''} ${sel === m.id ? 'ring-2 ring-red-300' : ''}${String(cs.activeId) === String(m.id) || cs.flash === String(m.id) ? ' ring-2 ring-yellow-400' : ''}`}
                           >
                             {!mine && (
                               <p className="text-[10px] font-bold text-emerald-600 flex items-center gap-1">
@@ -513,9 +539,11 @@ function GroupChatInner() {
                             )}
                           </div>
                         )}
-                        {mine && sel === m.id && (
-                          <div className="flex justify-end">
-                            <button onClick={() => del(m)} disabled={deleting} className="text-[11px] font-semibold text-red-600 bg-red-50 border border-red-100 px-3 py-1 rounded-full hover:bg-red-100 disabled:opacity-50">🗑 Delete this message</button>
+                        {canDelete && sel === m.id && (
+                          <div className={`flex ${mine ? 'justify-end' : 'justify-start'}`}>
+                            <button onClick={() => del(m)} disabled={deleting} className="text-[11px] font-semibold text-red-600 bg-red-50 border border-red-100 px-3 py-1 rounded-full hover:bg-red-100 disabled:opacity-50">
+                              🗑 {m.payment_id ? 'Delete this receipt' : (isRoomAdmin && !mine ? 'Admin delete message' : 'Delete this message')}
+                            </button>
                           </div>
                         )}
                       </div>
