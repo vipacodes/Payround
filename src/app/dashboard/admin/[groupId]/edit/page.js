@@ -7,7 +7,7 @@ import Footer from '@/components/Footer';
 import LoadingScreen from '@/components/LoadingScreen';
 import {
   HiArrowLeft, HiPencil, HiClock, HiCheckCircle, HiExclamation,
-  HiTrash, HiShieldCheck, HiBan
+  HiTrash, HiShieldCheck, HiBan, HiRefresh
 } from 'react-icons/hi';
 import { parseSpots, periodLabel, adminInterest, frequencyLabel } from '@/lib/payments';
 import toast from 'react-hot-toast';
@@ -44,6 +44,10 @@ export default function EditGroupPage() {
   const [showDelete, setShowDelete] = useState(false);
   const [delPass, setDelPass] = useState('');
   const [deleting, setDeleting] = useState(false);
+  const [cycleStatus, setCycleStatus] = useState(null);
+  const [cycleStatusError, setCycleStatusError] = useState('');
+  const [showCycleConfirm, setShowCycleConfirm] = useState(false);
+  const [startingCycle, setStartingCycle] = useState(false);
 
   const load = async () => {
     try {
@@ -63,6 +67,14 @@ export default function EditGroupPage() {
       setTakenSpots(taken.size);
       const { data: reqs } = await supabase.from('group_edit_requests').select('*').eq('group_id', params.groupId).order('created_at', { ascending: false }).limit(10);
       setRequests(reqs || []);
+      const { data: reuseStatus, error: reuseError } = await supabase.rpc('get_group_cycle_rollover_status', { p_group_id: String(params.groupId) });
+      if (reuseError) {
+        setCycleStatus(null);
+        setCycleStatusError(reuseError.message || 'Could not check whether this contribution is complete.');
+      } else {
+        setCycleStatus(reuseStatus || null);
+        setCycleStatusError('');
+      }
     } catch (e) { toast.error('Could not load the group.'); }
     setLoading(false);
   };
@@ -129,6 +141,33 @@ export default function EditGroupPage() {
     setSubmitting(false);
   };
 
+  // 🔄 Reuse this group only after the server proves the full contribution is complete.
+  // The RPC archives financial history and clears active memberships/receipts atomically.
+  const startNextCycle = async () => {
+    if (!cycleStatus?.eligible || startingCycle) return;
+    if (changeCount > 0) {
+      toast.error('Finish or undo your unsaved group-detail changes before starting the next contribution.');
+      return;
+    }
+    setStartingCycle(true);
+    try {
+      const { supabase } = await import('@/lib/supabase');
+      const { data, error } = await supabase.rpc('start_new_group_cycle', {
+        p_group_id: String(params.groupId),
+        p_confirm: true,
+      });
+      if (error) throw error;
+      if (!data?.ok) throw new Error('The new contribution was not started.');
+      setShowCycleConfirm(false);
+      toast.success(`Contribution cycle ${data.cycle_number} is ready — members can select fresh spots for your approval. 🔄`);
+      await load();
+    } catch (e) {
+      toast.error(`Could not start a new contribution: ${e.message || 'try again'}`);
+      await load();
+    }
+    setStartingCycle(false);
+  };
+
   // 🗑 Delete the whole group — needs the admin's account password
   const deleteGroup = async () => {
     if (!delPass.trim() || deleting) return;
@@ -162,6 +201,81 @@ export default function EditGroupPage() {
             <h1 className="text-xl font-bold text-gray-900 flex items-center gap-2"><HiPencil className="w-5 h-5 text-primary-600" /> Edit {group.name}</h1>
             <p className="text-xs text-gray-400 font-mono">Group ID: {group.id} — the ID never changes</p>
           </div>
+        </div>
+
+        {/* Completed-cycle reuse — server-authorized and audit-safe */}
+        <div className={`rounded-2xl border-2 p-5 mb-6 ${cycleStatus?.eligible ? 'bg-emerald-50 border-emerald-300' : 'bg-white border-gray-100'}`}>
+          <div className="flex items-start justify-between gap-3 flex-wrap">
+            <div>
+              <h2 className="font-bold text-gray-900 flex items-center gap-2"><HiRefresh className={`w-5 h-5 ${cycleStatus?.eligible ? 'text-emerald-600' : 'text-primary-600'}`} /> Reuse this group</h2>
+              <p className="text-xs text-gray-500 mt-1">
+                Contribution cycle <b>#{cycleStatus?.cycle_number || group.cycle_number || 1}</b>. The group ID, settings and valid creation fee stay in place when a completed cycle starts again.
+              </p>
+            </div>
+            {cycleStatus?.fee_expires_at && (
+              <span className={`text-[10px] font-bold px-2.5 py-1 rounded-full border ${cycleStatus.fee_valid ? 'text-emerald-700 bg-white border-emerald-200' : 'text-red-700 bg-red-50 border-red-200'}`}>
+                Fee {cycleStatus.fee_valid ? 'valid until' : 'expired'} {new Date(cycleStatus.fee_expires_at).toLocaleDateString()}
+              </span>
+            )}
+          </div>
+
+          {cycleStatusError ? (
+            <p className="text-xs text-red-700 bg-red-50 border border-red-200 rounded-xl p-3 mt-4">Could not securely check cycle completion: {cycleStatusError}</p>
+          ) : cycleStatus ? (
+            <>
+              <div className="grid grid-cols-3 gap-2 mt-4">
+                <div className="bg-white/90 border border-gray-100 rounded-xl p-2.5 text-center">
+                  <p className="text-base font-bold text-gray-900">{cycleStatus.allocated_spots || 0}/{cycleStatus.max_spots || 0}</p>
+                  <p className="text-[10px] text-gray-500">spots allocated</p>
+                </div>
+                <div className="bg-white/90 border border-gray-100 rounded-xl p-2.5 text-center">
+                  <p className="text-base font-bold text-gray-900">{cycleStatus.contribution_ready_spots || 0}/{cycleStatus.max_spots || 0}</p>
+                  <p className="text-[10px] text-gray-500">fully paid</p>
+                </div>
+                <div className="bg-white/90 border border-gray-100 rounded-xl p-2.5 text-center">
+                  <p className="text-base font-bold text-gray-900">{cycleStatus.collected_payouts || 0}/{cycleStatus.max_spots || 0}</p>
+                  <p className="text-[10px] text-gray-500">payouts collected</p>
+                </div>
+              </div>
+
+              {cycleStatus.eligible ? (
+                <div className="mt-4">
+                  <p className="text-xs font-semibold text-emerald-800 bg-white/80 border border-emerald-200 rounded-xl p-3">
+                    ✅ This contribution is complete. You can start cycle #{cycleStatus.next_cycle_number} without paying another creation fee.
+                  </p>
+                  {!showCycleConfirm ? (
+                    <button type="button" onClick={() => setShowCycleConfirm(true)} className="w-full mt-3 bg-emerald-600 text-white font-semibold py-3 rounded-xl hover:bg-emerald-700 flex items-center justify-center gap-2">
+                      <HiRefresh className="w-4 h-4" /> Start a New Contribution…
+                    </button>
+                  ) : (
+                    <div className="mt-3 bg-white border-2 border-amber-300 rounded-xl p-4">
+                      <p className="text-sm font-bold text-amber-900">Confirm cycle #{cycleStatus.next_cycle_number}</p>
+                      <p className="text-xs text-amber-800 mt-1 leading-relaxed">
+                        Previous members, receipts and payouts will be closed and preserved in the audit archive. They will disappear from the active contribution. <b>No spot allocation carries over.</b> Former members must select fresh spots, and you must approve or allocate those spots again.
+                      </p>
+                      <p className="text-[11px] text-red-700 font-semibold mt-2">This active-cycle reset cannot be undone from the app.</p>
+                      <div className="flex gap-2 mt-3">
+                        <button type="button" onClick={startNextCycle} disabled={startingCycle} className="flex-1 bg-emerald-600 text-white text-sm font-semibold py-2.5 rounded-xl hover:bg-emerald-700 disabled:opacity-50">
+                          {startingCycle ? 'Starting…' : `Yes, Start Cycle #${cycleStatus.next_cycle_number}`}
+                        </button>
+                        <button type="button" onClick={() => setShowCycleConfirm(false)} disabled={startingCycle} className="px-4 border border-gray-200 text-gray-600 text-sm rounded-xl hover:bg-gray-50 disabled:opacity-50">Cancel</button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div className="mt-4 bg-gray-50 border border-gray-200 rounded-xl p-3">
+                  <p className="text-xs font-bold text-gray-700 mb-1.5">Not ready for another contribution yet:</p>
+                  <ul className="space-y-1 text-[11px] text-gray-600">
+                    {(cycleStatus.blockers || []).map((reason, index) => <li key={`${reason}-${index}`}>• {reason}</li>)}
+                  </ul>
+                  <p className="text-[10px] text-gray-400 mt-2">Completion is checked by PayRound on the server — changing what is shown on this phone cannot bypass it.</p>
+                </div>
+              )}
+            </>
+          ) : (
+            <p className="text-xs text-gray-400 mt-4">Checking this contribution’s completion…</p>
+          )}
         </div>
 
         {/* Change form — core changes need PayRound approval */}

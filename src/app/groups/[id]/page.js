@@ -490,7 +490,7 @@ export default function GroupDetailsPage() {
   const autoSpots = adminAutoSpots(group, spotMap); // 👑 admin-held spots that tick themselves paid
   const adminMoney = adminInterest(group);
   const myPayments = me?.email ? payments.filter(p => (p.user_email || '').toLowerCase() === me.email.toLowerCase()) : [];
-  const receiptAmount = (group.amount || 0) * Math.max(1, paySpots.length) * payWeeks;
+  const receiptAmount = (group.amount || 0) * paySpots.length * payWeeks;
 
   const onReceiptPicked = async (file) => {
     if (!file) return;
@@ -1161,20 +1161,31 @@ export default function GroupDetailsPage() {
                 ) : (
                   <>
                     <label className="block text-xs font-semibold text-gray-600 mb-1.5">Which spot(s) are you paying for? *</label>
-                    <div className="flex flex-wrap gap-2 mb-4">
+                    <p className="text-[11px] text-gray-500 mb-2">Tap each spot to switch it between <b className="text-emerald-700">PAYING FOR</b> and <b>NOT PAYING FOR</b> on this receipt.</p>
+                    <div className="flex flex-wrap gap-2 mb-3">
                       {mySpots.map(spot => {
                         const on = paySpots.includes(spot);
                         return (
                           <button
                             key={spot}
                             type="button"
-                            onClick={() => setPaySpots(on ? paySpots.filter(x => x !== spot) : [...paySpots, spot])}
-                            className={`px-3 py-1.5 rounded-full text-xs font-semibold border ${on ? 'bg-primary-600 text-white border-primary-600' : 'bg-white text-gray-600 border-gray-200'}`}
+                            aria-pressed={on}
+                            onClick={() => setPaySpots(on ? paySpots.filter(x => x !== spot) : [...paySpots, spot].sort((a, b) => a - b))}
+                            className={`px-3 py-2 rounded-xl text-xs font-semibold border text-left ${on ? 'bg-emerald-600 text-white border-emerald-600' : 'bg-gray-50 text-gray-600 border-gray-300'}`}
                           >
-                            #{spot}
+                            <span className="block">#{spot}</span>
+                            <span className={`block text-[9px] mt-0.5 ${on ? 'text-emerald-50' : 'text-gray-500'}`}>{on ? '✓ PAYING FOR' : '○ NOT PAYING FOR'}</span>
                           </button>
                         );
                       })}
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mb-4 text-[11px]">
+                      <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-emerald-800">
+                        <b>✓ Paying for:</b> {paySpots.length ? paySpots.map(spot => `#${spot}`).join(', ') : 'No spots selected'}
+                      </div>
+                      <div className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-gray-600">
+                        <b>○ Not paying for:</b> {mySpots.filter(spot => !paySpots.includes(spot)).length ? mySpots.filter(spot => !paySpots.includes(spot)).map(spot => `#${spot}`).join(', ') : 'None'}
+                      </div>
                     </div>
 
                     <label className="block text-xs font-semibold text-gray-600 mb-1.5">How many {label}s does this payment cover? *</label>
@@ -1187,7 +1198,7 @@ export default function GroupDetailsPage() {
                         <option key={w} value={w}>{w} {label}{w > 1 ? `s${w > 1 ? ' (paying upfront)' : ''}` : ''}</option>
                       ))}
                     </select>
-                    <p className="text-[11px] text-gray-400 mb-4">Expected amount: <strong className="text-gray-700">₦{receiptAmount.toLocaleString()}</strong> ({paySpots.length || 1} spot{(paySpots.length || 1) > 1 ? 's' : ''} × {payWeeks} {label}{payWeeks > 1 ? 's' : ''} × ₦{Number(group.amount || 0).toLocaleString()})</p>
+                    <p className="text-[11px] text-gray-400 mb-4">Expected amount: <strong className="text-gray-700">₦{receiptAmount.toLocaleString()}</strong> ({paySpots.length} selected spot{paySpots.length === 1 ? '' : 's'} × {payWeeks} {label}{payWeeks > 1 ? 's' : ''} × ₦{Number(group.amount || 0).toLocaleString()})</p>
 
                     <label className="block text-xs font-semibold text-gray-600 mb-1.5">Receipt image *</label>
                     <label className="w-full border-2 border-dashed border-gray-200 rounded-xl p-4 flex items-center justify-center gap-2 cursor-pointer hover:border-primary-300 hover:bg-primary-50/40 transition-all mb-4">
@@ -1203,10 +1214,10 @@ export default function GroupDetailsPage() {
 
                     <button
                       onClick={submitReceipt}
-                      disabled={uploading}
+                      disabled={uploading || paySpots.length === 0}
                       className="w-full bg-primary-600 text-white font-semibold py-3 rounded-xl hover:bg-primary-700 transition-all disabled:opacity-50"
                     >
-                      {uploading ? 'Sending…' : `Send Receipt for Review (₦${receiptAmount.toLocaleString()})`}
+                      {uploading ? 'Sending…' : paySpots.length === 0 ? 'Select at least one “Paying for” spot' : `Send Receipt for Review (₦${receiptAmount.toLocaleString()})`}
                     </button>
                   </>
                 )}
