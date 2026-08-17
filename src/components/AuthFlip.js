@@ -357,12 +357,24 @@ function SignupPane({ go }) {
         <div className="w-20 h-20 bg-emerald-50 rounded-full flex items-center justify-center mx-auto mb-4">
           <HiCheckCircle className="w-12 h-12 text-emerald-500" />
         </div>
-        <h2 className="text-xl font-bold text-gray-900 mb-2">Check your email 📧</h2>
-        <p className="text-gray-500 mb-2">We sent a confirmation link to your inbox (and maybe Spam).</p>
-        <p className="text-sm text-gray-400 mb-6">Tap that link first. Then come back and log in. Login will not work until you tap it.</p>
-        <button onClick={() => router.push(redirectPath || '/dashboard')} className="w-full bg-primary-600 text-white font-semibold py-3.5 rounded-xl hover:bg-primary-700 transition-all shadow-lg shadow-primary-200">
-          {redirectPath ? 'Continue →' : 'Go to Dashboard'}
-        </button>
+        <h2 className="text-xl font-bold text-gray-900 mb-2">Account created 🎉</h2>
+        <p className="text-gray-500 mb-6">Welcome to Payround! You are logged in and ready to go.</p>
+        <div className="space-y-3">
+          {redirectPath && (
+            <button onClick={() => router.push(redirectPath)} className="w-full bg-primary-600 text-white font-semibold py-3.5 rounded-xl hover:bg-primary-700 transition-all shadow-lg shadow-primary-200">
+              Continue →
+            </button>
+          )}
+          <button onClick={() => router.push('/dashboard')} className={`w-full font-semibold py-3.5 rounded-xl transition-all ${redirectPath ? 'bg-white border border-gray-200 text-gray-700 hover:bg-gray-50' : 'bg-primary-600 text-white hover:bg-primary-700 shadow-lg shadow-primary-200'}`}>
+            Go to Dashboard
+          </button>
+          <button onClick={() => router.push('/groups/search')} className="w-full bg-white border border-gray-200 text-gray-700 font-semibold py-3.5 rounded-xl hover:bg-gray-50 transition-all">
+            Join a Group
+          </button>
+          <button onClick={() => router.push('/groups/create')} className="w-full bg-white border border-gray-200 text-gray-700 font-semibold py-3.5 rounded-xl hover:bg-gray-50 transition-all">
+            Create a Group
+          </button>
+        </div>
       </div>
     );
   }
