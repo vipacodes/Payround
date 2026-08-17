@@ -12,7 +12,6 @@ import toast from 'react-hot-toast';
 
 export default function Header() {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
-  const [searchQuery, setSearchQuery] = useState('');
   const [showSearch, setShowSearch] = useState(false); // 🔍 search-anything overlay
   const router = useRouter();
   const pathname = usePathname();
@@ -218,14 +217,6 @@ export default function Header() {
     if (localStorage.getItem('payround_theme') === 'dark') document.documentElement.classList.add('dark');
     else document.documentElement.classList.remove('dark');
   }, [pathname]);
-
-  const handleSearch = (e) => {
-    e.preventDefault();
-    if (searchQuery.trim()) {
-      router.push(`/groups/search?q=${encodeURIComponent(searchQuery.trim())}`);
-      setIsMenuOpen(false);
-    }
-  };
 
   const handleLogout = async () => {
     try { const { signOutEverywhere } = await import('@/lib/session'); await signOutEverywhere(); } catch {}
@@ -597,20 +588,6 @@ export default function Header() {
       {isMenuOpen && (
         <div className="bg-white border-t border-gray-100 animate-fade-in max-h-[calc(100dvh-4rem)] overflow-y-auto overscroll-contain">
           <div className="px-4 py-4 space-y-4">
-            {/* Mobile Search */}
-            <form onSubmit={handleSearch}>
-              <div className="relative">
-                <input
-                  type="text"
-                  placeholder="Search groups by name or ID..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="w-full pl-10 pr-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
-                />
-                <HiSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 w-5 h-5" />
-              </div>
-            </form>
-
             <nav className="space-y-2">
               {isLoggedIn ? (
                 <>
@@ -619,11 +596,6 @@ export default function Header() {
                   <MobileNavItem icon={<HiChartBar className="w-5 h-5" />} label="Create Group" onClick={() => { router.push('/groups/create'); setIsMenuOpen(false); }} active={isActive('/groups/create')} />
                   <MobileNavItem icon={<HiSpeakerphone className="w-5 h-5" />} label="My Ads" onClick={() => { router.push('/ads?tab=mine'); setIsMenuOpen(false); }} active={isActive('/ads')} />
                   <MobileNavItem icon={<HiGift className="w-5 h-5" />} label="My Referrals" onClick={() => { router.push('/referrals'); setIsMenuOpen(false); }} active={isActive('/referrals')} />
-                  <MobileNavItem icon={<HiBell className="w-5 h-5" />} label={`Notifications${unreadCount > 0 ? ` (${unreadCount})` : ''}`} onClick={() => { router.push('/notifications'); setIsMenuOpen(false); }} active={isActive('/notifications')} />
-                  <MobileNavItem icon={<HiChatAlt2 className="w-5 h-5" />} label={`Messages${unreadMsgs > 0 ? ` (${unreadMsgs})` : ''}`} onClick={() => { router.push('/messages'); setIsMenuOpen(false); }} active={isActive('/messages')} />
-                  {gchatShow && (
-                    <MobileNavItem icon={<HiUserGroup className="w-5 h-5" />} label={`Group chats${gchatUnread > 0 ? ` (${gchatUnread})` : ''}`} onClick={() => { router.push('/group-chat'); setIsMenuOpen(false); }} active={isActive('/group-chat')} />
-                  )}
                   <MobileNavItem icon={<HiUser className="w-5 h-5" />} label="Profile" onClick={() => { router.push('/profile'); setIsMenuOpen(false); }} active={isActive('/profile')} />
                   <MobileNavItem icon={<HiCog className="w-5 h-5" />} label="Settings" onClick={() => { router.push('/settings'); setIsMenuOpen(false); }} active={isActive('/settings')} />
                   <div className="px-1 pt-1">
