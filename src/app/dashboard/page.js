@@ -10,7 +10,8 @@ import BroadcastAlert from '@/components/BroadcastAlert';
 import AdSlideshow from '@/components/AdSlideshow';
 import {
   HiUserGroup, HiUsers, HiCalendar, HiBadgeCheck, HiArrowRight, HiShieldCheck,
-  HiSearch, HiPlusCircle, HiExclamation, HiCash, HiPhotograph, HiUser
+  HiSearch, HiPlusCircle, HiExclamation, HiCash, HiPhotograph, HiUser,
+  HiTrendingUp, HiEye, HiEyeOff, HiChevronRight
 } from 'react-icons/hi';
 import {
   parseSpots, currentPeriod, cycleLength,
@@ -39,6 +40,17 @@ export default function DashboardPage() {
   const [peopleQ, setPeopleQ] = useState('');
   const [people, setPeople] = useState([]);
   const [peopleSearched, setPeopleSearched] = useState(false);
+  const [hideMoney, setHideMoney] = useState(false); // 👁 wallet-style privacy toggle
+
+  useEffect(() => {
+    try { setHideMoney(localStorage.getItem('payround_hide_money') === '1'); } catch {}
+  }, []);
+  const toggleHideMoney = () => {
+    setHideMoney(v => {
+      try { localStorage.setItem('payround_hide_money', v ? '0' : '1'); } catch {}
+      return !v;
+    });
+  };
 
   useEffect(() => {
     (async () => {
@@ -188,6 +200,35 @@ export default function DashboardPage() {
     return d ? { groupName: group.name, ...d } : null;
   }).filter(Boolean).sort((a, b) => (a.dueNow === b.dueNow ? a.date - b.date : a.dueNow ? -1 : 1));
 
+  // ---- 💰 wallet-style money summary (approved receipts only — no invented numbers) ----
+  const myEmail = (user.email || '').toLowerCase();
+  const totalSaved = joined.reduce((sum, { payments }) =>
+    sum + (payments || [])
+      .filter(p => p.status === 'approved' && (p.user_email || '').toLowerCase() === myEmail)
+      .reduce((s, p) => s + (Number(p.amount) || 0), 0), 0);
+  const totalCashedOut = joined.reduce((sum, { payouts }) =>
+    sum + (payouts || [])
+      .filter(p => (p.user_email || '').toLowerCase() === myEmail)
+      .reduce((s, p) => s + (Number(p.amount) || 0), 0), 0);
+  const nextDue = dueRows.find(r => !r.pending) || null;
+  const nextCash = (isAdmin ? [...cashRows] : cashRows).find(r => !r.pending) || null;
+  const naira = (n) => hideMoney ? '₦••••••' : `₦${Number(n || 0).toLocaleString()}`;
+
+  // ---- 📊 per-group cycle progress for the hero strip ----
+  const groupProgress = joined.map(({ group: g, member, members }) => {
+    const mySpots = parseSpots(member.spots);
+    const cg = withRotationClock(g, members);
+    const N = cycleLength(g);
+    const period = cg ? Math.min(currentPeriod(cg), N) : 0;
+    return {
+      id: g.id, name: g.name, avatar: g.avatar_url,
+      verified: g.is_verified, tier: g.badge_tier,
+      spots: mySpots.length, period, total: N,
+      pct: cg ? Math.min(100, Math.round((period / N) * 100)) : 0,
+      waiting: !cg && mySpots.length > 0,
+    };
+  });
+
   const searchPeople = async () => {
     try {
       const { supabase } = await import('@/lib/supabase');
@@ -208,9 +249,9 @@ export default function DashboardPage() {
   const Tab = ({ id, icon, label, badge }) => (
     <button
       onClick={() => setActiveTab(activeTab === id ? null : id)}
-      className={`shrink-0 flex items-center gap-2 px-5 py-3 rounded-full text-sm font-semibold border transition-all ${activeTab === id ? 'bg-primary-600 text-white border-primary-600 shadow-md shadow-primary-200' : 'bg-white text-gray-600 border-gray-200 hover:border-primary-300'}`}
+      className={`shrink-0 flex items-center gap-2 px-5 py-3 rounded-2xl text-sm font-semibold border transition-all ${activeTab === id ? 'bg-gray-900 text-white border-gray-900 shadow-lg shadow-gray-300' : 'bg-white text-gray-600 border-gray-200 shadow-sm hover:border-primary-300 hover:shadow-md'}`}
     >
-      {icon}{label}{badge !== undefined && <span className={`text-[11px] px-2 py-0.5 rounded-full ${activeTab === id ? 'bg-white/25 text-white' : 'bg-gray-100 text-gray-600'}`}>{badge}</span>}
+      {icon}{label}{badge !== undefined && <span className={`text-[11px] px-2 py-0.5 rounded-full ${activeTab === id ? 'bg-white/20 text-white' : 'bg-primary-50 text-primary-700'}`}>{badge}</span>}
     </button>
   );
 
@@ -220,16 +261,93 @@ export default function DashboardPage() {
       <BroadcastAlert />
 
       <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-5 md:py-7">
-        {/* Compact welcome */}
-        <div className="flex items-center gap-3 mb-4">
-          {account?.profile_pic
-            ? <img src={account.profile_pic} alt="" className="w-11 h-11 rounded-xl object-cover border border-gray-100 shrink-0" />
-            : <div className="w-11 h-11 bg-primary-100 rounded-xl flex items-center justify-center shrink-0"><span className="text-primary-700 font-bold">{(account?.name || user.name || 'U').charAt(0).toUpperCase()}</span></div>}
-          <h1 className="text-lg md:text-xl font-bold text-gray-900 flex items-center gap-1.5 truncate">
-            Welcome back, {(account?.name || user.name || 'there').split(' ')[0]} 👋
-            {account?.is_verified && <HiBadgeCheck className="w-6 h-6 text-blue-500 shrink-0 badge-emboss" title="Verified by PayRound" />}
-          </h1>
+        {/* ===== 💳 FINTECH HERO — money summary card ===== */}
+        <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-primary-700 via-primary-600 to-emerald-500 text-white shadow-xl shadow-primary-200/60 mb-4">
+          {/* decorative circles */}
+          <div className="pointer-events-none absolute -top-14 -right-14 w-44 h-44 rounded-full bg-white/10" />
+          <div className="pointer-events-none absolute -bottom-20 -left-10 w-56 h-56 rounded-full bg-white/5" />
+          <div className="pointer-events-none absolute top-10 right-24 w-16 h-16 rounded-full bg-gold-400/20" />
+
+          <div className="relative p-5 md:p-6">
+            {/* greeting row */}
+            <div className="flex items-center justify-between gap-3 mb-4">
+              <button onClick={() => router.push('/profile')} className="flex items-center gap-3 min-w-0 text-left">
+                {account?.profile_pic
+                  ? <img src={account.profile_pic} alt="" className="w-11 h-11 rounded-2xl object-cover ring-2 ring-white/40 shrink-0" />
+                  : <div className="w-11 h-11 bg-white/20 backdrop-blur rounded-2xl flex items-center justify-center shrink-0 ring-2 ring-white/40"><span className="font-bold">{(account?.name || user.name || 'U').charAt(0).toUpperCase()}</span></div>}
+                <div className="min-w-0">
+                  <p className="text-[11px] text-emerald-100 font-medium">{new Date().getHours() < 12 ? 'Good morning' : new Date().getHours() < 17 ? 'Good afternoon' : 'Good evening'} 👋</p>
+                  <p className="font-bold text-base truncate flex items-center gap-1">
+                    {(account?.name || user.name || 'there').split(' ')[0]}
+                    {account?.is_verified && <HiBadgeCheck className="w-5 h-5 text-sky-300 shrink-0" title="Verified by PayRound" />}
+                  </p>
+                </div>
+              </button>
+              <button onClick={toggleHideMoney} aria-label={hideMoney ? 'Show amounts' : 'Hide amounts'} className="w-9 h-9 rounded-full bg-white/15 hover:bg-white/25 backdrop-blur flex items-center justify-center shrink-0 transition-colors">
+                {hideMoney ? <HiEyeOff className="w-5 h-5" /> : <HiEye className="w-5 h-5" />}
+              </button>
+            </div>
+
+            {/* total saved */}
+            <p className="text-[11px] uppercase tracking-widest text-emerald-100 font-bold">Total saved with my groups</p>
+            <div className="flex items-end gap-2 mt-1">
+              <p className="text-3xl md:text-4xl font-black tabular-nums">{naira(totalSaved)}</p>
+              {totalCashedOut > 0 && (
+                <p className="text-[11px] text-emerald-100 mb-1.5 flex items-center gap-1"><HiTrendingUp className="w-3.5 h-3.5" /> {naira(totalCashedOut)} cashed out</p>
+              )}
+            </div>
+            <p className="text-[10px] text-emerald-100/80 mt-1">Approved contributions across {joined.length} group{joined.length === 1 ? '' : 's'}{isAdmin ? ` · managing ${managed.length}` : ''}</p>
+
+            {/* next payment / next cash out mini-cards */}
+            <div className="grid grid-cols-2 gap-2.5 mt-4">
+              <button onClick={() => setActiveTab(activeTab === 'due' ? null : 'due')} className="bg-white/15 hover:bg-white/25 backdrop-blur rounded-2xl p-3 text-left transition-colors">
+                <p className="text-[10px] uppercase tracking-wide text-emerald-100 font-bold flex items-center gap-1"><HiCalendar className="w-3.5 h-3.5" /> Next payment</p>
+                <p className="text-sm font-extrabold mt-1 truncate">
+                  {nextDue ? (nextDue.dueNow ? '⚠️ Due now' : fmtDate(nextDue.date)) : '—'}
+                </p>
+                <p className="text-[10px] text-emerald-100/80 truncate">{nextDue ? nextDue.groupName : 'No group yet'}</p>
+              </button>
+              <button onClick={() => setActiveTab(activeTab === 'cash' ? null : 'cash')} className="bg-white/15 hover:bg-white/25 backdrop-blur rounded-2xl p-3 text-left transition-colors">
+                <p className="text-[10px] uppercase tracking-wide text-emerald-100 font-bold flex items-center gap-1"><HiCash className="w-3.5 h-3.5" /> {isAdmin ? 'Next payout' : 'Next cash out'}</p>
+                <p className="text-sm font-extrabold mt-1 truncate">
+                  {(isAdmin ? payoutRows[0] : nextCash) ? ((isAdmin ? payoutRows[0] : nextCash).dueNow ? '💰 NOW' : fmtDate((isAdmin ? payoutRows[0] : nextCash).date)) : '—'}
+                </p>
+                <p className="text-[10px] text-emerald-100/80 truncate">{(isAdmin ? payoutRows[0] : nextCash)?.groupName || 'Nothing scheduled'}</p>
+              </button>
+            </div>
+          </div>
         </div>
+
+        {/* ===== 📊 MY GROUPS AT A GLANCE — cycle progress ===== */}
+        {groupProgress.length > 0 && (
+          <div className="mb-4 -mx-1 px-1 flex gap-2.5 overflow-x-auto pb-1">
+            {groupProgress.map(gp => (
+              <button key={gp.id} onClick={() => router.push(`/groups/${gp.id}`)} className="shrink-0 w-44 bg-white rounded-2xl border border-gray-100 shadow-sm hover:shadow-md hover:border-primary-200 p-3.5 text-left transition-all">
+                <div className="flex items-center gap-2 mb-2">
+                  {gp.avatar
+                    ? <img src={gp.avatar} alt="" className="w-8 h-8 rounded-lg object-cover border border-gray-100 shrink-0" />
+                    : <div className="w-8 h-8 bg-primary-100 rounded-lg flex items-center justify-center shrink-0"><span className="text-primary-700 font-bold text-xs">{gp.name?.charAt(0)}</span></div>}
+                  <p className="text-xs font-bold text-gray-900 truncate flex-1">{gp.name}</p>
+                </div>
+                {gp.waiting ? (
+                  <p className="text-[10px] text-amber-600 font-semibold">⏳ Waiting for the group to fill</p>
+                ) : (
+                  <>
+                    <div className="h-1.5 rounded-full bg-gray-100 overflow-hidden">
+                      <div className="h-full rounded-full bg-gradient-to-r from-primary-500 to-emerald-400 transition-all" style={{ width: `${gp.pct}%` }} />
+                    </div>
+                    <p className="text-[10px] text-gray-500 mt-1.5">Round {gp.period}/{gp.total} · {gp.pct}%{gp.spots > 1 ? ` · ${gp.spots} spots` : ''}</p>
+                  </>
+                )}
+              </button>
+            ))}
+            {/* add-a-group card at the end of the strip */}
+            <button onClick={() => setActiveTab('browse')} className="shrink-0 w-28 rounded-2xl border-2 border-dashed border-primary-200 hover:border-primary-400 hover:bg-primary-50/50 p-3.5 flex flex-col items-center justify-center gap-1 transition-all">
+              <HiPlusCircle className="w-6 h-6 text-primary-500" />
+              <span className="text-[10px] font-bold text-primary-600 text-center">Join another</span>
+            </button>
+          </div>
+        )}
 
         {/* ===== small clickable tabs (keep everything above the fold) ===== */}
         <div className="flex gap-2 overflow-x-auto pb-2 mb-1 -mx-1 px-1">
@@ -414,12 +532,14 @@ export default function DashboardPage() {
         )}
 
         {/* ===== the only two actions below the ads ===== */}
-        <div className="grid grid-cols-2 gap-2.5">
-          <button onClick={() => router.push('/groups/create')} className="bg-primary-600 hover:bg-primary-700 text-white rounded-xl px-3 py-2.5 flex items-center justify-center gap-1.5 shadow-md shadow-primary-200 transition-all">
-            <HiPlusCircle className="w-5 h-5" /><span className="text-xs font-semibold">Create Group</span>
+        <div className="grid grid-cols-2 gap-3">
+          <button onClick={() => router.push('/groups/create')} className="group bg-gradient-to-br from-primary-600 to-emerald-500 hover:from-primary-700 hover:to-emerald-600 text-white rounded-2xl px-4 py-4 flex items-center justify-between gap-2 shadow-lg shadow-primary-200 transition-all">
+            <span className="flex items-center gap-2"><HiPlusCircle className="w-6 h-6" /><span className="text-sm font-bold">Create Group</span></span>
+            <HiChevronRight className="w-4 h-4 opacity-60 group-hover:translate-x-0.5 transition-transform" />
           </button>
-          <button onClick={() => router.push('/groups/search')} className="bg-white hover:bg-primary-50 border-2 border-primary-300 text-primary-700 rounded-xl px-3 py-2.5 flex items-center justify-center gap-1.5 transition-all">
-            <HiSearch className="w-5 h-5" /><span className="text-xs font-semibold">Join a Group</span>
+          <button onClick={() => router.push('/groups/search')} className="group bg-white hover:bg-primary-50/60 border border-gray-200 hover:border-primary-300 text-gray-800 rounded-2xl px-4 py-4 flex items-center justify-between gap-2 shadow-sm hover:shadow-md transition-all">
+            <span className="flex items-center gap-2"><HiSearch className="w-6 h-6 text-primary-600" /><span className="text-sm font-bold">Join a Group</span></span>
+            <HiChevronRight className="w-4 h-4 text-gray-400 group-hover:translate-x-0.5 transition-transform" />
           </button>
         </div>
       </div>
