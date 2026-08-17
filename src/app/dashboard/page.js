@@ -341,11 +341,6 @@ export default function DashboardPage() {
                 )}
               </button>
             ))}
-            {/* add-a-group card at the end of the strip */}
-            <button onClick={() => setActiveTab('browse')} className="shrink-0 w-28 rounded-2xl border-2 border-dashed border-primary-200 hover:border-primary-400 hover:bg-primary-50/50 p-3.5 flex flex-col items-center justify-center gap-1 transition-all">
-              <HiPlusCircle className="w-6 h-6 text-primary-500" />
-              <span className="text-[10px] font-bold text-primary-600 text-center">Join another</span>
-            </button>
           </div>
         )}
 
@@ -353,8 +348,6 @@ export default function DashboardPage() {
         <div className="flex gap-2 overflow-x-auto pb-2 mb-1 -mx-1 px-1">
           <Tab id="joined" icon={<HiUserGroup className="w-4 h-4" />} label="Groups I Joined" badge={joined.length} />
           {isAdmin && <Tab id="manage" icon={<HiShieldCheck className="w-4 h-4" />} label="Groups I Manage" badge={managed.length} />}
-          <Tab id="due" icon={<HiCalendar className="w-4 h-4" />} label="Next Payment Due" badge={dueRows[0] ? (dueRows[0].dueNow ? 'now' : fmtDate(dueRows[0].date)) : '—'} />
-          <Tab id="cash" icon={<HiCash className="w-4 h-4" />} label={isAdmin ? 'Next Payout' : 'Next Cash Out'} badge={(isAdmin ? payoutRows : cashRows)[0] ? ((isAdmin ? payoutRows : cashRows)[0].dueNow ? 'now' : fmtDate((isAdmin ? payoutRows : cashRows)[0].date)) : '—'} />
           <Tab id="browse" icon={<HiSearch className="w-4 h-4" />} label="Browse Groups" />
           <Tab id="people" icon={<HiUsers className="w-4 h-4" />} label="Search Users" />
         </div>
