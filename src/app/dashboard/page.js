@@ -36,7 +36,6 @@ export default function DashboardPage() {
   // browse + people panels
   const [liveGroups, setLiveGroups] = useState([]);
   const [groupCounts, setGroupCounts] = useState({});
-  const [groupQ, setGroupQ] = useState('');
   const [peopleQ, setPeopleQ] = useState('');
   const [people, setPeople] = useState([]);
   const [peopleSearched, setPeopleSearched] = useState(false);
@@ -240,11 +239,7 @@ export default function DashboardPage() {
     } catch {}
   };
 
-  const filteredGroups = liveGroups.filter(g => {
-    const q = groupQ.trim().toLowerCase();
-    if (!q) return true;
-    return (g.name || '').toLowerCase().includes(q) || String(g.id).toLowerCase() === q || (g.admin_name || '').toLowerCase().includes(q);
-  }).sort((a, b) => (b.is_verified ? 1 : 0) - (a.is_verified ? 1 : 0));
+  const filteredGroups = [...liveGroups].sort((a, b) => (b.is_verified ? 1 : 0) - (a.is_verified ? 1 : 0));
 
   const Tab = ({ id, icon, label, badge }) => (
     <button
@@ -459,11 +454,7 @@ export default function DashboardPage() {
 
         {activeTab === 'browse' && (
           <div className="bg-white rounded-2xl border border-gray-100 p-4 mb-4 max-h-[65vh] overflow-y-auto">
-            <div className="relative mb-3">
-              <HiSearch className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-              <input value={groupQ} onChange={e => setGroupQ(e.target.value)} placeholder="Search by group name, ID or admin…" className="w-full pl-9 pr-3 py-2 border border-gray-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-primary-500" />
-            </div>
-            {filteredGroups.length === 0 ? <p className="text-sm text-gray-400 text-center py-4">No live groups match.</p>
+            {filteredGroups.length === 0 ? <p className="text-sm text-gray-400 text-center py-4">No live groups right now.</p>
               : filteredGroups.map(g => (
                 <button key={g.id} onClick={() => router.push(`/groups/${g.id}`)} className="w-full flex items-center gap-3 py-2.5 border-b border-gray-50 last:border-0 text-left hover:bg-gray-50/60 rounded-xl px-2">
                   {g.avatar_url
