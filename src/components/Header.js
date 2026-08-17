@@ -31,6 +31,7 @@ export default function Header() {
   const [freezeInfo, setFreezeInfo] = useState(null);
   const [deletionQueue, setDeletionQueue] = useState(null); // 🗓 voluntary deletion remains recoverable for 7 days
   const [restoringAccount, setRestoringAccount] = useState(false);
+  const [ownerDelFreezeLeft, setOwnerDelFreezeLeft] = useState(0); // ⏳ 10s hard freeze when PayRound deletes the account
 
   useEffect(() => {
     const stored = localStorage.getItem('payround_user');
@@ -133,6 +134,9 @@ export default function Header() {
         // A voluntary deletion request keeps the real profile intact for exactly
         // seven days. This global check also runs immediately after a fresh login,
         // so the user always sees the deadline and a working Restore button.
+        // An OWNER deletion also lands here: the same RPC returns deleted_by
+        // and the owner's typed reason, so the warning shows while the user is
+        // online, or at their very next login if they were offline.
         const deletionResult = await supabase.rpc('get_my_account_deletion_status');
         if (!deletionResult.error && mounted) {
           setDeletionQueue(deletionResult.data?.queued ? deletionResult.data : null);
@@ -158,6 +162,33 @@ export default function Header() {
       clearInterval(t);
     };
   }, [pathname]);
+
+  // ⏳ Owner-deletion hard freeze — the first time this deletion warning is
+  // shown (live while online, or at the next login if they were offline) the
+  // whole screen is locked for 10 seconds with a visible countdown before any
+  // button becomes usable. One freeze per deletion event, remembered locally.
+  const ownerDelFreezeKey = useRef('');
+  useEffect(() => {
+    if (!deletionQueue || deletionQueue.deleted_by !== 'owner') { setOwnerDelFreezeLeft(0); return; }
+    const key = `payround_ownerdel_freeze_${deletionQueue.requested_at || 'x'}`;
+    if (ownerDelFreezeKey.current === key) return; // same event already handled this mount
+    ownerDelFreezeKey.current = key;
+    let done = false;
+    try { done = localStorage.getItem(key) === '1'; } catch {}
+    if (done) { setOwnerDelFreezeLeft(0); return; }
+    setOwnerDelFreezeLeft(10);
+    const iv = setInterval(() => {
+      setOwnerDelFreezeLeft((s) => {
+        if (s <= 1) {
+          clearInterval(iv);
+          try { localStorage.setItem(key, '1'); } catch {}
+          return 0;
+        }
+        return s - 1;
+      });
+    }, 1000);
+    return () => clearInterval(iv);
+  }, [deletionQueue]);
 
   // 📛 App icon badge — the installed app shows the total unread count on its home-screen icon
   useEffect(() => {
@@ -237,7 +268,46 @@ export default function Header() {
 
   return (
     <header className="bg-white border-b border-gray-100 sticky top-0 z-50">
-      {deletionQueue && (
+      {deletionQueue && deletionQueue.deleted_by === 'owner' && (
+        <div className="fixed inset-0 z-[220] bg-white flex flex-col items-center justify-center px-6 text-center overflow-y-auto">
+          <div className="w-20 h-20 bg-red-50 border border-red-200 rounded-full flex items-center justify-center text-4xl mb-5">🚫</div>
+          <h1 className="text-2xl font-bold text-gray-900 mb-2">Account deleted by the PayRound team</h1>
+          <p className="text-sm text-gray-600 max-w-lg mb-3">Your account has been deleted by the PayRound team due to:</p>
+          <div className="w-full max-w-lg text-left bg-red-50 border border-red-200 rounded-2xl p-4 mb-4">
+            <p className="text-[10px] font-bold text-red-700 uppercase tracking-wider mb-1">Reason from the PayRound team</p>
+            <p className="text-sm font-semibold text-red-900">{deletionQueue.reason || 'This account broke PayRound rules.'}</p>
+          </div>
+          <div className="w-full max-w-lg rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 mb-4">
+            <p className="text-sm font-bold text-amber-950">{deletionCountdown}</p>
+            <p className="text-xs text-amber-800 mt-1">Your account stays in the PayRound delete queue for 7 days. Permanent deletion: {deletionDeadline ? deletionDeadline.toLocaleString() : 'deadline unavailable'}</p>
+            <p className="text-xs text-amber-800 mt-1">If you believe this is a mistake, contact PayRound support before the deadline to request account recovery. After the deadline, deletion is permanent.</p>
+          </div>
+          <div className="w-full max-w-lg grid sm:grid-cols-2 gap-2 mb-1">
+            <a
+              href="mailto:payroundsupport@gmail.com?subject=Account%20deletion%20appeal"
+              className="bg-primary-600 text-white text-sm font-bold px-5 py-3 rounded-xl hover:bg-primary-700"
+            >📩 Contact PayRound Support</a>
+            <a
+              href="https://wa.me/2349151723199"
+              target="_blank"
+              rel="noreferrer"
+              className="bg-emerald-600 text-white text-sm font-bold px-5 py-3 rounded-xl hover:bg-emerald-700"
+            >💬 WhatsApp Support</a>
+          </div>
+          <button onClick={handleLogout} className="mt-3 text-xs font-semibold text-gray-500 px-4 py-2 hover:text-gray-800">Log out</button>
+          {ownerDelFreezeLeft > 0 && (
+            <div className="absolute inset-0 z-[230] bg-black/70 backdrop-blur-sm flex flex-col items-center justify-center px-6 text-center cursor-not-allowed" aria-live="assertive">
+              <div className="w-24 h-24 rounded-full border-4 border-red-500 bg-white flex items-center justify-center mb-4">
+                <span className="text-4xl font-extrabold text-red-600 tabular-nums">{ownerDelFreezeLeft}</span>
+              </div>
+              <p className="text-white text-lg font-bold mb-1">⚠️ Account deleted by the PayRound team</p>
+              <p className="text-white/90 text-sm max-w-md">Due to: {deletionQueue.reason || 'This account broke PayRound rules.'}</p>
+              <p className="text-white/70 text-xs mt-3">Please read this message. Your screen unlocks in {ownerDelFreezeLeft} second{ownerDelFreezeLeft === 1 ? '' : 's'}…</p>
+            </div>
+          )}
+        </div>
+      )}
+      {deletionQueue && deletionQueue.deleted_by !== 'owner' && (
         <div className="fixed inset-0 z-[210] bg-white flex flex-col items-center justify-center px-6 text-center overflow-y-auto">
           <div className="w-20 h-20 bg-amber-50 border border-amber-200 rounded-full flex items-center justify-center text-4xl mb-5">🗓️</div>
           <h1 className="text-2xl font-bold text-gray-900 mb-2">Account deletion is scheduled</h1>
