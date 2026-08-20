@@ -254,18 +254,32 @@ function MessagesInner() {
         if (!error) setFreezeInfo(data || { frozen: false, admins: [] });
       } catch { setFreezeInfo({ frozen: false, admins: [] }); }
     })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // 🔗 Deep links stay in sync with the URL on every navigation — tapping the
+  // header 💬 icon (plain /messages) while inside a chat returns to the inbox,
+  // because Next.js updates searchParams without remounting this page.
+  useEffect(() => {
+    const stored = localStorage.getItem('payround_user');
+    let email = '';
+    try { email = (JSON.parse(stored || '{}').email || '').toLowerCase(); } catch {}
     const to = (searchParams.get('to') || '').toLowerCase();
     const supportRequested = searchParams.get('support') === '1' || to === SUPPORT_ID;
     const userHint = (searchParams.get('user') || '').toLowerCase();
     const validUserHint = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(userHint) ? userHint : '';
-    if (supportRequested) setActive(SUPPORT_ID);
+    if (supportRequested) { setActive(SUPPORT_ID); setActiveUserHint(''); }
+    else if (to && to !== email) { setActive(to); setActiveUserHint(validUserHint || ''); }
+    else if (validUserHint) { setActiveUserHint(validUserHint); setActive(`user:${validUserHint}`); }
     else {
-      if (validUserHint) setActiveUserHint(validUserHint);
-      if (to && to !== email) setActive(to);
-      else if (validUserHint) setActive(`user:${validUserHint}`);
+      // Plain /messages with no target → show the inbox (all conversations)
+      setActive('');
+      setActiveUserHint('');
+      setOtherUser(null);
+      if (email) loadThreads(email);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [searchParams]);
 
   useEffect(() => {
     if (!freezeInfo?.frozen || !active || active === SUPPORT_ID) return;
