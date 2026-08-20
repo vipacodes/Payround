@@ -461,7 +461,7 @@ function MessagesInner() {
       nearBottom.current = true;
       setSupMsgs(prev => prev.some(x => x.id === row.id) ? prev : [...prev, { ...row, created_at: now }]);
       scrollToEnd();
-      if (!ownerOnline) {
+      if (!ownerOnline && !supThread?.bot_muted) {
         const reply = botReply(text, { name: meName, settings: botSettings, msgs: supMsgs, email: me });
         setBotTyping(true);
         setTimeout(async () => {
@@ -469,10 +469,16 @@ function MessagesInner() {
             const { supabase: sb } = await import('@/lib/supabase');
             const { data: botSent, error: botError } = await sb.rpc('send_my_support_bot_message', { p_thread_id: tid, p_body: reply });
             if (botError) throw botError;
-            const brow = { id: botSent?.id || `sm-${Date.now()}-bot`, thread_id: tid, sender_type: 'bot', body: reply };
-            setSupMsgs(prev => prev.some(x => x.id === brow.id) ? prev : [...prev, { ...brow, created_at: botSent?.created_at || new Date().toISOString() }]);
-            sounds.pop();
-            scrollToEnd();
+            // 🤖🔇 Report-related conversations are human-only: the server refuses
+            // the bot reply and answers { muted: true } — show nothing.
+            if (botSent?.muted) {
+              setSupThread(prev => prev ? { ...prev, bot_muted: true } : prev);
+            } else {
+              const brow = { id: botSent?.id || `sm-${Date.now()}-bot`, thread_id: tid, sender_type: 'bot', body: reply };
+              setSupMsgs(prev => prev.some(x => x.id === brow.id) ? prev : [...prev, { ...brow, created_at: botSent?.created_at || new Date().toISOString() }]);
+              sounds.pop();
+              scrollToEnd();
+            }
           } catch {}
           setBotTyping(false);
         }, 1100);
@@ -654,7 +660,7 @@ function MessagesInner() {
                   </p>
                   <p className="text-[11px] text-gray-300 flex items-center gap-1.5 mt-0.5">
                     <span className={`w-2 h-2 rounded-full inline-block ${ownerOnline ? 'bg-emerald-400 animate-pulse' : 'bg-gray-400'}`} />
-                    {ownerOnline ? 'Team is ONLINE — you\'re chatting with the owner directly' : `🤖 ${BOT_NAME} answers instantly while the team is away`}
+                    {ownerOnline ? 'Team is ONLINE — you\'re chatting with the owner directly' : supThread?.bot_muted ? 'The PayRound team will reply to you personally' : `🤖 ${BOT_NAME} answers instantly while the team is away`}
                   </p>
                 </div>
                 <button onClick={cs.toggle} aria-label="Search in this chat" title="Search in this chat"
