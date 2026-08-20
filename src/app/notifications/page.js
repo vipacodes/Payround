@@ -107,6 +107,11 @@ export default function NotificationsPage() {
       }
       case 'referral_bonus':
         return '/profile';
+      case 'referral_recorded':
+        return '/referrals'; // 🎁 someone joined with your link → see them on your referrals list
+      case 'support_reply':
+      case 'owner_report_message':
+        return '/messages?support=1'; // 💬 PayRound Support replied → straight into the support chat
       case 'ad_review':
         return '/ads';
       case 'user_approved':
