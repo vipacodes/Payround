@@ -341,7 +341,7 @@ export default function Header() {
             <p className="text-xs text-red-600 mt-3">All other app actions, group activity and unrelated direct chats are blocked.</p>
           </div>
           <div className="w-full max-w-lg grid sm:grid-cols-2 gap-2 mt-4">
-            <button onClick={() => router.push('/messages')} className="bg-gray-900 text-white text-sm font-bold px-5 py-3 rounded-xl hover:bg-gray-800">
+            <button onClick={() => router.push(`/messages?inbox=${Date.now()}`)} className="bg-gray-900 text-white text-sm font-bold px-5 py-3 rounded-xl hover:bg-gray-800">
               Chat group admins ({freezeInfo?.admins?.length || 0})
             </button>
             <button onClick={() => router.push('/messages?support=1')} className="bg-primary-600 text-white text-sm font-bold px-5 py-3 rounded-xl hover:bg-primary-700">
@@ -447,7 +447,7 @@ export default function Header() {
                 </button>
 
                 <button
-                  onClick={() => router.push('/messages')}
+                  onClick={() => router.push(`/messages?inbox=${Date.now()}`)}
                   aria-label="Messages"
                   title="Messages"
                   className="relative p-2 text-gray-500 hover:text-primary-600 transition-colors"
@@ -552,7 +552,7 @@ export default function Header() {
             )}
             {isLoggedIn && (
               <button
-                onClick={() => router.push('/messages')}
+                onClick={() => router.push(`/messages?inbox=${Date.now()}`)}
                 aria-label="Messages"
                 className="relative p-2 text-gray-600 hover:text-primary-600 transition-colors"
               >
