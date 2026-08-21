@@ -166,28 +166,29 @@ export default function Header() {
   // shown (live while online, or at the next login if they were offline) the
   // whole screen is locked for 10 seconds with a visible countdown before any
   // button becomes usable. One freeze per deletion event, remembered locally.
-  const ownerDelFreezeKey = useRef('');
+  // The effect is keyed on the STABLE requested_at string — NOT the object —
+  // because the status poll builds a fresh object every ~8s; keying on the
+  // object identity used to cancel the ticking interval mid-count (stuck at 3).
+  // The remaining time comes from a fixed deadline, so re-renders can't stall it.
+  const ownerDelEventKey = deletionQueue?.deleted_by === 'owner' ? (deletionQueue.requested_at || 'x') : '';
   useEffect(() => {
-    if (!deletionQueue || deletionQueue.deleted_by !== 'owner') { setOwnerDelFreezeLeft(0); return; }
-    const key = `payround_ownerdel_freeze_${deletionQueue.requested_at || 'x'}`;
-    if (ownerDelFreezeKey.current === key) return; // same event already handled this mount
-    ownerDelFreezeKey.current = key;
+    if (!ownerDelEventKey) { setOwnerDelFreezeLeft(0); return; }
+    const key = `payround_ownerdel_freeze_${ownerDelEventKey}`;
     let done = false;
     try { done = localStorage.getItem(key) === '1'; } catch {}
     if (done) { setOwnerDelFreezeLeft(0); return; }
+    const deadline = Date.now() + 10000;
     setOwnerDelFreezeLeft(10);
     const iv = setInterval(() => {
-      setOwnerDelFreezeLeft((s) => {
-        if (s <= 1) {
-          clearInterval(iv);
-          try { localStorage.setItem(key, '1'); } catch {}
-          return 0;
-        }
-        return s - 1;
-      });
-    }, 1000);
+      const left = Math.max(0, Math.ceil((deadline - Date.now()) / 1000));
+      setOwnerDelFreezeLeft(left);
+      if (left <= 0) {
+        clearInterval(iv);
+        try { localStorage.setItem(key, '1'); } catch {}
+      }
+    }, 250);
     return () => clearInterval(iv);
-  }, [deletionQueue]);
+  }, [ownerDelEventKey]);
 
   // 📛 App icon badge — the installed app shows the total unread count on its home-screen icon
   useEffect(() => {
