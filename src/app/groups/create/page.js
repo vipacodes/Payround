@@ -57,14 +57,30 @@ export default function CreateGroupPage() {
   });
 
   useEffect(() => {
-    const storedUser = localStorage.getItem('payround_user');
-    if (storedUser) {
+    // 🔐 Creating a group requires an account — send visitors to log in or
+    // sign up first, and bring them straight back here afterwards.
+    (async () => {
+      const storedUser = localStorage.getItem('payround_user');
+      let hasSession = false;
       try {
-        const u = JSON.parse(storedUser);
-        const flag = localStorage.getItem(`trial_used_${u.email?.toLowerCase()}`);
-        if (flag) setTrialUsed(true);
+        const { supabase } = await import('@/lib/supabase');
+        const { data: { session } } = await supabase.auth.getSession();
+        hasSession = !!session;
       } catch {}
-    }
+      if (!storedUser && !hasSession) {
+        toast('Log in or create a free account to create a group.', { icon: '🔐' });
+        router.replace('/login?redirect=/groups/create');
+        return;
+      }
+      if (storedUser) {
+        try {
+          const u = JSON.parse(storedUser);
+          const flag = localStorage.getItem(`trial_used_${u.email?.toLowerCase()}`);
+          if (flag) setTrialUsed(true);
+        } catch {}
+      }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const handleNext = () => {
