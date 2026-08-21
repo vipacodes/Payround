@@ -14,7 +14,7 @@ const STEPS = [
   { num: 1, title: 'Group Info' },
   { num: 2, title: 'Contribution' },
   { num: 3, title: 'Bank Details' },
-  { num: 4, title: 'Rules & Constitution' },
+  { num: 4, title: 'Group Rules (Optional)' },
   { num: 5, title: 'Review & Pay' },
 ];
 
@@ -444,10 +444,10 @@ export default function CreateGroupPage() {
 
           {step === 4 && (
             <div className="space-y-4">
-              <div className="flex items-center gap-2 mb-4"><HiDocumentText className="w-6 h-6 text-primary-600" /><h2 className="text-lg font-semibold">Rules & Constitution</h2></div>
-              <div><label className="block text-sm font-medium mb-1.5">Constitution</label><textarea value={formData.constitution} onChange={(e)=>updateField('constitution', e.target.value)} placeholder="Purpose, goals..." rows={4} className="w-full px-4 py-3 border rounded-xl text-sm resize-none outline-none" /></div>
+              <div className="flex items-center gap-2 mb-1"><HiDocumentText className="w-6 h-6 text-primary-600" /><h2 className="text-lg font-semibold">Group Rules <span className="text-sm font-normal text-gray-400">(optional)</span></h2></div>
+              <p className="text-xs text-gray-500 mb-4">Adding rules is completely optional — you can skip this step and add or change rules later. Clear rules help members know what is expected (e.g. payment deadlines, lateness penalties).</p>
               <div>
-                <div className="flex justify-between mb-2"><label className="text-sm font-medium">Rules</label><button onClick={()=>setFormData(prev=>({...prev, rules:[...prev.rules,'']}))} className="text-xs text-primary-600">+ Add Rule</button></div>
+                <div className="flex justify-between mb-2"><label className="text-sm font-medium">Rules <span className="text-gray-400 font-normal">(optional)</span></label><button onClick={()=>setFormData(prev=>({...prev, rules:[...prev.rules,'']}))} className="text-xs text-primary-600">+ Add Rule</button></div>
                 <div className="space-y-2">{formData.rules.map((rule, i)=>(<div key={i} className="flex gap-2"><span className="w-7 h-7 bg-primary-100 text-primary-700 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0 mt-2">{i+1}</span><input type="text" value={rule} onChange={(e)=>{const nr=[...formData.rules]; nr[i]=e.target.value; setFormData(p=>({...p, rules:nr}));}} placeholder={`Rule ${i+1}`} className="flex-1 px-4 py-3 border rounded-xl text-sm outline-none" />{formData.rules.length>1 && (<button onClick={()=>setFormData(prev=>({...prev, rules: prev.rules.filter((_,idx)=>idx!==i)}))} className="text-red-500 px-2">×</button>)}</div>))}</div>
               </div>
             </div>
