@@ -25,6 +25,13 @@ export default function Footer() {
               <span className="text-lg font-bold text-white">Pay<span className="text-primary-400">round</span></span>
             </button>
             <p className="text-sm text-gray-400 leading-relaxed">{platformInfo.description}</p>
+            <a
+              href="/payround.apk"
+              download="payround.apk"
+              className="mt-4 inline-flex items-center gap-2 bg-primary-600 hover:bg-primary-700 text-white text-sm font-bold px-5 py-2.5 rounded-xl transition-colors"
+            >
+              📱 Download Android App (APK)
+            </a>
           </div>
           {full && (
             <div>

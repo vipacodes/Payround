@@ -13,7 +13,22 @@ const nextConfig = {
     unoptimized: true,
   },
   async headers() {
-    return [{ source: '/:path*', headers: securityHeaders }];
+    return [
+      { source: '/:path*', headers: securityHeaders },
+      // 🤖 Android app <-> site trust file (removes the browser bar in the APK)
+      {
+        source: '/.well-known/assetlinks.json',
+        headers: [{ key: 'Content-Type', value: 'application/json' }],
+      },
+      // 📱 Downloadable Android app
+      {
+        source: '/payround.apk',
+        headers: [
+          { key: 'Content-Type', value: 'application/vnd.android.package-archive' },
+          { key: 'Content-Disposition', value: 'attachment; filename="payround.apk"' },
+        ],
+      },
+    ];
   },
 };
 

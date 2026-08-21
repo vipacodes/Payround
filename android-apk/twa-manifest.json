@@ -1,0 +1,40 @@
+{
+  "packageId": "app.vercel.payround.twa",
+  "host": "payround-omega.vercel.app",
+  "name": "Payround - Digital Ajo Platform",
+  "launcherName": "Payround",
+  "display": "standalone",
+  "themeColor": "#16a34a",
+  "themeColorDark": "#0F172A",
+  "navigationColor": "#16a34a",
+  "navigationColorDark": "#0F172A",
+  "backgroundColor": "#f9fafb",
+  "enableNotifications": true,
+  "startUrl": "/",
+  "iconUrl": "https://payround-omega.vercel.app/images/icon-512.png",
+  "splashScreenFadeOutDuration": 300,
+  "signingKey": {
+    "path": "./android.keystore",
+    "alias": "payround"
+  },
+  "appVersionName": "1.0.0",
+  "appVersionCode": 1,
+  "shortcuts": [],
+  "generatorApp": "bubblewrap-cli",
+  "webManifestUrl": "https://payround-omega.vercel.app/manifest.json",
+  "fallbackType": "customtabs",
+  "features": {},
+  "alphaDependencies": {
+    "enabled": false
+  },
+  "enableSiteSettingsShortcut": true,
+  "isChromeOSOnly": false,
+  "isMetaQuest": false,
+  "fullScopeUrl": "https://payround-omega.vercel.app/",
+  "minSdkVersion": 21,
+  "orientation": "portrait",
+  "fingerprints": [],
+  "additionalTrustedOrigins": [],
+  "retainedBundles": [],
+  "appVersion": "1.0.0"
+}
