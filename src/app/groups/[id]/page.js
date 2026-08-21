@@ -590,13 +590,20 @@ export default function GroupDetailsPage() {
               <p className="text-sm text-gray-600 mt-2">{group.description || 'Ajo savings group on PayRound.'}</p>
               <div className="mt-3">
                 <div className="flex flex-wrap gap-2">
-                  <ShareButton
-                    compact
-                    label="Share group"
-                    title={group.name}
-                    text={`Join "${group.name}" on PayRound. Group ID: ${group.id}`}
-                    url={siteUrl(`/groups/${group.id}`)}
-                  />
+                  {/* 🔒 Sharing unlocks only after PayRound approves the group (trial groups are live immediately) */}
+                  {['active', 'approved', 'trial_active'].includes(group.status) ? (
+                    <ShareButton
+                      compact
+                      label="Share group"
+                      title={group.name}
+                      text={`Join "${group.name}" on PayRound. Group ID: ${group.id}`}
+                      url={siteUrl(`/groups/${group.id}`)}
+                    />
+                  ) : (
+                    <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-amber-700 bg-amber-50 border border-amber-200 px-3 py-2 rounded-full">
+                      🔒 Sharing unlocks after PayRound approval
+                    </span>
+                  )}
                   {me?.email && !isAdmin && (
                     <ReportButton targetType="group" targetId={group.id} targetName={group.name} compact />
                   )}
