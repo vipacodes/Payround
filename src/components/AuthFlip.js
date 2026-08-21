@@ -160,8 +160,9 @@ function SignupPane({ go }) {
     const params = new URLSearchParams(window.location.search);
     const ref = params.get('ref');
     const redir = params.get('redirect');
+    const emailParam = (params.get('email') || '').trim().toLowerCase(); // e.g. arriving from forgot-password "Try Sign Up"
     if (redir && redir.startsWith('/')) setRedirectPath(redir);
-    if (base || ref) setFormData(prev => ({ ...prev, ...(base || {}), ...(ref ? { referredBy: ref } : {}) }));
+    if (base || ref || emailParam) setFormData(prev => ({ ...prev, ...(base || {}), ...(ref ? { referredBy: ref } : {}), ...(emailParam ? { email: emailParam } : {}) }));
   }, []);
 
   useEffect(() => {

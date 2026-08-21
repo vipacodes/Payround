@@ -12,6 +12,7 @@ export default function ForgotPasswordPage() {
   const [loading, setLoading] = useState(false);
   const [sent, setSent] = useState(false);
   const [sentVia, setSentVia] = useState('');
+  const [noAccount, setNoAccount] = useState(false); // ❌ email not tied to any account → suggest sign up
   const [fallbackCode, setFallbackCode] = useState(''); // ONLY when no email service is connected yet
 
   const handleSubmit = async (e) => {
@@ -20,6 +21,7 @@ export default function ForgotPasswordPage() {
     if (!em) { toast.error('Please enter your email address'); return; }
     setLoading(true);
     setFallbackCode('');
+    setNoAccount(false);
     try {
       const res = await fetch('/api/send-reset', {
         method: 'POST',
@@ -27,7 +29,12 @@ export default function ForgotPasswordPage() {
         body: JSON.stringify({ email: em }),
       });
       const data = await res.json();
-      if (res.status === 404) { toast.error('No PayRound account uses this email. Check the spelling — or sign up instead.'); setLoading(false); return; }
+      if (res.status === 404) {
+        setNoAccount(true);
+        toast.error('This email is not assigned to any PayRound account.');
+        setLoading(false);
+        return;
+      }
       if (res.status === 429) { toast.error('A code was just sent moments ago — check your inbox (and spam), or wait 2 minutes.'); setLoading(false); return; }
       if (!data.ok) throw new Error(data.error || 'unknown');
       if (data.sent) {
@@ -103,6 +110,18 @@ export default function ForgotPasswordPage() {
             </div>
           ) : (
             <form onSubmit={handleSubmit} className="space-y-4">
+              {noAccount && (
+                <div className="rounded-xl border border-red-200 bg-red-50 p-3.5">
+                  <p className="text-sm font-bold text-red-800">❌ Email not assigned to any account</p>
+                  <p className="text-xs text-red-700 mt-1"><strong>{email.trim().toLowerCase()}</strong> is not tied to any PayRound account, so no reset link was sent. Check the spelling — or create a free account instead.</p>
+                  <Link
+                    href={`/signup?email=${encodeURIComponent(email.trim().toLowerCase())}`}
+                    className="mt-2.5 inline-flex items-center gap-1.5 bg-red-600 hover:bg-red-700 text-white text-xs font-bold px-4 py-2 rounded-lg transition-colors"
+                  >
+                    ✨ Try Sign Up →
+                  </Link>
+                </div>
+              )}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1.5">Email Address</label>
                 <div className="relative">
@@ -110,20 +129,29 @@ export default function ForgotPasswordPage() {
                   <input
                     type="email"
                     value={email}
-                    onChange={(e) => setEmail(e.target.value)}
+                    onChange={(e) => { setEmail(e.target.value); if (noAccount) setNoAccount(false); }}
                     placeholder="you@example.com"
-                    className="w-full pl-11 pr-4 py-3 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+                    className={`w-full pl-11 pr-4 py-3 border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 ${noAccount ? 'border-red-300 bg-red-50/40' : 'border-gray-200'}`}
                   />
                 </div>
-                <p className="text-[11px] text-gray-400 mt-1.5">The exact email on your account. The temporary password goes <b>to your inbox</b> — it is never shown on this page.</p>
+                <p className="text-[11px] text-gray-400 mt-1.5">The exact email on your account. The reset link goes <b>to your inbox</b> — it is never shown on this page.</p>
               </div>
               <button
                 type="submit"
                 disabled={loading}
                 className="w-full bg-primary-600 text-white font-semibold py-3.5 rounded-xl hover:bg-primary-700 transition-all shadow-lg shadow-primary-200 disabled:opacity-50"
               >
-                {loading ? 'Sending to your email…' : '📧 Email Me a Temporary Password'}
+                {loading ? 'Checking your email…' : '📧 Email Me a Reset Link'}
               </button>
+              <a
+                href={`https://wa.me/2349151723199?text=${encodeURIComponent(`Hello PayRound, I can't access the inbox of my account email${email.trim() ? ` (${email.trim().toLowerCase()})` : ''}. Please help me reset my password. My WhatsApp number is this one I'm chatting with.`)}`}
+                target="_blank"
+                rel="noreferrer"
+                className="w-full flex items-center justify-center gap-2 border border-emerald-300 bg-emerald-50 text-emerald-800 text-sm font-semibold py-3 rounded-xl hover:bg-emerald-100 transition-colors"
+              >
+                💬 Can&apos;t open that inbox? Get help on WhatsApp
+              </a>
+              <p className="text-[10px] text-gray-400 text-center">The WhatsApp option connects you to PayRound support, who verify it&apos;s really you before helping with the reset — the link itself can only be emailed to the account&apos;s address.</p>
             </form>
           )}
 
