@@ -3,6 +3,7 @@ import { Toaster } from 'react-hot-toast';
 import BootLoader from '@/components/BootLoader';
 import SupportChatFab from '@/components/SupportChatFab';
 import OfflineBanner from '@/components/OfflineBanner';
+import AndroidAppPrompt from '@/components/AndroidAppPrompt';
 import UserPresenceHeartbeat from '@/components/UserPresenceHeartbeat';
 
 export const viewport = {
@@ -42,6 +43,7 @@ export default function RootLayout({ children }) {
       <body className="antialiased">
         <BootLoader />
         <OfflineBanner />
+        <AndroidAppPrompt />
         <UserPresenceHeartbeat />
         <Toaster
           position="top-center"

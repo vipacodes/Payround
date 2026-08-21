@@ -3,12 +3,16 @@
 import { useRouter, usePathname } from 'next/navigation';
 import { HiHeart, HiShieldCheck, HiSupport } from 'react-icons/hi';
 import { platformInfo } from '@/lib/data';
+import { useAndroidApp } from '@/lib/androidApp';
 
 export default function Footer() {
   const router = useRouter();
   const pathname = usePathname();
   const year = new Date().getFullYear();
   const { contact, name } = platformInfo;
+  // 📱 Hide the APK button inside the installed app or when it's already on the phone
+  const { isAndroid, isInApp, installed, ready } = useAndroidApp();
+  const showApk = ready && !isInApp && !installed && isAndroid;
 
   // 🦶 Full footer (Quick Links + Why Payround) shows ONLY on the site visitors
   // page (home) and inside the app on Dashboard + Settings. Every other page
@@ -25,13 +29,15 @@ export default function Footer() {
               <span className="text-lg font-bold text-white">Pay<span className="text-primary-400">round</span></span>
             </button>
             <p className="text-sm text-gray-400 leading-relaxed">{platformInfo.description}</p>
-            <a
-              href="/payround.apk"
-              download="payround.apk"
-              className="mt-4 inline-flex items-center gap-2 bg-primary-600 hover:bg-primary-700 text-white text-sm font-bold px-5 py-2.5 rounded-xl transition-colors"
-            >
-              📱 Download Android App (APK)
-            </a>
+            {showApk && (
+              <a
+                href="/payround.apk"
+                download="payround.apk"
+                className="mt-4 inline-flex items-center gap-2 bg-primary-600 hover:bg-primary-700 text-white text-sm font-bold px-5 py-2.5 rounded-xl transition-colors"
+              >
+                📱 Download Android App (APK)
+              </a>
+            )}
           </div>
           {full && (
             <div>

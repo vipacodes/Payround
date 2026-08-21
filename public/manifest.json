@@ -25,5 +25,16 @@
       "type": "image/png",
       "purpose": "maskable"
     }
-  ]
+  ],
+  "related_applications": [
+    {
+      "platform": "webapp",
+      "url": "https://payround-omega.vercel.app/manifest.json"
+    },
+    {
+      "platform": "play",
+      "id": "app.vercel.payround.twa"
+    }
+  ],
+  "prefer_related_applications": false
 }
