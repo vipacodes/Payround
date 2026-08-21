@@ -166,27 +166,39 @@ export default function Header() {
   // shown (live while online, or at the next login if they were offline) the
   // whole screen is locked for 10 seconds with a visible countdown before any
   // button becomes usable. One freeze per deletion event, remembered locally.
-  // The effect is keyed on the STABLE requested_at string — NOT the object —
-  // because the status poll builds a fresh object every ~8s; keying on the
-  // object identity used to cancel the ticking interval mid-count (stuck at 3).
-  // The remaining time comes from a fixed deadline, so re-renders can't stall it.
+  //
+  // Bullet-proof design: the 10-second DEADLINE itself is stored in
+  // localStorage the first time the warning appears. Every tick recomputes
+  // the remaining time from that fixed wall-clock deadline, so background
+  // status polls, re-renders, effect re-runs, or even a full component
+  // remount can only RESUME the countdown — never stall or restart it.
   const ownerDelEventKey = deletionQueue?.deleted_by === 'owner' ? (deletionQueue.requested_at || 'x') : '';
   useEffect(() => {
     if (!ownerDelEventKey) { setOwnerDelFreezeLeft(0); return; }
-    const key = `payround_ownerdel_freeze_${ownerDelEventKey}`;
+    const doneKey = `payround_ownerdel_freeze_${ownerDelEventKey}`;
+    const deadlineKey = `payround_ownerdel_deadline_${ownerDelEventKey}`;
     let done = false;
-    try { done = localStorage.getItem(key) === '1'; } catch {}
+    try { done = localStorage.getItem(doneKey) === '1'; } catch {}
     if (done) { setOwnerDelFreezeLeft(0); return; }
-    const deadline = Date.now() + 10000;
-    setOwnerDelFreezeLeft(10);
-    const iv = setInterval(() => {
+    let deadline = 0;
+    try { deadline = parseInt(localStorage.getItem(deadlineKey) || '0', 10) || 0; } catch {}
+    if (!deadline || deadline - Date.now() > 10500) {
+      deadline = Date.now() + 10000;
+      try { localStorage.setItem(deadlineKey, String(deadline)); } catch {}
+    }
+    const tick = () => {
       const left = Math.max(0, Math.ceil((deadline - Date.now()) / 1000));
       setOwnerDelFreezeLeft(left);
       if (left <= 0) {
         clearInterval(iv);
-        try { localStorage.setItem(key, '1'); } catch {}
+        try {
+          localStorage.setItem(doneKey, '1');
+          localStorage.removeItem(deadlineKey);
+        } catch {}
       }
-    }, 250);
+    };
+    const iv = setInterval(tick, 250);
+    tick();
     return () => clearInterval(iv);
   }, [ownerDelEventKey]);
 
