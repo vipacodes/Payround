@@ -101,7 +101,6 @@ export default function CreateGroupPage() {
     if (trialUsed) { toast.error('You have already used your one-time 7-day trial. Payment required.'); return; }
     if (!selfieFile || !idFile) { toast.error('Selfie + ID mandatory before trial'); return; }
     if (!avatarPreview) { toast.error('Group logo is required'); return; }
-    toast.success('🎉 7-day trial started!');
     setStartedTrial(true);
     const storedUser = localStorage.getItem('payround_user');
     if (storedUser) {
@@ -110,7 +109,8 @@ export default function CreateGroupPage() {
     setTimeout(async () => {
       const groupId = 'PR' + Math.floor(10000 + Math.random() * 90000);
       const ok = await syncGroupToSupabase(groupId, 'trial_active', false);
-      if (!ok) return; // error already shown — user keeps everything and can retry
+      if (!ok) { setStartedTrial(false); return; } // error already shown — user keeps everything and can retry
+      toast.success('🎉 7-day trial started!');
       const groups = JSON.parse(localStorage.getItem('payround_groups_custom') || '[]');
       groups.push({ id: groupId, ...formData, color: selectedColor, status: 'trial_active', trialEndsAt: new Date(Date.now()+7*24*60*60*1000).toISOString(), createdAt: new Date().toISOString() });
       localStorage.setItem('payround_groups_custom', JSON.stringify(groups));
@@ -123,12 +123,12 @@ export default function CreateGroupPage() {
     if (!selfieFile || !idFile) { toast.error('Selfie + ID mandatory'); return; }
     if (!avatarPreview) { toast.error('Group logo is required'); return; }
     if (!receiptFile) { toast.error(`Upload receipt of ₦${planPrice.toLocaleString()} to Palmpay 9151723199 Basikoro James Okeroghene`); return; }
-    toast.success('Payment receipt uploaded - pending PayRound approval.');
     setPaid(true);
     setTimeout(async () => {
       const groupId = 'PR' + Math.floor(10000 + Math.random() * 90000);
       const ok = await syncGroupToSupabase(groupId, 'pending_owner', true);
-      if (!ok) return; // error already shown — user keeps everything and can retry
+      if (!ok) { setPaid(false); return; } // error already shown — user keeps everything and can retry
+      toast.success('Payment receipt uploaded - pending PayRound approval.');
       const groups = JSON.parse(localStorage.getItem('payround_groups_custom') || '[]');
       groups.push({ id: groupId, ...formData, color: selectedColor, status: 'pending_owner', hasReceipt: true, createdAt: new Date().toISOString() });
       localStorage.setItem('payround_groups_custom', JSON.stringify(groups));
@@ -234,9 +234,24 @@ export default function CreateGroupPage() {
         shrinkDataUrl(avatarPreview, 512, 0.85),
         withReceipt ? shrinkDataUrl(receiptPreview, 1000, 0.82) : Promise.resolve(null),
       ]);
-      const tooBig = [selfie, idImg, logo, receipt].filter(Boolean).some(d => String(d).length > 2200000);
+      // If anything is still heavy, shrink harder instead of failing —
+      // pictures are already compressed at pick time, so this is a last resort.
+      const LIMIT = 2200000;
+      const shrinkUntilFits = async (dataUrl) => {
+        if (!dataUrl || String(dataUrl).length <= LIMIT) return dataUrl;
+        let out = dataUrl;
+        for (const [size, q] of [[800, 0.7], [640, 0.6], [480, 0.5]]) {
+          out = await shrinkDataUrl(out, size, q);
+          if (String(out).length <= LIMIT) return out;
+        }
+        return out;
+      };
+      const [selfie2, idImg2, logo2, receipt2] = await Promise.all([
+        shrinkUntilFits(selfie), shrinkUntilFits(idImg), shrinkUntilFits(logo), shrinkUntilFits(receipt),
+      ]);
+      const tooBig = [selfie2, idImg2, logo2, receipt2].filter(Boolean).some(d => String(d).length > LIMIT);
       if (tooBig) {
-        toast.error('One of your files is too large — please re-upload it as a normal photo (JPG or PNG), not a video or PDF.');
+        toast.error('One of your files could not be compressed — please re-upload it as a normal photo (JPG or PNG), not a video or PDF.');
         return false;
       }
       const { error } = await supabase.from('groups').insert({
@@ -252,14 +267,14 @@ export default function CreateGroupPage() {
         admin_email: adminEmail,
         admin_name: adminName,
         status,
-        selfie_url: selfie || null,
-        id_url: idImg || null,
+        selfie_url: selfie2 || null,
+        id_url: idImg2 || null,
         id_type: formData.idType,
-        avatar_url: logo || null,
+        avatar_url: logo2 || null,
         plan_months: withReceipt ? selectedPlan : null,
         plan_price: withReceipt ? planPrice : null,
         expiry_at: withReceipt ? new Date(Date.now() + selectedPlan * 30 * 24 * 60 * 60 * 1000).toISOString() : null,
-        creation_receipt_url: withReceipt ? (receipt || null) : null,
+        creation_receipt_url: withReceipt ? (receipt2 || null) : null,
       });
       if (error) throw error;
       loadMyGroups();
@@ -367,13 +382,13 @@ export default function CreateGroupPage() {
                 <div className="grid md:grid-cols-2 gap-4 mt-3">
                   <div>
                     <label className="block text-xs font-medium mb-1">Clear Selfie *</label>
-                    <input type="file" ref={fileSelfieRef} accept="image/*,image/heic,image/heif,video/*" onChange={(e)=>{const f=e.target.files[0]; if(f){setSelfieFile(f); const r=new FileReader(); r.onload=(ev)=>setSelfiePreview(ev.target.result); r.readAsDataURL(f);}}} className="hidden" />
+                    <input type="file" ref={fileSelfieRef} accept="image/*,image/heic,image/heif" onChange={async (e)=>{const f=e.target.files[0]; e.target.value=''; if(!f) return; if((f.type||'').startsWith('video/') || (f.type||'')==='application/pdf'){ toast.error('Photos only — videos and PDFs are not accepted.'); return; } if(f.size>15*1024*1024){ toast.error('That photo is too large (max 15MB). Take a normal photo and try again.'); return; } try { const { compressImage } = await import('@/lib/image'); const small = await compressImage(f, 768, 0.8); setSelfieFile(f); setSelfiePreview(small); } catch { toast.error('Could not read that photo. Use a normal JPG or PNG picture.'); }}} className="hidden" />
                     {selfiePreview ? (<div className="relative w-24 h-24"><img src={selfiePreview} className="w-24 h-24 rounded-xl object-cover border" /><button type="button" onClick={()=>{setSelfieFile(null); setSelfiePreview(null);}} className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full w-6 h-6 flex items-center justify-center">×</button></div>) : (<div onClick={()=>fileSelfieRef.current?.click()} className="border-2 border-dashed rounded-xl p-6 text-center cursor-pointer bg-white hover:border-primary-400"><HiPhotograph className="w-6 h-6 mx-auto text-gray-400"/><p className="text-xs mt-1">Upload Selfie</p></div>)}
                   </div>
                   <div>
                     <label className="block text-xs font-medium mb-1">ID Type *</label>
                     <select value={formData.idType} onChange={(e)=>updateField('idType', e.target.value)} className="w-full border rounded-lg px-3 py-2 text-sm mb-2"><option value="NIN">NIN</option><option value="Voter's Card">Voter's Card</option><option value="Driver's License">Driver's License</option><option value="International Passport">Passport</option></select>
-                    <input type="file" ref={fileIdRef} accept="image/*,image/heic,image/heif,application/pdf,.pdf,video/*" onChange={(e)=>{const f=e.target.files[0]; if(f){setIdFile(f); const r=new FileReader(); r.onload=(ev)=>setIdPreview(ev.target.result); r.readAsDataURL(f);}}} className="hidden" />
+                    <input type="file" ref={fileIdRef} accept="image/*,image/heic,image/heif" onChange={async (e)=>{const f=e.target.files[0]; e.target.value=''; if(!f) return; if((f.type||'').startsWith('video/') || (f.type||'')==='application/pdf'){ toast.error('Photos only — snap a clear picture of your ID instead of a PDF or video.'); return; } if(f.size>15*1024*1024){ toast.error('That photo is too large (max 15MB). Take a normal photo and try again.'); return; } try { const { compressImage } = await import('@/lib/image'); const small = await compressImage(f, 1000, 0.82); setIdFile(f); setIdPreview(small); } catch { toast.error('Could not read that photo. Use a normal JPG or PNG picture.'); }}} className="hidden" />
                     {idPreview ? (<div className="relative w-24 h-24"><img src={idPreview} className="w-24 h-24 rounded-xl object-cover border" /><button type="button" onClick={()=>{setIdFile(null); setIdPreview(null);}} className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full w-6 h-6 flex items-center justify-center">×</button></div>) : (<div onClick={()=>fileIdRef.current?.click()} className="border-2 border-dashed rounded-xl p-6 text-center cursor-pointer bg-white hover:border-primary-400"><HiShieldCheck className="w-6 h-6 mx-auto text-gray-400"/><p className="text-xs mt-1">Upload {formData.idType}</p></div>)}
                   </div>
                 </div>
@@ -491,7 +506,7 @@ export default function CreateGroupPage() {
 
                     <div className="border-2 border-dashed rounded-xl p-4 bg-white mb-3">
                       <label className="block text-xs font-bold mb-2">Payment Receipt * (Palmpay {platformInfo.owner.accountNumber})</label>
-                      <input type="file" ref={fileReceiptRef} accept="image/*,image/heic,image/heif,application/pdf,.pdf,video/*" onChange={(e)=>{const f=e.target.files[0]; if(f){setReceiptFile(f); const r=new FileReader(); r.onload=(ev)=>setReceiptPreview(ev.target.result); r.readAsDataURL(f);}}} className="hidden" />
+                      <input type="file" ref={fileReceiptRef} accept="image/*,image/heic,image/heif" onChange={async (e)=>{const f=e.target.files[0]; e.target.value=''; if(!f) return; if((f.type||'').startsWith('video/') || (f.type||'')==='application/pdf'){ toast.error('Photos only — upload a screenshot or photo of the receipt.'); return; } if(f.size>15*1024*1024){ toast.error('That image is too large (max 15MB). Use a screenshot of the receipt.'); return; } try { const { compressImage } = await import('@/lib/image'); const small = await compressImage(f, 1000, 0.82); setReceiptFile(f); setReceiptPreview(small); } catch { toast.error('Could not read that image. Use a normal screenshot or JPG/PNG photo.'); }}} className="hidden" />
                       {receiptPreview ? (<div className="relative w-24 h-24"><img src={receiptPreview} className="w-24 h-24 rounded-xl object-cover border" /><button type="button" onClick={()=>{setReceiptFile(null); setReceiptPreview(null);}} className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full w-6 h-6 flex items-center justify-center">×</button></div>) : (<div onClick={()=>fileReceiptRef.current?.click()} className="border rounded-xl p-4 text-center cursor-pointer"><HiPhotograph className="w-6 h-6 mx-auto text-gray-400"/><p className="text-xs mt-1">Upload Receipt</p></div>)}
                     </div>
 
