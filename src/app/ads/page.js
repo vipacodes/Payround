@@ -789,7 +789,7 @@ export default function AdsPage() {
         {authChecked && myEmail && tab === 'mine' && (
           <div className="mb-8">
             <h2 className="text-lg font-semibold text-gray-900 mb-1">📂 My Ads ({myAds.length})</h2>
-            <p className="text-xs mb-3 ad-hint">Your ads stay saved here forever — unless you delete them yourself. Saved one to pay later? It waits under <b>💾 Saved</b> — upload the receipt whenever you're ready.</p>
+            <p className="text-xs mb-3 ad-hint">Saved one to pay later? It waits under <b>💾 Saved</b> — upload the receipt whenever you're ready.</p>
             {myAds.length === 0 ? (
               <div className="bg-white rounded-2xl border border-dashed border-gray-200 p-10 text-center">
                 <p className="font-semibold text-gray-700 mb-1">You haven't submitted any ads yet</p>

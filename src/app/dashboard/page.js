@@ -273,7 +273,7 @@ export default function DashboardPage() {
                 <div className="min-w-0">
                   <p className="text-[11px] text-emerald-100 font-medium">{new Date().getHours() < 12 ? 'Good morning' : new Date().getHours() < 17 ? 'Good afternoon' : 'Good evening'} 👋</p>
                   <p className="font-bold text-base truncate flex items-center gap-1">
-                    {(account?.name || user.name || 'there').split(' ')[0]}
+                    {account?.name || user.name || 'there'}
                     {account?.is_verified && <HiBadgeCheck className="w-5 h-5 text-sky-300 shrink-0" title="Verified by PayRound" />}
                   </p>
                 </div>
