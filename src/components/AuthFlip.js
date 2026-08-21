@@ -339,6 +339,10 @@ function SignupPane({ go }) {
       }
       toast.success('Account created! Welcome to Payround 🎉');
       sessionStorage.removeItem(STORAGE_KEY);
+      // 📱 New account → invite them ONCE to install the Android app
+      // (optional; they can continue on the web). Monthly reminders follow
+      // only while the app remains uninstalled.
+      try { localStorage.setItem('payround_apk_prompt_signup', '1'); } catch {}
       setDone(true);
     } catch (err) {
       toast.error(err.message || 'Something went wrong.');
