@@ -259,7 +259,7 @@ export default function Header() {
 
   return (
     <header className="bg-white border-b border-gray-100 sticky top-0 z-50">
-      {deletionQueue && deletionQueue.deleted_by === 'owner' && (
+      {deletionQueue && deletionQueue.deleted_by === 'owner' && !(pathname === '/messages') && (
         <div className="fixed inset-0 z-[220] bg-white flex flex-col items-center justify-center px-6 text-center overflow-y-auto">
           <div className="w-20 h-20 bg-red-50 border border-red-200 rounded-full flex items-center justify-center text-4xl mb-5">🚫</div>
           <h1 className="text-2xl font-bold text-gray-900 mb-2">Account deleted by the PayRound team</h1>
@@ -273,17 +273,24 @@ export default function Header() {
             <p className="text-xs text-amber-800 mt-1">Your account stays in the PayRound delete queue for 7 days. Permanent deletion: {deletionDeadline ? deletionDeadline.toLocaleString() : 'deadline unavailable'}</p>
             <p className="text-xs text-amber-800 mt-1">If you believe this is a mistake, contact PayRound support before the deadline to request account recovery. After the deadline, deletion is permanent.</p>
           </div>
-          <div className="w-full max-w-lg grid sm:grid-cols-2 gap-2 mb-1">
-            <a
-              href="mailto:payroundsupport@gmail.com?subject=Account%20deletion%20appeal"
-              className="bg-primary-600 text-white text-sm font-bold px-5 py-3 rounded-xl hover:bg-primary-700"
-            >📩 Contact PayRound Support</a>
-            <a
-              href="https://wa.me/2349151723199"
-              target="_blank"
-              rel="noreferrer"
-              className="bg-emerald-600 text-white text-sm font-bold px-5 py-3 rounded-xl hover:bg-emerald-700"
-            >💬 WhatsApp Support</a>
+          <p className="text-xs font-bold text-gray-700 max-w-lg mb-3">Your account is locked. The only thing you can do is contact PayRound:</p>
+          <div className="w-full max-w-lg grid gap-2 mb-1">
+            <button
+              onClick={() => router.push('/messages?support=1')}
+              className="bg-gray-900 text-white text-sm font-bold px-5 py-3 rounded-xl hover:bg-gray-800"
+            >💬 Chat PayRound Support (in-app)</button>
+            <div className="grid sm:grid-cols-2 gap-2">
+              <a
+                href="mailto:payroundsupport@gmail.com?subject=Account%20deletion%20appeal"
+                className="bg-primary-600 text-white text-sm font-bold px-5 py-3 rounded-xl hover:bg-primary-700"
+              >📩 Email Support</a>
+              <a
+                href="https://wa.me/2349151723199"
+                target="_blank"
+                rel="noreferrer"
+                className="bg-emerald-600 text-white text-sm font-bold px-5 py-3 rounded-xl hover:bg-emerald-700"
+              >💬 WhatsApp Support</a>
+            </div>
           </div>
           <button onClick={handleLogout} className="mt-3 text-xs font-semibold text-gray-500 px-4 py-2 hover:text-gray-800">Log out</button>
           {ownerDelFreezeLeft > 0 && (

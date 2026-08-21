@@ -223,6 +223,7 @@ function MessagesInner() {
   const [botTyping, setBotTyping] = useState(false);    // 🤖 "typing…" indicator
   const [threadQuery, setThreadQuery] = useState('');   // 🔍 search conversations
   const [freezeInfo, setFreezeInfo] = useState(null);  // frozen users see only approved-group admins + support
+  const [ownerDeleted, setOwnerDeleted] = useState(false); // 🚫 owner-deleted accounts may ONLY contact PayRound Support
   const [peerContext, setPeerContext] = useState(null); // group admins see frozen-member status + safe note
   const [requestByPeer, setRequestByPeer] = useState({}); // database-authoritative one-message request state
   const [requestsLoaded, setRequestsLoaded] = useState(false);
@@ -253,9 +254,27 @@ function MessagesInner() {
         const { data, error } = await supabase.rpc('get_my_account_freeze_status');
         if (!error) setFreezeInfo(data || { frozen: false, admins: [] });
       } catch { setFreezeInfo({ frozen: false, admins: [] }); }
+      // 🚫 Owner-deleted account? Lock this page to the PayRound Support chat only.
+      try {
+        const { supabase } = await import('@/lib/supabase');
+        const { data: del } = await supabase.rpc('get_my_account_deletion_status');
+        if (del?.queued && del?.deleted_by === 'owner') {
+          setOwnerDeleted(true);
+          setActive(SUPPORT_ID);
+        }
+      } catch {}
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // 🚫 Owner-deleted accounts can never leave the support conversation.
+  useEffect(() => {
+    if (ownerDeleted && active !== SUPPORT_ID) {
+      setActive(SUPPORT_ID);
+      setActiveUserHint('');
+      setOtherUser(null);
+    }
+  }, [ownerDeleted, active]);
 
   // 🔗 Deep links stay in sync with the URL on every navigation — tapping the
   // header 💬 icon (plain /messages) while inside a chat returns to the inbox,
