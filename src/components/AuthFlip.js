@@ -510,7 +510,7 @@ export default function AuthFlip({ initial = 'login' }) {
     : { over: 'NEW TO PAYROUND?', title: 'New here?', sub: 'Create your free account, join a circle and start saving with people you can see.', btn: 'Create account →', btnTo: 'signup' };
 
   return (
-    <div data-auth="flip" data-mode={mode} className="auth-card relative bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+    <div data-auth="flip" data-mode={mode} className={`auth-card relative bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden ${flip}`}>
       {/* 🖥 desktop split — the green panel physically TURNS across the card */}
       <div className="hidden md:flex relative">
         <div className="w-1/2 p-8 max-h-[78vh] overflow-y-auto overscroll-contain">
@@ -519,7 +519,7 @@ export default function AuthFlip({ initial = 'login' }) {
         <div className="w-1/2 p-8 max-h-[78vh] overflow-y-auto overscroll-contain">
           <SignupPane go={go} />
         </div>
-        <div className={`auth-overlay absolute top-0 right-0 h-full w-1/2 z-10 bg-gradient-to-br from-primary-600 via-emerald-600 to-primary-700 flex flex-col items-center justify-center text-center text-white px-8 ${flip}`}
+        <div className="auth-overlay absolute top-0 right-0 h-full w-1/2 z-10 bg-gradient-to-br from-primary-600 via-emerald-600 to-primary-700 flex flex-col items-center justify-center text-center text-white px-8"
           style={flip === '' && initial === 'signup' ? { transform: 'translate3d(-100%, 0, 0) rotateY(0)' } : undefined}>
           <div className="w-16 h-16 bg-white/15 rounded-2xl flex items-center justify-center mb-5 border border-white/25">
             <span className="text-white font-bold text-2xl">P</span>
