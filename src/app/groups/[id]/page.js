@@ -49,7 +49,6 @@ export default function GroupDetailsPage() {
   const [autoTickBusy, setAutoTickBusy] = useState(false);
   // 🪑 Join flow lives HERE on the group page — tap green spots, agree to the rules, one tap to join
   const [desiredSpots, setDesiredSpots] = useState([]);
-  const [agreeRules, setAgreeRules] = useState(false);
   const [joining, setJoining] = useState(false);
   const [extraSpots, setExtraSpots] = useState([]);
   const [extraBusy, setExtraBusy] = useState(false);
@@ -339,7 +338,7 @@ export default function GroupDetailsPage() {
 
   // One-tap join — name, phone & email pulled straight from the profile (no forms, no typing)
   const submitJoinRequest = async () => {
-    if (!me || !agreeRules || joining) return;
+    if (!me || joining) return;
     setJoining(true);
     try {
       const { supabase } = await import('@/lib/supabase');
@@ -850,15 +849,14 @@ export default function GroupDetailsPage() {
                 {myStatus === 'declined' && (
                   <p className="text-xs text-red-700 bg-red-50 border border-red-200 rounded-xl p-2.5 mb-3">You declined the last spot offer — pick your spot(s) above and send a brand-new request below.</p>
                 )}
-                <label className="flex items-start gap-3 p-3 bg-primary-50 rounded-xl mb-3 cursor-pointer">
-                  <input type="checkbox" checked={agreeRules} onChange={e => setAgreeRules(e.target.checked)} className="w-5 h-5 mt-0.5 text-primary-600 rounded focus:ring-primary-500" />
-                  <span className="text-sm text-gray-700">I have read and agree to the <b>group rules</b> and contribution terms above.</span>
-                </label>
+                <p className="text-xs text-gray-700 bg-primary-50 border border-primary-100 rounded-xl p-3 mb-3">
+                  📖 Please <b>read the group rules and contribution terms above</b> before joining — sending a join request means you accept them.
+                </p>
                 {me ? (
                   <>
                     <button
                       onClick={submitJoinRequest}
-                      disabled={!agreeRules || joining}
+                      disabled={joining}
                       className="w-full bg-primary-600 text-white font-semibold py-3.5 rounded-xl hover:bg-primary-700 transition-all shadow-lg shadow-primary-200 disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                       {joining ? 'Sending…' : myStatus === 'declined' ? 'Send a New Join Request' : `Request to Join${desiredSpots.length ? ` — #${desiredSpots.join(', #')}` : ''}`}
