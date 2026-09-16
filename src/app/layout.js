@@ -5,7 +5,7 @@ import SupportChatFab from '@/components/SupportChatFab';
 import OfflineBanner from '@/components/OfflineBanner';
 import AndroidAppPrompt from '@/components/AndroidAppPrompt';
 import UserPresenceHeartbeat from '@/components/UserPresenceHeartbeat';
-
+import BottomNav from '@/components/BottomNav';
 export const viewport = {
   width: 'device-width',
   initialScale: 1,
@@ -64,7 +64,8 @@ export default function RootLayout({ children }) {
             },
           }}
         />
-        {children}
+       {children}
+        <BottomNav />
         <SupportChatFab />
       </body>
     </html>
