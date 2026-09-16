@@ -79,7 +79,7 @@ export default function SupportChatFab() {
       onClick={open}
       aria-label="Chat with PayRound Support"
       title="Chat with PayRound Support"
-      className="fixed bottom-5 right-5 sm:bottom-6 sm:right-6 z-[75] w-14 h-14 rounded-full bg-gradient-to-br from-primary-500 to-primary-700 text-white shadow-lg shadow-primary-600/40 flex items-center justify-center hover:scale-105 active:scale-95 transition-transform"
+      className="fixed bottom-[84px] right-4 md:bottom-6 md:right-6 z-[75] w-14 h-14 rounded-full bg-gradient-to-br from-primary-500 to-primary-700 text-white shadow-lg shadow-primary-600/40 flex items-center justify-center hover:scale-105 active:scale-95 transition-transform"
     >
       {/* chat bubble icon */}
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-7 h-7">
