@@ -511,3 +511,10 @@ body {
   100% { transform: scale(1); }
 }
 .bottom-nav-pop { animation: bottom-nav-pop 340ms ease; }
+
+/* 📱 Chat screens keep the bottom tab bar — their full-height columns stop above it */
+@media (max-width: 767px) {
+  body.pr-chat [class*='h-[100dvh]'] {
+    height: calc(100dvh - 64px - env(safe-area-inset-bottom, 0px));
+  }
+}
