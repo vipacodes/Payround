@@ -1,5 +1,8 @@
 'use client';
 
+// 🧭 Header — logo + hamburger ONLY on phones (everything else lives in the
+// bottom tab bar or inside the hamburger menu). Desktop keeps its full bar.
+
 import { useState, useEffect, useRef } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import { HiMenu, HiX, HiSearch, HiBell, HiHome, HiUserGroup, HiCurrencyDollar, HiUser, HiLogout, HiChartBar, HiCog, HiChatAlt2, HiCalculator, HiSpeakerphone, HiGift } from 'react-icons/hi';
@@ -368,7 +371,7 @@ export default function Header() {
               Chat PayRound Support
             </button>
           </div>
-          <a href="https://wa.me/2349151723199" target="_blank" rel="noreferrer" className="text-xs font-semibold text-emerald-700 mt-4">WhatsApp support: +234 915 1723 199</a>
+          <a href="https://wa.me/2349151723199" target="_blank" rel="noreferrer" className="text-xs font-semibold text-emerald-700 mt-4">WhatsApp support: +234 915 172 3199</a>
           <button onClick={handleLogout} className="mt-4 text-xs font-semibold text-gray-500 px-4 py-2 hover:text-gray-800">Log out</button>
         </div>
       )}
@@ -543,55 +546,7 @@ export default function Header() {
             )}
           </nav>
 
-          {/* Mobile: 🔍 search, 🔔 bell & the rest sit beside the ☰ hamburger */}
-          <div className="md:hidden flex items-center gap-1">
-            <button
-              onClick={() => setShowSearch(true)}
-              aria-label="Search PayRound"
-              title="Search PayRound"
-              className="relative p-2 text-gray-600 hover:text-primary-600 transition-colors"
-            >
-              <HiSearch className="w-6 h-6" />
-            </button>
-            <button
-              onClick={() => setShowCalc(true)}
-              aria-label="Quick calculator"
-              className="relative p-2 text-gray-600 hover:text-primary-600 transition-colors"
-            >
-              <HiCalculator className="w-6 h-6" />
-            </button>
-            {isLoggedIn && (
-              <button
-                onClick={() => router.push('/notifications')}
-                aria-label="Notifications"
-                className="relative p-2 text-gray-600 hover:text-primary-600 transition-colors"
-              >
-                <HiBell className="w-6 h-6" />
-                {unreadCount > 0 && <span className="msg-dot absolute top-1 right-1 w-2.5 h-2.5 bg-green-500 rounded-full" title="You have new notifications" />}
-              </button>
-            )}
-            {isLoggedIn && (
-              <button
-                onClick={() => router.push(`/messages?inbox=${Date.now()}`)}
-                aria-label="Messages"
-                className="relative p-2 text-gray-600 hover:text-primary-600 transition-colors"
-              >
-                <HiChatAlt2 className="w-6 h-6" />
-                {unreadMsgs > 0 && <span className="msg-dot absolute top-1 right-1 w-2.5 h-2.5 bg-green-500 rounded-full" title="You have new messages" />}
-              </button>
-            )}
-            {isLoggedIn && gchatShow && (
-              <button
-                onClick={() => router.push('/group-chat')}
-                aria-label="Group chats"
-                className="relative p-2 text-gray-600 hover:text-primary-600 transition-colors"
-              >
-                <HiUserGroup className="w-6 h-6" />
-                {gchatUnread > 0 && <span className="msg-dot absolute top-1 right-1 w-2.5 h-2.5 bg-green-500 rounded-full" title="You have new group messages" />}
-              </button>
-            )}
-          </div>
-
+          {/* 📱 Mobile: ONLY the ☰ hamburger — everything else lives in the bottom tab bar or the menu */}
           <button
             type="button"
             onClick={() => setIsMenuOpen(!isMenuOpen)}
@@ -618,6 +573,11 @@ export default function Header() {
                   <MobileNavItem icon={<HiGift className="w-5 h-5" />} label="My Referrals" onClick={() => { router.push('/referrals'); setIsMenuOpen(false); }} active={isActive('/referrals')} />
                   <MobileNavItem icon={<HiUser className="w-5 h-5" />} label="Profile" onClick={() => { router.push('/profile'); setIsMenuOpen(false); }} active={isActive('/profile')} />
                   <MobileNavItem icon={<HiCog className="w-5 h-5" />} label="Settings" onClick={() => { router.push('/settings'); setIsMenuOpen(false); }} active={isActive('/settings')} />
+                  {gchatShow && (
+                    <MobileNavItem icon={<HiUserGroup className="w-5 h-5" />} label="Group Chats" onClick={() => { router.push('/group-chat'); setIsMenuOpen(false); }} active={isActive('/group-chat')} />
+                  )}
+                  <MobileNavItem icon={<HiSearch className="w-5 h-5" />} label="Search PayRound" onClick={() => { setIsMenuOpen(false); setShowSearch(true); }} active={false} />
+                  <MobileNavItem icon={<HiCalculator className="w-5 h-5" />} label="Quick Calculator" onClick={() => { setIsMenuOpen(false); setShowCalc(true); }} active={false} />
                   <div className="px-1 pt-1">
                     <ShareButton
                       label="Share PayRound with friends"
@@ -639,6 +599,8 @@ export default function Header() {
                 <>
                   <MobileNavItem icon={<HiUser className="w-5 h-5" />} label="Login" onClick={() => { router.push('/login'); setIsMenuOpen(false); }} />
                   <MobileNavItem icon={<HiUserGroup className="w-5 h-5" />} label="Sign Up" onClick={() => { router.push('/signup'); setIsMenuOpen(false); }} />
+                  <MobileNavItem icon={<HiSearch className="w-5 h-5" />} label="Search PayRound" onClick={() => { setIsMenuOpen(false); setShowSearch(true); }} active={false} />
+                  <MobileNavItem icon={<HiCalculator className="w-5 h-5" />} label="Quick Calculator" onClick={() => { setIsMenuOpen(false); setShowCalc(true); }} active={false} />
                 </>
               )}
             </nav>
@@ -663,4 +625,4 @@ function MobileNavItem({ icon, label, onClick, active }) {
       {label}
     </button>
   );
-}
+            }
