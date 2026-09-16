@@ -503,3 +503,11 @@ body {
   0% { opacity: 0.6; } 100% { opacity: 1; }
 }
 .auth-banner { animation: auth-banner-in 500ms ease-out; }
+/* 📱 Bottom tab bar — icon bounce animation (phones) */
+@keyframes bottom-nav-pop {
+  0%   { transform: scale(1); }
+  35%  { transform: scale(1.35) translateY(-3px); }
+  70%  { transform: scale(0.92); }
+  100% { transform: scale(1); }
+}
+.bottom-nav-pop { animation: bottom-nav-pop 340ms ease; }
