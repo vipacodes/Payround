@@ -160,3 +160,19 @@ export default function BottomNav() {
           return (
             <button key={tab.id} onClick={() => go(tab)} aria-label={tab.label}
               className={`flex flex-col items-center justify-center gap-0.5 py-2 select-none touch-manipulation ${active ? 'text-primary-400' : 'text-gray-400'}`}>
+              <span className={`relative w-11 h-7 rounded-full flex items-center justify-center ${active ? 'bg-primary-500/20' : ''} ${pressed === tab.id ? 'bottom-nav-pop' : ''}`}>
+                <Icon className="w-6 h-6" />
+                {tab.badge > 0 && (
+                  <span className="absolute -top-1.5 -right-1 min-w-[16px] h-4 px-1 rounded-full bg-red-500 text-white text-[10px] font-bold flex items-center justify-center ring-2 ring-gray-900">
+                    {tab.badge > 9 ? '9+' : tab.badge}
+                  </span>
+                )}
+              </span>
+              <span className={`text-[10px] font-semibold leading-none ${active ? 'text-primary-400' : 'text-gray-400'}`}>{tab.label}</span>
+            </button>
+          );
+        })}
+      </div>
+    </nav>
+  );
+}
