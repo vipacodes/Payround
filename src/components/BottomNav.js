@@ -4,7 +4,9 @@
 //   • Fixed to the bottom of the screen on PHONES ONLY (desktop stays as it was)
 //   • Icons BOUNCE + play a soft pop sound when tapped (reactive)
 //   • The tab you are on stays GREEN (icon + pill + label) so users always
-//     know where they are — including deep pages like a group page or a chat.
+//     know where they are — including deep pages like a group page.
+//   • Chat screens (/messages, /group-chat) go FULL-SCREEN: the bar steps
+//     aside so the typing box is never covered — exactly like TikTok's DMs.
 // Pure navigation layer: no existing Payround function is changed.
 
 import { useEffect, useState } from 'react';
@@ -64,6 +66,29 @@ export default function BottomNav() {
     return () => { cancelled = true; clearInterval(t); };
   }, [pathname]);
 
+  // 💬 Chat screens run full-screen — no tab bar there (the composer needs the space)
+  const chatScreen = pathname === '/messages' || pathname === '/group-chat';
+
+  // 📐 Keep the bottom of every page above the bar — phones only, never on chat screens
+  useEffect(() => {
+    if (typeof window === 'undefined' || !window.matchMedia) return;
+    const mq = window.matchMedia('(max-width: 767px)');
+    const apply = () => {
+      document.body.style.paddingBottom = (mq.matches && !chatScreen)
+        ? 'calc(64px + env(safe-area-inset-bottom, 0px))'
+        : '';
+    };
+    apply();
+    mq.addEventListener?.('change', apply);
+    return () => {
+      mq.removeEventListener?.('change', apply);
+      document.body.style.paddingBottom = '';
+    };
+  }, [chatScreen]);
+
+  // Full-screen chat: the bar (and its page spacing) steps aside completely
+  if (chatScreen) return null;
+
   const tabs = [
     { id: 'home', label: 'Home', Icon: HiHome, href: homeHref },
     { id: 'groups', label: 'Groups', Icon: HiUserGroup, href: '/groups/search' },
@@ -122,4 +147,4 @@ export default function BottomNav() {
       </div>
     </nav>
   );
-}
+            }
