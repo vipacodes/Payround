@@ -110,11 +110,14 @@ export default function BottomNav() {
     mq.addEventListener?.('change', apply);
     return () => {
       mq.removeEventListener?.('change', apply);
-      document.body.style.paddingBottom = '';
-    };
-  }, [chatScreen]);
+            document.body.style.paddingBottom = mq.matches
 
-  if (chatScreen) return null;
+    // 💬 Chat screens KEEP the bar — full-height chat columns just stop above it (see globals.css)
+  useEffect(() => {
+    if (typeof document === 'undefined') return;
+    document.body.classList.toggle('pr-chat', chatScreen);
+    return () => document.body.classList.remove('pr-chat');
+  }, [chatScreen]);
 
   const tabs = [
     { id: 'home',    label: 'Home',    Icon: HiHome,      href: homeHref },
