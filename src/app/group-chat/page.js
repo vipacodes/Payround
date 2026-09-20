@@ -654,7 +654,6 @@ function GroupChatInner() {
           </div>
         )}
       </div>
-      <Footer />
     </div>
   );
 }
