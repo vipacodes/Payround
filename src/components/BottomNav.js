@@ -4,7 +4,7 @@
 //   • Solid dark background so the icons stand out clearly
 //   • 6 tabs: Home · Groups · ＋ (smaller) · Alerts (🔔) · Chats · Profile
 //   • Icons BOUNCE + pop sound on tap; the ACTIVE tab stays bright green
-//   • Chat screens (/messages, /group-chat) go full-screen — bar steps aside
+//   • Chat screens keep the bar — the chat column stops just above it
 // Pure navigation layer: no existing Payround function is changed.
 
 import { useEffect, useState } from 'react';
@@ -66,8 +66,7 @@ export default function BottomNav() {
     return () => { cancelled = true; clearInterval(t); };
   }, [pathname]);
 
-  // 🔴 Badge on the Alerts tab — my unread notifications (personal + my groups +
-  // broadcasts), honouring the same "cleared" list as the notifications page.
+  // 🔴 Badge on the Alerts tab — my unread notifications (personal + my groups + broadcasts)
   useEffect(() => {
     let cancelled = false;
     const check = async () => {
@@ -93,89 +92,3 @@ export default function BottomNav() {
     const t = setInterval(check, 20000);
     return () => { cancelled = true; clearInterval(t); };
   }, [pathname]);
-
-  // 💬 Chat screens run full-screen — no tab bar there (the composer needs the space)
-  const chatScreen = pathname === '/messages' || pathname === '/group-chat';
-
-  // 📐 Keep the bottom of every page above the bar — phones only, never on chat screens
-  useEffect(() => {
-    if (typeof window === 'undefined' || !window.matchMedia) return;
-    const mq = window.matchMedia('(max-width: 767px)');
-    const apply = () => {
-      document.body.style.paddingBottom = (mq.matches && !chatScreen)
-        ? 'calc(64px + env(safe-area-inset-bottom, 0px))'
-        : '';
-    };
-    apply();
-    mq.addEventListener?.('change', apply);
-    return () => {
-      mq.removeEventListener?.('change', apply);
-            document.body.style.paddingBottom = mq.matches
-
-    // 💬 Chat screens KEEP the bar — full-height chat columns just stop above it (see globals.css)
-  useEffect(() => {
-    if (typeof document === 'undefined') return;
-    document.body.classList.toggle('pr-chat', chatScreen);
-    return () => document.body.classList.remove('pr-chat');
-  }, [chatScreen]);
-
-  const tabs = [
-    { id: 'home',    label: 'Home',    Icon: HiHome,      href: homeHref },
-    { id: 'groups',  label: 'Groups',  Icon: HiUserGroup, href: '/groups/search' },
-    { id: 'create',  label: 'Create',  Icon: HiPlus,      href: '/groups/create', main: true },
-    { id: 'alerts',  label: 'Alerts',  Icon: HiBell,      href: '/notifications', badge: unreadAlerts },
-    { id: 'chats',   label: 'Chats',   Icon: HiChatAlt2,  href: '/messages', badge: unreadChats },
-    { id: 'profile', label: 'Profile', Icon: HiUser,      href: '/profile' },
-  ];
-
-  // Tap = bounce + soft pop sound + navigate (tapping the tab you're on just bounces)
-  const go = (tab) => {
-    setPressed(tab.id);
-    setTimeout(() => setPressed((p) => (p === tab.id ? null : p)), 340);
-    try { sounds.pop(); } catch {}
-    if (!tabActive(pathname, tab.id)) router.push(tab.href);
-  };
-
-  return (
-    <nav
-      aria-label="Main navigation"
-      className="md:hidden fixed bottom-0 inset-x-0 z-[70] bg-gray-900 border-t border-black/60 shadow-[0_-6px_24px_rgba(0,0,0,0.5)]"
-      style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}
-    >
-      <div className="grid grid-cols-6 max-w-lg mx-auto">
-        {tabs.map((tab) => {
-          const active = tabActive(pathname, tab.id);
-          const { Icon } = tab;
-
-          // ⭐ Compact green CREATE button (smaller, sits proud of the bar)
-          if (tab.main) {
-            return (
-              <button key={tab.id} onClick={() => go(tab)} aria-label="Create group"
-                className="flex items-start justify-center pt-1 pb-2 select-none touch-manipulation">
-                <span className={`-mt-4 w-10 h-10 rounded-xl bg-gradient-to-br from-primary-500 to-primary-700 text-white flex items-center justify-center shadow-lg shadow-black/50 border-4 border-gray-900 transition-transform duration-200 ${pressed === tab.id ? 'scale-90' : active ? 'scale-105' : ''} ${active ? 'ring-2 ring-primary-400/60' : ''}`}>
-                  <Icon className="w-5 h-5" />
-                </span>
-              </button>
-            );
-          }
-
-          // Regular tabs: light gray on dark when idle, BRIGHT GREEN with a pill when active
-          return (
-            <button key={tab.id} onClick={() => go(tab)} aria-label={tab.label}
-              className={`flex flex-col items-center justify-center gap-0.5 py-2 select-none touch-manipulation ${active ? 'text-primary-400' : 'text-gray-400'}`}>
-              <span className={`relative w-11 h-7 rounded-full flex items-center justify-center ${active ? 'bg-primary-500/20' : ''} ${pressed === tab.id ? 'bottom-nav-pop' : ''}`}>
-                <Icon className="w-6 h-6" />
-                {tab.badge > 0 && (
-                  <span className="absolute -top-1.5 -right-1 min-w-[16px] h-4 px-1 rounded-full bg-red-500 text-white text-[10px] font-bold flex items-center justify-center ring-2 ring-gray-900">
-                    {tab.badge > 9 ? '9+' : tab.badge}
-                  </span>
-                )}
-              </span>
-              <span className={`text-[10px] font-semibold leading-none ${active ? 'text-primary-400' : 'text-gray-400'}`}>{tab.label}</span>
-            </button>
-          );
-        })}
-      </div>
-    </nav>
-  );
-}
