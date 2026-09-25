@@ -66,7 +66,8 @@ export default function RootLayout({ children }) {
           }}
         />
        {children}
-        <BottomNav />
+      <BottomNav />
+        <SideNav />
         <SupportChatFab />
       </body>
     </html>
