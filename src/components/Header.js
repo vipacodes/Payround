@@ -1,7 +1,8 @@
 'use client';
 
-// 🧭 Header — logo + hamburger ONLY on phones (everything else lives in the
-// bottom tab bar or inside the hamburger menu). Desktop keeps its full bar.
+// 🧭 Header — phones: logo + ☰ only (nav lives in the bottom tab bar).
+// Desktop: WhatsApp-style — nav lives in the LEFT rail (SideNav); the top bar
+// keeps only Search + account + ☰ menu.
 
 import { useState, useEffect, useRef } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
@@ -133,12 +134,6 @@ export default function Header() {
         if (takedownResult.error) return;
         if (takedownResult.data?.taken_down) { await kickOff(takedownResult.data.reason); return; }
 
-        // A voluntary deletion request keeps the real profile intact for exactly
-        // seven days. This global check also runs immediately after a fresh login,
-        // so the user always sees the deadline and a working Restore button.
-        // An OWNER deletion also lands here: the same RPC returns deleted_by
-        // and the owner's typed reason, so the warning shows while the user is
-        // online, or at their very next login if they were offline.
         const deletionResult = await supabase.rpc('get_my_account_deletion_status');
         if (!deletionResult.error && mounted) {
           setDeletionQueue(deletionResult.data?.queued ? deletionResult.data : null);
@@ -165,16 +160,7 @@ export default function Header() {
     };
   }, [pathname]);
 
-  // ⏳ Owner-deletion hard freeze — the first time this deletion warning is
-  // shown (live while online, or at the next login if they were offline) the
-  // whole screen is locked for 10 seconds with a visible countdown before any
-  // button becomes usable. One freeze per deletion event, remembered locally.
-  //
-  // Bullet-proof design: the 10-second DEADLINE itself is stored in
-  // localStorage the first time the warning appears. Every tick recomputes
-  // the remaining time from that fixed wall-clock deadline, so background
-  // status polls, re-renders, effect re-runs, or even a full component
-  // remount can only RESUME the countdown — never stall or restart it.
+  // ⏳ Owner-deletion hard freeze — 10s countdown, resumable, once per deletion event
   const ownerDelEventKey = deletionQueue?.deleted_by === 'owner' ? (deletionQueue.requested_at || 'x') : '';
   useEffect(() => {
     if (!ownerDelEventKey) { setOwnerDelFreezeLeft(0); return; }
@@ -217,7 +203,6 @@ export default function Header() {
   }, [unreadCount, unreadMsgs, gchatUnread]);
 
   // 🔊 Gentle sounds when something NEW lands while the app is open
-  // (pop = message, ding = notification — first count is silent so pages never chirp on load)
   const prevCounts = useRef({ n: null, m: null, g: null });
   useEffect(() => {
     const prev = prevCounts.current;
@@ -388,7 +373,6 @@ export default function Header() {
           </button>
 
           {/* Search Bar (Desktop) */}
-          {/* 🔍 Desktop search trigger — opens the search-anything overlay (groups, people, businesses, pages) */}
           <button
             onClick={() => setShowSearch(true)}
             aria-label="Search PayRound"
@@ -399,143 +383,38 @@ export default function Header() {
               <HiSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 w-5 h-5" />
             </span>
           </button>
-
-          {/* Nav Items (Desktop) */}
-          <nav className="hidden md:flex items-center gap-6">
+          {/* Desktop account area — navigation lives in the LEFT rail (SideNav) */}
+          <nav className="hidden md:flex items-center gap-4">
             {isLoggedIn ? (
-              <>
-                <button
-                  onClick={() => router.push('/dashboard')}
-                  className={`flex items-center gap-1.5 text-sm font-medium transition-colors ${
-                    isActive('/dashboard') ? 'text-primary-600' : 'text-gray-600 hover:text-primary-600'
-                  }`}
-                >
-                  <HiHome className="w-5 h-5" />
-                  Dashboard
-                </button>
-
-                <button
-                  onClick={() => router.push('/groups/search')}
-                  className={`flex items-center gap-1.5 text-sm font-medium transition-colors ${
-                    isActive('/groups/search') ? 'text-primary-600' : 'text-gray-600 hover:text-primary-600'
-                  }`}
-                >
-                  <HiUserGroup className="w-5 h-5" />
-                  Join Group
-                </button>
-
-                <button
-                  onClick={() => router.push('/groups/create')}
-                  className="flex items-center gap-1.5 bg-primary-600 text-white text-sm font-medium px-4 py-2.5 rounded-xl hover:bg-primary-700 transition-all shadow-lg shadow-primary-200"
-                >
-                  <HiCurrencyDollar className="w-5 h-5" />
-                  Create Group
-                </button>
-
-                <button
-                  onClick={() => router.push('/ads?tab=mine')}
-                  title="My Ads — live, pending, saved & declined ads"
-                  className={`flex items-center gap-1.5 text-sm font-medium transition-colors ${
-                    isActive('/ads') ? 'text-primary-600' : 'text-gray-600 hover:text-primary-600'
-                  }`}
-                >
-                  <HiSpeakerphone className="w-5 h-5" />
-                  My Ads
-                </button>
-                <ShareButton
-                  compact
-                  label="Share PayRound"
-                  title="PayRound"
-                  text="Join me on PayRound. Sign up with my link and create a group. If PayRound approves your first group, I can earn a ₦500 referral bonus."
-                  url={payroundInviteUrl()}
-                />
-
-                <button
-                  onClick={() => setShowCalc(true)}
-                  aria-label="Quick calculator"
-                  title="Quick calculator"
-                  className="relative p-2 text-gray-500 hover:text-primary-600 transition-colors"
-                >
-                  <HiCalculator className="w-6 h-6" />
-                </button>
-
-                <button
-                  onClick={() => router.push('/notifications')}
-                  aria-label="Notifications"
-                  title="Notifications"
-                  className="relative p-2 text-gray-500 hover:text-primary-600 transition-colors"
-                >
-                  <HiBell className="w-6 h-6" />
-                  {unreadCount > 0 && <span className="msg-dot absolute top-1 right-1 w-2.5 h-2.5 bg-green-500 rounded-full" title="You have new notifications" />}
-                </button>
-
-                <button
-                  onClick={() => router.push(`/messages?inbox=${Date.now()}`)}
-                  aria-label="Messages"
-                  title="Messages"
-                  className="relative p-2 text-gray-500 hover:text-primary-600 transition-colors"
-                >
-                  <HiChatAlt2 className="w-6 h-6" />
-                  {unreadMsgs > 0 && <span className="msg-dot absolute top-1 right-1 w-2.5 h-2.5 bg-green-500 rounded-full" title="You have new messages" />}
-                </button>
-
-                {gchatShow && (
-                  <button
-                    onClick={() => router.push('/group-chat')}
-                    aria-label="Group chats"
-                    title="Group chats"
-                    className="relative p-2 text-gray-500 hover:text-primary-600 transition-colors"
-                  >
-                    <HiUserGroup className="w-6 h-6" />
-                    {gchatUnread > 0 && <span className="msg-dot absolute top-1 right-1 w-2.5 h-2.5 bg-green-500 rounded-full" title="You have new group messages" />}
-                  </button>
-                )}
-
-                <div className="flex items-center gap-3 pl-4 border-l border-gray-200">
-                  <div className="text-right">
-                    <p className="text-sm font-medium text-gray-900">{userName}</p>
-                    <p className="text-xs text-gray-500 capitalize">{userRole}</p>
-                  </div>
-                  <button
-                    onClick={() => router.push('/profile')}
-                    className="w-9 h-9 bg-primary-100 rounded-full flex items-center justify-center"
-                  >
-                    <span className="text-primary-700 font-semibold text-sm">
-                      {userName.charAt(0)}
-                    </span>
-                  </button>
-                  <button
-                    onClick={() => router.push('/settings')}
-                    title="Settings"
-                    className="p-2 text-gray-500 hover:text-primary-600 transition-colors"
-                  >
-                    <HiCog className="w-6 h-6" />
-                  </button>
+              <div className="flex items-center gap-3">
+                <div className="text-right">
+                  <p className="text-sm font-medium text-gray-900">{userName}</p>
+                  <p className="text-xs text-gray-500 capitalize">{userRole}</p>
                 </div>
-              </>
+                <button
+                  onClick={() => router.push('/profile')}
+                  className="w-9 h-9 bg-primary-100 rounded-full flex items-center justify-center"
+                >
+                  <span className="text-primary-700 font-semibold text-sm">
+                    {userName.charAt(0)}
+                  </span>
+                </button>
+                <button
+                  onClick={() => router.push('/settings')}
+                  title="Settings"
+                  className="p-2 text-gray-500 hover:text-primary-600 transition-colors"
+                >
+                  <HiCog className="w-6 h-6" />
+                </button>
+              </div>
             ) : (
               <>
-                <button
-                  onClick={() => setShowCalc(true)}
-                  aria-label="Quick calculator"
-                  title="Quick calculator"
-                  className="relative p-2 text-gray-500 hover:text-primary-600 transition-colors"
-                >
-                  <HiCalculator className="w-6 h-6" />
-                </button>
                 <button
                   onClick={() => router.push('/login')}
                   className="text-sm font-medium text-gray-600 hover:text-primary-600 transition-colors"
                 >
                   Login
                 </button>
-                <ShareButton
-                  compact
-                  label="Share PayRound"
-                  title="PayRound"
-                  text="Join PayRound — save together with people you can see. Sign up free."
-                  url={payroundInviteUrl()}
-                />
                 <button
                   onClick={() => router.push('/signup')}
                   className="bg-primary-600 text-white text-sm font-medium px-5 py-2.5 rounded-xl hover:bg-primary-700 transition-all shadow-lg shadow-primary-200"
@@ -559,7 +438,7 @@ export default function Header() {
         </div>
       </div>
 
-      {/* Mobile Menu */}
+      {/* ☰ Menu (works on desktop too — My Ads, Referrals, Group Chats, Search, Calculator, Share live here) */}
       {isMenuOpen && (
         <div className="bg-white border-t border-gray-100 animate-fade-in max-h-[calc(100dvh-4rem)] overflow-y-auto overscroll-contain">
           <div className="px-4 py-4 space-y-4">
@@ -625,4 +504,4 @@ function MobileNavItem({ icon, label, onClick, active }) {
       {label}
     </button>
   );
-            }
+}
