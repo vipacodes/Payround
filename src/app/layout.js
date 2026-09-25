@@ -6,6 +6,7 @@ import OfflineBanner from '@/components/OfflineBanner';
 import AndroidAppPrompt from '@/components/AndroidAppPrompt';
 import UserPresenceHeartbeat from '@/components/UserPresenceHeartbeat';
 import BottomNav from '@/components/BottomNav';
+import SideNav from '@/components/SideNav';
 export const viewport = {
   width: 'device-width',
   initialScale: 1,
